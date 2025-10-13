@@ -1,5 +1,6 @@
 {
 	"compilerOptions": {
+		"module": "Node16",
 		"allowJs": true,
 		"checkJs": true,
 		"esModuleInterop": true,
@@ -8,6 +9,6 @@
 		"skipLibCheck": true,
 		"sourceMap": true,
 		"strict": true,
-		"moduleResolution": "bundler"
+		"moduleResolution": "node16"
 	}
 }
