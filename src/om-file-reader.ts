@@ -1,0 +1,183 @@
+import {
+	OmDataType,
+	OmHttpBackend,
+	type TypedArray,
+	type OmFileReader
+} from '@openmeteo/file-reader';
+
+import { pad } from './utils';
+
+import {
+	DynamicProjection,
+	ProjectionGrid,
+	type Projection,
+	type ProjectionName
+} from './utils/projections';
+
+import type { Domain, DimensionRange, Variable } from './types';
+
+import type { Data } from './om-protocol';
+
+export class OMapsFileReader {
+	child?: OmFileReader;
+	reader?: OmFileReader;
+
+	partial!: boolean;
+	ranges!: DimensionRange[];
+
+	domain!: Domain;
+	projection!: Projection;
+	projectionGrid!: ProjectionGrid;
+
+	constructor(domain: Domain, partial: boolean) {
+		this.setReaderData(domain, partial);
+	}
+
+	async init(omUrl: string) {
+		this.dispose();
+		const s3_backend = new OmHttpBackend({
+			url: omUrl,
+			eTagValidation: false,
+			retries: 2
+		});
+		this.reader = await s3_backend.asCachedReader();
+	}
+
+	setReaderData(domain: Domain, partial: boolean) {
+		this.partial = partial;
+		this.domain = domain;
+		if (domain.grid.projection) {
+			const projectionName = domain.grid.projection.name;
+			this.projection = new DynamicProjection(
+				projectionName as ProjectionName,
+				domain.grid.projection
+			) as Projection;
+			this.projectionGrid = new ProjectionGrid(this.projection, domain.grid);
+		}
+	}
+
+	setRanges(ranges: DimensionRange[] | null, dimensions: number[] | undefined) {
+		if (this.partial || !dimensions) {
+			this.ranges = ranges ?? this.ranges;
+		} else {
+			this.ranges = [
+				{ start: 0, end: dimensions[0] },
+				{ start: 0, end: dimensions[1] }
+			];
+		}
+	}
+
+	async readVariable(variable: Variable, ranges: DimensionRange[] | null = null): Promise<Data> {
+		let values, directions;
+		if (variable.value.includes('_u_component')) {
+			// combine uv components, and calculate directions
+			const variableReaderU = await this.reader?.getChildByName(variable.value);
+			const variableReaderV = await this.reader?.getChildByName(
+				variable.value.replace('_u_component', '_v_component')
+			);
+			const dimensions = variableReaderU?.getDimensions();
+
+			this.setRanges(ranges, dimensions);
+
+			const valuesUPromise = variableReaderU?.read(OmDataType.FloatArray, this.ranges);
+			const valuesVPromise = variableReaderV?.read(OmDataType.FloatArray, this.ranges);
+
+			const [valuesU, valuesV] = await Promise.all([valuesUPromise, valuesVPromise]);
+
+			values = [];
+			directions = [];
+			if (valuesU && valuesV)
+				for (const [i, uValue] of valuesU.entries()) {
+					values.push(
+						Math.sqrt(Math.pow(Number(uValue), 2) + Math.pow(Number(valuesV[i]), 2)) * 1.94384
+					); // convert from m/s to knots
+					directions.push(
+						(Math.atan2(Number(uValue), Number(valuesV[i])) * (180 / Math.PI) + 360) % 360
+					);
+				}
+		} else {
+			const variableReader = await this.reader?.getChildByName(variable.value);
+			const dimensions = variableReader?.getDimensions();
+
+			this.setRanges(ranges, dimensions);
+
+			values = await variableReader?.read(OmDataType.FloatArray, this.ranges);
+		}
+
+		if (variable.value.includes('_speed_')) {
+			// also get the direction for speed values
+			const variableReader = await this.reader?.getChildByName(
+				variable.value.replace('_speed_', '_direction_')
+			);
+
+			directions = await variableReader?.read(OmDataType.FloatArray, this.ranges);
+		}
+		if (variable.value === 'wave_height') {
+			// also get the direction for speed values
+			const variableReader = await this.reader?.getChildByName(
+				variable.value.replace('wave_height', 'wave_direction')
+			);
+
+			directions = await variableReader?.read(OmDataType.FloatArray, this.ranges);
+		}
+
+		return {
+			values: values as TypedArray,
+			directions: directions as TypedArray
+		};
+	}
+
+	getNextUrls(omUrl: string) {
+		const re = new RegExp(/([0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}00)/);
+		const matches = omUrl.match(re);
+		let nextUrl, prevUrl;
+		if (matches) {
+			const date = new Date('20' + matches[0].substring(0, matches[0].length - 2) + ':00Z');
+
+			date.setUTCHours(date.getUTCHours() - 1);
+			prevUrl = omUrl.replace(
+				re,
+				`${String(date.getUTCFullYear()).substring(2, 4)}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}T${pad(date.getUTCHours())}00`
+			);
+
+			date.setUTCHours(date.getUTCHours() + 2);
+			nextUrl = omUrl.replace(
+				re,
+				`${String(date.getUTCFullYear()).substring(2, 4)}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}T${pad(date.getUTCHours())}00`
+			);
+		}
+		if (prevUrl && nextUrl) {
+			return [prevUrl, nextUrl];
+		} else {
+			return undefined;
+		}
+	}
+
+	prefetch(omUrl: string) {
+		const nextOmUrls = this.getNextUrls(omUrl);
+		if (nextOmUrls) {
+			for (const nextOmUrl of nextOmUrls) {
+				fetch(nextOmUrl, {
+					method: 'GET',
+					headers: {
+						Range: 'bytes=0-255' // Just fetch first 256 bytes to trigger caching
+					}
+				}).catch(() => {
+					// Silently ignore errors for pretches
+				});
+			}
+		}
+	}
+
+	dispose() {
+		if (this.child) {
+			this.child.dispose();
+		}
+		if (this.reader) {
+			this.reader.dispose();
+		}
+
+		delete this.child;
+		delete this.reader;
+	}
+}

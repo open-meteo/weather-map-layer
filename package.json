@@ -1,0 +1,40 @@
+{
+	"name": "@openmeteo/mapbox-layer",
+	"version": "0.0.1",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.js",
+	"author": "Open-Meteo <info@open-meteo.com>",
+	"module": "dist/index.js",
+	"repository": "git://github.com/open-meteo/mapbox-layer",
+	"description": "Protocol to read OMfiles and parse them to tiles for Mapbox / Maplibre",
+	"keywords": [
+		"open-meteo",
+		"meteorological-data",
+		"weather-maps",
+		"omfile"
+	],
+	"files": [
+		"dist/**/*"
+	],
+	"scripts": {
+		"dev": "vite",
+		"test": "vitest",
+		"build": "vite build -l info",
+		"preview": "vite preview"
+	},
+	"devDependencies": {
+		"@types/d3": "^7.4.3",
+		"d3": "^7.9.0",
+		"typescript": "~5.8.3",
+		"vite": "^6.3.5",
+		"vite-plugin-dts": "^4.5.4",
+		"vite-plugin-top-level-await": "^1.6.0",
+		"vite-plugin-wasm": "^3.4.1",
+		"vitest": "^3.2.2"
+	},
+	"dependencies": {
+		"@openmeteo/file-reader": "^0.0.11",
+		"maplibre-gl": "^5.9.0"
+	}
+}
