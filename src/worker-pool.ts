@@ -1,4 +1,4 @@
-import TileWorker from './worker.ts?worker';
+import TileWorker from './worker?worker';
 
 import type { Data } from './om-protocol';
 
@@ -35,6 +35,10 @@ export class WorkerPool {
 	private resolvers = new Map<string, (tile: ImageBitmap) => void>();
 
 	constructor() {
+    if (typeof window === 'undefined' || typeof Worker === 'undefined') {
+      // Not in browser, don't create workers
+      return;
+    }
 			const workerCount = navigator.hardwareConcurrency || 4;
 			for (let i = 0; i < workerCount; i++) {
 				const worker = new TileWorker();
