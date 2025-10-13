@@ -18,65 +18,61 @@
 		"dist/**/*"
 	],
 	"exports": {
-	".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    },
-    "./worker": {
-      "types": "./dist/worker.d.ts",
-      "import": "./dist/worker.js"
-    },
-    "./worker-pool": {
-      "types": "./dist/worker-pool.d.ts",
-      "import": "./dist/worker-pool.js"
-    },
-    "./om-protocol": {
-      "types": "./dist/om-protocol.d.ts",
-      "import": "./dist/om-protocol.js"
-    },
-    "./types": {
-      "types": "./dist/types.d.ts",
-      "import": "./dist/types.js"
-    },
-    "./utils/arrow": {
-      "types": "./dist/utils/arrow.d.ts",
-      "import": "./dist/utils/arrow.js"
-    },
-    "./utils/color-scales": {
-      "types": "./dist/utils/color-scales.d.ts",
-      "import": "./dist/utils/color-scales.js"
-    },
-    "./utils/domains": {
-      "types": "./dist/utils/domains.d.ts",
-      "import": "./dist/utils/domains.js"
-    },
-    "./utils/icons": {
-      "types": "./dist/utils/icons.d.ts",
-      "import": "./dist/utils/icons.js"
-    },
-    "./utils/interpolations": {
-      "types": "./dist/utils/interpolations.d.ts",
-      "import": "./dist/utils/interpolations.js"
-    },
-    "./utils/math": {
-      "types": "./dist/utils/math.d.ts",
-      "import": "./dist/utils/math.js"
-    },
-    "./utils/projections": {
-      "types": "./dist/utils/projections.d.ts",
-      "import": "./dist/utils/projections.js"
-    },
-    "./utils/variables": {
-      "types": "./dist/utils/variables.d.ts",
-      "import": "./dist/utils/variables.js"
-    }
-  },
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		},
+		"./worker-pool": {
+			"types": "./dist/worker-pool.d.ts",
+			"import": "./dist/worker-pool.js"
+		},
+		"./om-protocol": {
+			"types": "./dist/om-protocol.d.ts",
+			"import": "./dist/om-protocol.js"
+		},
+		"./types": {
+			"types": "./dist/types.d.ts",
+			"import": "./dist/types.js"
+		},
+		"./utils/arrow": {
+			"types": "./dist/utils/arrow.d.ts",
+			"import": "./dist/utils/arrow.js"
+		},
+		"./utils/color-scales": {
+			"types": "./dist/utils/color-scales.d.ts",
+			"import": "./dist/utils/color-scales.js"
+		},
+		"./utils/domains": {
+			"types": "./dist/utils/domains.d.ts",
+			"import": "./dist/utils/domains.js"
+		},
+		"./utils/icons": {
+			"types": "./dist/utils/icons.d.ts",
+			"import": "./dist/utils/icons.js"
+		},
+		"./utils/interpolations": {
+			"types": "./dist/utils/interpolations.d.ts",
+			"import": "./dist/utils/interpolations.js"
+		},
+		"./utils/math": {
+			"types": "./dist/utils/math.d.ts",
+			"import": "./dist/utils/math.js"
+		},
+		"./utils/projections": {
+			"types": "./dist/utils/projections.d.ts",
+			"import": "./dist/utils/projections.js"
+		},
+		"./utils/variables": {
+			"types": "./dist/utils/variables.d.ts",
+			"import": "./dist/utils/variables.js"
+		}
+	},
 	"scripts": {
 		"dev": "vite",
 		"test": "vitest",
 		"build": "npm run build:main && npm run build:worker",
-    "build:main": "vite build",
-    "build:worker": "vite build --config vite.worker.config.ts",
+		"build:main": "vite build",
+		"build:worker": "vite build --config vite.worker.config.ts",
 		"preview": "vite preview"
 	},
 	"devDependencies": {
