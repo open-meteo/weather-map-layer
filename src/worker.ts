@@ -25,8 +25,8 @@ import type { IconListPixels } from './utils/icons';
 
 import type { TypedArray } from '@openmeteo/file-reader';
 
-const TILE_SIZE = Number(import.meta.env.VITE_TILE_SIZE) * 2;
-const OPACITY = Number(import.meta.env.VITE_TILE_OPACITY);
+const TILE_SIZE = (Number(import.meta.env.VITE_TILE_SIZE) ?? 256) * 2;
+const OPACITY = Number(import.meta.env.VITE_TILE_OPACITY) ?? 75;
 
 const drawArrow = (
 	rgba: Uint8ClampedArray,
@@ -37,6 +37,7 @@ const drawArrow = (
 	z: number,
 	ranges: DimensionRange[],
 	domain: Domain,
+	latLonMinMax: [minLat: number, minLon: number, maxLat: number, maxLon: number],
 	variable: Variable,
 	projectionGrid: ProjectionGrid | null,
 	values: TypedArray,
@@ -58,7 +59,8 @@ const drawArrow = (
 		lon,
 		domain,
 		projectionGrid,
-		ranges
+		ranges,
+		latLonMinMax
 	);
 
 	const px = interpolator(values as Float32Array, index, xFraction, yFraction, ranges);
@@ -261,6 +263,7 @@ self.onmessage = async (message) => {
 							z,
 							ranges,
 							domain,
+							[latMin, lonMin, latMax, lonMax],
 							variable,
 							projectionGrid,
 							values,

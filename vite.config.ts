@@ -44,6 +44,7 @@ export default defineConfig({
 		minify: false
 	},
 	 worker:{
+			format: 'es',
 			rollupOptions: {
 				output: {
 					entryFileNames: `[name].js`,

@@ -35,18 +35,17 @@ export class WorkerPool {
 	private resolvers = new Map<string, (tile: ImageBitmap) => void>();
 
 	constructor() {
-    if (typeof window === 'undefined' || typeof Worker === 'undefined') {
-      // Not in browser, don't create workers
-      return;
-    }
-			const workerCount = navigator.hardwareConcurrency || 4;
-			for (let i = 0; i < workerCount; i++) {
-				const worker = new TileWorker();
-				worker.onmessage = (message) => this.handleMessage(message);
-				this.workers.push(worker);
-			}
+		if (typeof window === 'undefined' || typeof Worker === 'undefined') {
+			// Not in browser, don't create workers
+			return;
 		}
-
+		const workerCount = navigator.hardwareConcurrency || 4;
+		for (let i = 0; i < workerCount; i++) {
+			const worker = new TileWorker();
+			worker.onmessage = (message) => this.handleMessage(message);
+			this.workers.push(worker);
+		}
+	}
 
 	private handleMessage(message: MessageEvent): void {
 		const data = message.data as TileResponse;
