@@ -1,4 +1,4 @@
-import TileWorker from './worker?worker';
+import TileWorker from './worker?worker&inline';
 
 import type { Data } from './om-protocol';
 
