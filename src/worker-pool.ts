@@ -1,4 +1,4 @@
-import TileWorker from './worker?worker&inline';
+const workerUrl = new URL('./worker/worker.js', import.meta.url);
 
 import type { Data } from './om-protocol';
 
@@ -41,7 +41,7 @@ export class WorkerPool {
 		}
 		const workerCount = navigator.hardwareConcurrency || 4;
 		for (let i = 0; i < workerCount; i++) {
-			const worker = new TileWorker();
+			const worker = new Worker(workerUrl, { type: 'module' });
 			worker.onmessage = (message) => this.handleMessage(message);
 			this.workers.push(worker);
 		}
