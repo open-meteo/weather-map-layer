@@ -82,11 +82,6 @@ export const getIndexFromLatLong = (
 		const x = Math.floor((lon - latLonMinMax[1]) / dx);
 		const y = Math.floor((lat - latLonMinMax[0]) / dy);
 
-		const lon0 = x * dx + lonMin;
-		const lon1 = (x + 1) * dx + lonMin;
-		const lat0 = y * dy + latMin;
-		const lat1 = (y + 1) * dy + latMin;
-
 		const xFraction = ((lon - latLonMinMax[1]) % dx) / dx;
 		const yFraction = ((lat - latLonMinMax[0]) % dy) / dy;
 

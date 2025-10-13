@@ -1,14 +1,10 @@
 import { defineConfig } from 'vite';
 
 import dts from 'vite-plugin-dts';
-import wasm from 'vite-plugin-wasm';
-import topLevelAwait from "vite-plugin-top-level-await";
 
 export default defineConfig({
 	plugins: [
-		wasm(),
-	        topLevelAwait(),
-		//dts()
+		dts()
 	],
 	optimizeDeps: {
 		exclude: ['@openmeteo/file-reader', '@openmeteo/file-format-wasm']
@@ -16,8 +12,10 @@ export default defineConfig({
 	build: {
 		chunkSizeWarningLimit: 1200,
 		rollupOptions: {
+		      	external: ['@openmeteo/file-reader', '@openmeteo/file-format-wasm'],
 			input: {
 				index: 'src/index.ts',
+				'types': 'src/types.ts',
 
 				'om-protocol': 'src/om-protocol.ts',
 				'worker-pool': 'src/worker-pool.ts',
