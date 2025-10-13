@@ -6,7 +6,7 @@ import {
 	MercatorProjection
 } from './projections';
 
-import type { DimensionRange, Domain, Bounds, Center, IndexAndFractions } from './types';
+import type { Domain, Bounds, Center, IndexAndFractions } from '../types';
 
 const PI = Math.PI;
 
