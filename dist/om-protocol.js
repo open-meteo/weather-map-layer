@@ -4,12 +4,9 @@ import { D as DynamicProjection, P as ProjectionGrid, d as getIndicesFromBounds,
 import { getInterpolator } from "./utils/color-scales.js";
 import { domainOptions } from "./utils/domains.js";
 import { variableOptions } from "./utils/variables.js";
+import { pad } from "./utils/index.js";
 import arrowPixelsSource from "./utils/arrow.js";
-const now = /* @__PURE__ */ new Date();
-now.setHours(now.getHours() + 1, 0, 0, 0);
-const pad = (n) => {
-  return ("0" + n).slice(-2);
-};
+import "./utils/interpolations.js";
 class OMapsFileReader {
   constructor(domain2, partial2) {
     this.setReaderData(domain2, partial2);
