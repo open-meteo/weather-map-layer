@@ -4,32 +4,33 @@ import dts from 'vite-plugin-dts';
 
 export default defineConfig({
 	plugins: [
-	  dts(),
+		dts()
 	],
 	optimizeDeps: {
 		exclude: ['@openmeteo/file-reader', '@openmeteo/file-format-wasm']
 	},
 	build: {
 		chunkSizeWarningLimit: 1200,
-	  lib: {
-      entry: {
-        index: 'src/index.ts',
-        'worker-pool': 'src/worker-pool.ts',
-        'om-protocol': 'src/om-protocol.ts',
-        types: 'src/types.ts',
-        'utils/arrow': 'src/utils/arrow.ts',
-        'utils/color-scales': 'src/utils/color-scales.ts',
-        'utils/domains': 'src/utils/domains.ts',
-        'utils/icons': 'src/utils/icons.ts',
-        'utils/interpolations': 'src/utils/interpolations.ts',
-        'utils/math': 'src/utils/math.ts',
-        'utils/projections': 'src/utils/projections.ts',
-        'utils/variables': 'src/utils/variables.ts',
-      },
-      formats: ['es'],
-    },
 		rollupOptions: {
-		  external: ['@openmeteo/file-reader', '@openmeteo/file-format-wasm'],
+		      	external: ['@openmeteo/file-reader', '@openmeteo/file-format-wasm'],
+			input: {
+				index: 'src/index.ts',
+				'types': 'src/types.ts',
+
+				'om-protocol': 'src/om-protocol.ts',
+				'worker-pool': 'src/worker-pool.ts',
+				'om-file-reader': 'src/om-protocol.ts',
+
+				'utils/arrow': 'src/utils/arrow.ts',
+				'utils/color-scales': 'src/utils/color-scales.ts',
+				'utils/domains': 'src/utils/domains.ts',
+				'utils/icons': 'src/utils/icons.ts',
+				'utils/index': 'src/utils/index.ts',
+				'utils/interpolations': 'src/utils/interpolations.ts',
+				'utils/math': 'src/utils/math.ts',
+				'utils/projections': 'src/utils/projections.ts',
+				'utils/variables': 'src/utils/variables.ts'
+			},
 			output: {
 				entryFileNames: `[name].js`,
 				chunkFileNames: `[name].js`,
