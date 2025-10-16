@@ -254,6 +254,22 @@ const lon2tile = (lon, z) => {
 const lat2tile = (lat, z) => {
   return Math.pow(2, z) * (1 - Math.log(Math.tan(degreesToRadians(lat)) + 1 / Math.cos(degreesToRadians(lat))) / PI) / 2;
 };
+const a1 = 0.99997726;
+const a3 = -0.33262347;
+const a5 = 0.19354346;
+const a7 = -0.11643287;
+const a9 = 0.05265332;
+const a11 = -0.0117212;
+const fastAtan2 = (y, x) => {
+  const swap = Math.abs(x) < Math.abs(y);
+  const denominator = (swap ? y : x) === 0 ? 1e-8 : swap ? y : x;
+  const atan_input = (swap ? x : y) / denominator;
+  const z_sq = atan_input * atan_input;
+  let res = atan_input * (a1 + z_sq * (a3 + z_sq * (a5 + z_sq * (a7 + z_sq * (a9 + z_sq * a11)))));
+  if (swap) res = Math.sign(atan_input) * PI / 2 - res;
+  if (x < 0) res = Math.sign(y) * PI + res;
+  return res;
+};
 const hermite = (t, p0, p1, m0, m1) => {
   const t2 = t * t;
   const t3 = t2 * t;
@@ -326,7 +342,6 @@ const getIndicesFromBounds = (south, west, north, east, domain) => {
       minY = Math.min(Math.max(Math.floor((n - originY) / dy - 1), 0), ny);
       maxY = Math.max(Math.min(Math.ceil((s - originY) / dy + 1), ny), 0);
     }
-    return [minX, minY, maxX, maxY];
   } else {
     const originX = domain.grid.lonMin;
     const originY = domain.grid.latMin;
@@ -354,8 +369,8 @@ const getIndicesFromBounds = (south, west, north, east, domain) => {
     } else {
       maxX = Math.ceil(Math.min((e - originX) / dx + 1, nx));
     }
-    return [minX, minY, maxX, maxY];
   }
+  return [minX, minY, maxX, maxY];
 };
 const getRotatedSWNE = (domain, projection, [south, west, north, east]) => {
   const pointsX = [];
@@ -466,17 +481,18 @@ export {
   getCenterFromBounds as c,
   getIndicesFromBounds as d,
   getBoundsFromGrid as e,
-  getIndexFromLatLong as f,
+  fastAtan2 as f,
   getBorderPoints as g,
-  LambertAzimuthalEqualAreaProjection as h,
-  degreesToRadians as i,
-  tile2lat as j,
-  lat2tile as k,
+  getIndexFromLatLong as h,
+  LambertAzimuthalEqualAreaProjection as i,
+  degreesToRadians as j,
+  tile2lat as k,
   lon2tile as l,
-  hermite as m,
-  derivative as n,
-  getRotatedSWNE as o,
-  rotatePoint as p,
+  lat2tile as m,
+  hermite as n,
+  derivative as o,
+  getRotatedSWNE as p,
+  rotatePoint as q,
   radiansToDegrees as r,
   secondDerivative as s,
   tile2lon as t

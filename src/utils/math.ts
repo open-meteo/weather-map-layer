@@ -39,6 +39,28 @@ export const lat2tile = (lat: number, z: number): number => {
 	);
 };
 
+const a1 = 0.99997726;
+const a3 = -0.33262347;
+const a5 = 0.19354346;
+const a7 = -0.11643287;
+const a9 = 0.05265332;
+const a11 = -0.0117212;
+
+// https://mazzo.li/posts/vectorized-atan2.html
+export const fastAtan2 = (y: number, x: number) => {
+	const swap = Math.abs(x) < Math.abs(y);
+	const denominator = (swap ? y : x) === 0 ? 0.00000001 : swap ? y : x;
+	const atan_input = (swap ? x : y) / denominator;
+
+	const z_sq = atan_input * atan_input;
+	let res = atan_input * (a1 + z_sq * (a3 + z_sq * (a5 + z_sq * (a7 + z_sq * (a9 + z_sq * a11)))));
+
+	if (swap) res = (Math.sign(atan_input) * PI) / 2 - res;
+	if (x < 0.0) res = Math.sign(y) * PI + res;
+
+	return res;
+};
+
 export const hermite = (t: number, p0: number, p1: number, m0: number, m1: number) => {
 	const t2 = t * t;
 	const t3 = t2 * t;
@@ -152,8 +174,6 @@ export const getIndicesFromBounds = (
 			minY = Math.min(Math.max(Math.floor((n - originY) / dy - 1), 0), ny);
 			maxY = Math.max(Math.min(Math.ceil((s - originY) / dy + 1), ny), 0);
 		}
-
-		return [minX, minY, maxX, maxY];
 	} else {
 		const originX = domain.grid.lonMin;
 		const originY = domain.grid.latMin;
@@ -186,8 +206,8 @@ export const getIndicesFromBounds = (
 		} else {
 			maxX = Math.ceil(Math.min((e - originX) / dx + 1, nx));
 		}
-		return [minX, minY, maxX, maxY];
 	}
+	return [minX, minY, maxX, maxY];
 };
 
 export const getRotatedSWNE = (

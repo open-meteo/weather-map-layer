@@ -1,7 +1,10 @@
 import { expect, test } from 'vitest';
-import { RotatedLatLonProjection, LambertConformalConicProjection } from '../utils/projections';
 
 import { domainOptions } from '../utils/domains';
+
+import { RotatedLatLonProjection, LambertConformalConicProjection } from '../utils/projections';
+
+import { fastAtan2 } from '../utils/math';
 
 const dmiDomain = domainOptions.find((d) => d.value === 'dmi_harmonie_arome_europe');
 const knmiDomain = domainOptions.find((d) => d.value === 'knmi_harmonie_arome_europe');
@@ -28,4 +31,24 @@ test('Test RotatedLatLon for KNMI', () => {
 
 	expect(proj.forward(39.671, -25.421997)[0]).toBe(13.716985366241445);
 	expect(proj.forward(39.671, -25.421997)[1]).toBe(13.617348599940314);
+});
+
+test('fastAtan2 approximates Math.atan2 within 0.00001 radians', () => {
+	const steps = 1000;
+	let maxError = 0;
+	for (let i = 0; i <= steps; ++i) {
+		const theta = -Math.PI + (2 * Math.PI * i) / steps;
+		// Use a radius to avoid (0,0)
+		const r = 1.0;
+		const x = r * Math.cos(theta);
+		const y = r * Math.sin(theta);
+
+		const approx = fastAtan2(y, x);
+		const exact = Math.atan2(y, x);
+		const error = Math.abs(approx - exact);
+
+		if (error > maxError) maxError = error;
+
+		expect(error).toBeLessThan(0.00001);
+	}
 });

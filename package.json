@@ -3,7 +3,7 @@
 	"version": "0.0.1",
 	"type": "module",
 	"main": "dist/index.js",
-	"types": "dist/index.d.js",
+	"types": "dist/index.d.ts",
 	"author": "Open-Meteo <info@open-meteo.com>",
 	"module": "dist/index.js",
 	"repository": "git://github.com/open-meteo/mapbox-layer",
@@ -72,22 +72,21 @@
 		}
 	},
 	"scripts": {
-		"dev": "vite",
+		"dev": "vite build --watch",
 		"test": "vitest",
-		"build": "vite build -l info",
-		"preview": "vite preview"
+		"build": "vite build -l info"
 	},
 	"devDependencies": {
 		"@types/d3": "^7.4.3",
 		"d3": "^7.9.0",
 		"prettier": "^3.6.2",
 		"typescript": "5.9.3",
-		"vite": "^7.1.9",
+		"vite": "^7.1.10",
 		"vite-plugin-dts": "^4.5.4",
 		"vitest": "^3.2.4"
 	},
 	"dependencies": {
-		"@openmeteo/file-reader": "^0.0.11",
+		"@openmeteo/file-reader": "^0.0.12",
 		"maplibre-gl": "^5.9.0"
 	}
 }

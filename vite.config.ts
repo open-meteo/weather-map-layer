@@ -4,7 +4,13 @@ import dts from 'vite-plugin-dts';
 
 export default defineConfig({
 	plugins: [
-		dts()
+		dts({
+			insertTypesEntry: true,
+			//rollupTypes: true,
+			//declarationOnly: true,
+			entryRoot: 'src',
+			exclude: 'src/tests'
+		})
 	],
 	optimizeDeps: {
 		exclude: ['@openmeteo/file-reader', '@openmeteo/file-format-wasm']
@@ -12,10 +18,10 @@ export default defineConfig({
 	build: {
 		chunkSizeWarningLimit: 1200,
 		rollupOptions: {
-		      	external: ['@openmeteo/file-reader', '@openmeteo/file-format-wasm'],
+			external: ['@openmeteo/file-reader', '@openmeteo/file-format-wasm'],
 			input: {
 				index: 'src/index.ts',
-				'types': 'src/types.ts',
+				types: 'src/types.ts',
 
 				'om-protocol': 'src/om-protocol.ts',
 				'worker-pool': 'src/worker-pool.ts',
@@ -34,21 +40,21 @@ export default defineConfig({
 			output: {
 				entryFileNames: `[name].js`,
 				chunkFileNames: `[name].js`,
-				assetFileNames: `[name].[ext]`,
+				assetFileNames: `[name].[ext]`
 				// name: 'mapbox-layer',
 				// format: "esm",
 				// inlineDynamicImports: true
 			},
-			preserveEntrySignatures: 'strict',
+			preserveEntrySignatures: 'strict'
 		},
 		minify: false
 	},
-	 worker:{
-			format: 'es',
-			rollupOptions: {
-				output: {
-					entryFileNames: `[name].js`,
-				}
+	worker: {
+		format: 'es',
+		rollupOptions: {
+			output: {
+				entryFileNames: `[name].js`
 			}
-	 }
+		}
+	}
 });

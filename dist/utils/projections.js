@@ -1,7 +1,7 @@
-import { D, h, L, M, P, R, S } from "../math.js";
+import { D, i, L, M, P, R, S } from "../math.js";
 export {
   D as DynamicProjection,
-  h as LambertAzimuthalEqualAreaProjection,
+  i as LambertAzimuthalEqualAreaProjection,
   L as LambertConformalConicProjection,
   M as MercatorProjection,
   P as ProjectionGrid,

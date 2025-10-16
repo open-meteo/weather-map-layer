@@ -1,21 +1,22 @@
-import { i, n, g, a, e, c, b, f, d, o, m, k, l, r, p, s, j, t } from "../math.js";
+import { j, o, f, g, a, e, c, b, h, d, p, n, m, l, r, q, s, k, t } from "../math.js";
 export {
-  i as degreesToRadians,
-  n as derivative,
+  j as degreesToRadians,
+  o as derivative,
+  f as fastAtan2,
   g as getBorderPoints,
   a as getBoundsFromBorderPoints,
   e as getBoundsFromGrid,
   c as getCenterFromBounds,
   b as getCenterFromGrid,
-  f as getIndexFromLatLong,
+  h as getIndexFromLatLong,
   d as getIndicesFromBounds,
-  o as getRotatedSWNE,
-  m as hermite,
-  k as lat2tile,
+  p as getRotatedSWNE,
+  n as hermite,
+  m as lat2tile,
   l as lon2tile,
   r as radiansToDegrees,
-  p as rotatePoint,
+  q as rotatePoint,
   s as secondDerivative,
-  j as tile2lat,
+  k as tile2lat,
   t as tile2lon
 };

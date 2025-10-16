@@ -1,6 +1,6 @@
 import { type GetResourceResponse, type RequestParameters } from 'maplibre-gl';
 
-import { setupGlobalCache, type TypedArray } from '@openmeteo/file-reader';
+import { setupGlobalCache } from '@openmeteo/file-reader';
 
 import { WorkerPool } from './worker-pool';
 
@@ -75,12 +75,16 @@ const initPixelData = async () => {
 		});
 	};
 
+	if (Object.keys(arrowPixelData).length > 0) {
+		return; // Already loaded
+	}
+
 	await Promise.all(Object.entries(arrowPixelsSource).map(([key, url]) => loadIcon(key, url)));
 };
 
 export interface Data {
-	values: TypedArray | undefined;
-	directions: TypedArray | undefined;
+	values: Float32Array | undefined;
+	directions: Float32Array | undefined;
 }
 
 let data: Data;
@@ -124,7 +128,7 @@ export const getValueFromLatLong = (
 		if (values && index) {
 			const interpolator = getInterpolator(colorScale);
 
-			const px = interpolator(values as Float32Array, index, xFraction, yFraction, ranges);
+			const px = interpolator(values, index, xFraction, yFraction, ranges);
 
 			return { index: index, value: px };
 		} else {
@@ -159,10 +163,10 @@ const getTile = async ({ z, x, y }: TileIndex, omUrl: string): Promise<ImageBitm
 	});
 };
 
+const URL_REGEX = /^om:\/\/(.+)\/(\d+)\/(\d+)\/(\d+)$/;
+
 const renderTile = async (url: string) => {
-	// Read URL parameters
-	const re = new RegExp(/om:\/\/(.+)\/(\d+)\/(\d+)\/(\d+)/);
-	const result = url.match(re);
+	const result = url.match(URL_REGEX);
 	if (!result) {
 		throw new Error(`Invalid OM protocol URL '${url}'`);
 	}

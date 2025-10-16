@@ -1,23 +1,28 @@
 import { OmHttpBackend, OmDataType, setupGlobalCache } from "@openmeteo/file-reader";
 import { WorkerPool } from "./worker-pool.js";
-import { D as DynamicProjection, P as ProjectionGrid, d as getIndicesFromBounds, g as getBorderPoints, a as getBoundsFromBorderPoints, e as getBoundsFromGrid, f as getIndexFromLatLong } from "./math.js";
+import { D as DynamicProjection, P as ProjectionGrid, r as radiansToDegrees, f as fastAtan2, d as getIndicesFromBounds, g as getBorderPoints, a as getBoundsFromBorderPoints, e as getBoundsFromGrid, h as getIndexFromLatLong } from "./math.js";
 import { getInterpolator } from "./utils/color-scales.js";
 import { domainOptions } from "./utils/domains.js";
 import { variableOptions } from "./utils/variables.js";
 import { pad } from "./utils/index.js";
 import arrowPixelsSource from "./utils/arrow.js";
 import "./utils/interpolations.js";
-class OMapsFileReader {
+const MS_TO_KNOTS = 1.94384;
+const _OMapsFileReader = class _OMapsFileReader {
   constructor(domain2, partial2) {
     this.setReaderData(domain2, partial2);
   }
   async init(omUrl) {
     this.dispose();
-    const s3_backend = new OmHttpBackend({
-      url: omUrl,
-      eTagValidation: false,
-      retries: 2
-    });
+    let s3_backend = _OMapsFileReader.s3BackendCache.get(omUrl);
+    if (!s3_backend) {
+      s3_backend = new OmHttpBackend({
+        url: omUrl,
+        eTagValidation: false,
+        retries: 2
+      });
+      _OMapsFileReader.s3BackendCache.set(omUrl, s3_backend);
+    }
     this.reader = await s3_backend.asCachedReader();
   }
   setReaderData(domain2, partial2) {
@@ -51,37 +56,62 @@ class OMapsFileReader {
       );
       const dimensions = variableReaderU?.getDimensions();
       this.setRanges(ranges2, dimensions);
-      const valuesUPromise = variableReaderU?.read(OmDataType.FloatArray, this.ranges);
-      const valuesVPromise = variableReaderV?.read(OmDataType.FloatArray, this.ranges);
-      const [valuesU, valuesV] = await Promise.all([valuesUPromise, valuesVPromise]);
-      values = [];
-      directions = [];
-      if (valuesU && valuesV)
-        for (const [i, uValue] of valuesU.entries()) {
-          values.push(
-            Math.sqrt(Math.pow(Number(uValue), 2) + Math.pow(Number(valuesV[i]), 2)) * 1.94384
-          );
-          directions.push(
-            (Math.atan2(Number(uValue), Number(valuesV[i])) * (180 / Math.PI) + 360) % 360
-          );
+      const valuesUPromise = variableReaderU?.read({
+        type: OmDataType.FloatArray,
+        ranges: this.ranges,
+        intoSAB: true
+      });
+      const valuesVPromise = variableReaderV?.read({
+        type: OmDataType.FloatArray,
+        ranges: this.ranges,
+        intoSAB: true
+      });
+      const [valuesU, valuesV] = await Promise.all([
+        valuesUPromise,
+        valuesVPromise
+      ]);
+      const BufferConstructor = valuesU.buffer.constructor;
+      values = new Float32Array(new BufferConstructor(valuesU.byteLength));
+      directions = new Float32Array(new BufferConstructor(valuesU.byteLength));
+      for (let i = 0; i < valuesU.length; ++i) {
+        const u = valuesU[i];
+        const v = valuesV[i];
+        if (variable2.value.includes("wind")) {
+          values[i] = Math.sqrt(u * u + v * v) * MS_TO_KNOTS;
+        } else {
+          values[i] = Math.sqrt(u * u + v * v);
         }
+        directions[i] = (radiansToDegrees(fastAtan2(u, v)) + 360) % 360;
+      }
     } else {
       const variableReader = await this.reader?.getChildByName(variable2.value);
       const dimensions = variableReader?.getDimensions();
       this.setRanges(ranges2, dimensions);
-      values = await variableReader?.read(OmDataType.FloatArray, this.ranges);
+      values = await variableReader?.read({
+        type: OmDataType.FloatArray,
+        ranges: this.ranges,
+        intoSAB: true
+      });
     }
     if (variable2.value.includes("_speed_")) {
       const variableReader = await this.reader?.getChildByName(
         variable2.value.replace("_speed_", "_direction_")
       );
-      directions = await variableReader?.read(OmDataType.FloatArray, this.ranges);
+      directions = await variableReader?.read({
+        type: OmDataType.FloatArray,
+        ranges: this.ranges,
+        intoSAB: true
+      });
     }
     if (variable2.value === "wave_height") {
       const variableReader = await this.reader?.getChildByName(
         variable2.value.replace("wave_height", "wave_direction")
       );
-      directions = await variableReader?.read(OmDataType.FloatArray, this.ranges);
+      directions = await variableReader?.read({
+        type: OmDataType.FloatArray,
+        ranges: this.ranges,
+        intoSAB: true
+      });
     }
     return {
       values,
@@ -115,14 +145,22 @@ class OMapsFileReader {
     const nextOmUrls = this.getNextUrls(omUrl);
     if (nextOmUrls) {
       for (const nextOmUrl of nextOmUrls) {
-        fetch(nextOmUrl, {
-          method: "GET",
-          headers: {
-            Range: "bytes=0-255"
-            // Just fetch first 256 bytes to trigger caching
-          }
-        }).catch(() => {
-        });
+        if (!_OMapsFileReader.s3BackendCache.has(nextOmUrl)) {
+          const s3_backend = new OmHttpBackend({
+            url: nextOmUrl,
+            eTagValidation: false,
+            retries: 2
+          });
+          _OMapsFileReader.s3BackendCache.set(nextOmUrl, s3_backend);
+          fetch(nextOmUrl, {
+            method: "GET",
+            headers: {
+              Range: "bytes=0-255"
+              // Just fetch first 256 bytes to trigger caching
+            }
+          }).catch(() => {
+          });
+        }
       }
     }
   }
@@ -136,7 +174,9 @@ class OMapsFileReader {
     delete this.child;
     delete this.reader;
   }
-}
+};
+_OMapsFileReader.s3BackendCache = /* @__PURE__ */ new Map();
+let OMapsFileReader = _OMapsFileReader;
 let dark = false;
 let partial = false;
 let domain;
@@ -169,6 +209,9 @@ const initPixelData = async () => {
       img.src = `data:image/svg+xml;base64,${btoa(svgText)}`;
     });
   };
+  if (Object.keys(arrowPixelData).length > 0) {
+    return;
+  }
   await Promise.all(Object.entries(arrowPixelsSource).map(([key, url]) => loadIcon(key, url)));
 };
 let data;
@@ -231,9 +274,9 @@ const getTile = async ({ z, x, y }, omUrl) => {
     iconPixelData: iconList
   });
 };
+const URL_REGEX = /^om:\/\/(.+)\/(\d+)\/(\d+)\/(\d+)$/;
 const renderTile = async (url) => {
-  const re = new RegExp(/om:\/\/(.+)\/(\d+)\/(\d+)\/(\d+)/);
-  const result = url.match(re);
+  const result = url.match(URL_REGEX);
   if (!result) {
     throw new Error(`Invalid OM protocol URL '${url}'`);
   }

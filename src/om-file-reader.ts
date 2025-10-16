@@ -1,11 +1,12 @@
-import {
-	OmDataType,
-	OmHttpBackend,
-	type TypedArray,
-	type OmFileReader
-} from '@openmeteo/file-reader';
+import { OmDataType, OmHttpBackend, type OmFileReader } from '@openmeteo/file-reader';
 
 import { pad } from './utils';
+
+import type { Data } from './om-protocol';
+
+import type { Domain, DimensionRange, Variable } from './types';
+
+import { fastAtan2, radiansToDegrees } from './utils/math';
 
 import {
 	DynamicProjection,
@@ -14,11 +15,11 @@ import {
 	type ProjectionName
 } from './utils/projections';
 
-import type { Domain, DimensionRange, Variable } from './types';
-
-import type { Data } from './om-protocol';
+import { MS_TO_KNOTS } from './utils/constants';
 
 export class OMapsFileReader {
+	static s3BackendCache: Map<string, OmHttpBackend> = new Map();
+
 	child?: OmFileReader;
 	reader?: OmFileReader;
 
@@ -35,11 +36,15 @@ export class OMapsFileReader {
 
 	async init(omUrl: string) {
 		this.dispose();
-		const s3_backend = new OmHttpBackend({
-			url: omUrl,
-			eTagValidation: false,
-			retries: 2
-		});
+		let s3_backend = OMapsFileReader.s3BackendCache.get(omUrl);
+		if (!s3_backend) {
+			s3_backend = new OmHttpBackend({
+				url: omUrl,
+				eTagValidation: false,
+				retries: 2
+			});
+			OMapsFileReader.s3BackendCache.set(omUrl, s3_backend);
+		}
 		this.reader = await s3_backend.asCachedReader();
 	}
 
@@ -68,7 +73,7 @@ export class OMapsFileReader {
 	}
 
 	async readVariable(variable: Variable, ranges: DimensionRange[] | null = null): Promise<Data> {
-		let values, directions;
+		let values, directions: Float32Array | undefined;
 		if (variable.value.includes('_u_component')) {
 			// combine uv components, and calculate directions
 			const variableReaderU = await this.reader?.getChildByName(variable.value);
@@ -79,29 +84,47 @@ export class OMapsFileReader {
 
 			this.setRanges(ranges, dimensions);
 
-			const valuesUPromise = variableReaderU?.read(OmDataType.FloatArray, this.ranges);
-			const valuesVPromise = variableReaderV?.read(OmDataType.FloatArray, this.ranges);
+			const valuesUPromise = variableReaderU?.read({
+				type: OmDataType.FloatArray,
+				ranges: this.ranges,
+				intoSAB: true
+			});
+			const valuesVPromise = variableReaderV?.read({
+				type: OmDataType.FloatArray,
+				ranges: this.ranges,
+				intoSAB: true
+			});
 
-			const [valuesU, valuesV] = await Promise.all([valuesUPromise, valuesVPromise]);
+			const [valuesU, valuesV]: [Float32Array, Float32Array] = (await Promise.all([
+				valuesUPromise,
+				valuesVPromise
+			])) as [Float32Array, Float32Array];
 
-			values = [];
-			directions = [];
-			if (valuesU && valuesV)
-				for (const [i, uValue] of valuesU.entries()) {
-					values.push(
-						Math.sqrt(Math.pow(Number(uValue), 2) + Math.pow(Number(valuesV[i]), 2)) * 1.94384
-					); // convert from m/s to knots
-					directions.push(
-						(Math.atan2(Number(uValue), Number(valuesV[i])) * (180 / Math.PI) + 360) % 360
-					);
+			const BufferConstructor = valuesU.buffer.constructor as typeof ArrayBuffer;
+			values = new Float32Array(new BufferConstructor(valuesU.byteLength));
+			directions = new Float32Array(new BufferConstructor(valuesU.byteLength));
+
+			for (let i = 0; i < valuesU.length; ++i) {
+				const u = valuesU[i];
+				const v = valuesV[i];
+				if (variable.value.includes('wind')) {
+					values[i] = Math.sqrt(u * u + v * v) * MS_TO_KNOTS;
+				} else {
+					values[i] = Math.sqrt(u * u + v * v);
 				}
+				directions[i] = (radiansToDegrees(fastAtan2(u, v)) + 360) % 360;
+			}
 		} else {
 			const variableReader = await this.reader?.getChildByName(variable.value);
 			const dimensions = variableReader?.getDimensions();
 
 			this.setRanges(ranges, dimensions);
 
-			values = await variableReader?.read(OmDataType.FloatArray, this.ranges);
+			values = await variableReader?.read({
+				type: OmDataType.FloatArray,
+				ranges: this.ranges,
+				intoSAB: true
+			});
 		}
 
 		if (variable.value.includes('_speed_')) {
@@ -110,7 +133,11 @@ export class OMapsFileReader {
 				variable.value.replace('_speed_', '_direction_')
 			);
 
-			directions = await variableReader?.read(OmDataType.FloatArray, this.ranges);
+			directions = await variableReader?.read({
+				type: OmDataType.FloatArray,
+				ranges: this.ranges,
+				intoSAB: true
+			});
 		}
 		if (variable.value === 'wave_height') {
 			// also get the direction for speed values
@@ -118,12 +145,16 @@ export class OMapsFileReader {
 				variable.value.replace('wave_height', 'wave_direction')
 			);
 
-			directions = await variableReader?.read(OmDataType.FloatArray, this.ranges);
+			directions = await variableReader?.read({
+				type: OmDataType.FloatArray,
+				ranges: this.ranges,
+				intoSAB: true
+			});
 		}
 
 		return {
-			values: values as TypedArray,
-			directions: directions as TypedArray
+			values: values,
+			directions: directions
 		};
 	}
 
@@ -157,14 +188,24 @@ export class OMapsFileReader {
 		const nextOmUrls = this.getNextUrls(omUrl);
 		if (nextOmUrls) {
 			for (const nextOmUrl of nextOmUrls) {
-				fetch(nextOmUrl, {
-					method: 'GET',
-					headers: {
-						Range: 'bytes=0-255' // Just fetch first 256 bytes to trigger caching
-					}
-				}).catch(() => {
-					// Silently ignore errors for pretches
-				});
+				// If not already cached, create and cache the backend
+				if (!OMapsFileReader.s3BackendCache.has(nextOmUrl)) {
+					const s3_backend = new OmHttpBackend({
+						url: nextOmUrl,
+						eTagValidation: false,
+						retries: 2
+					});
+					OMapsFileReader.s3BackendCache.set(nextOmUrl, s3_backend);
+					// Trigger a small fetch to prepare CF to already cache the file
+					fetch(nextOmUrl, {
+						method: 'GET',
+						headers: {
+							Range: 'bytes=0-255' // Just fetch first 256 bytes to trigger caching
+						}
+					}).catch(() => {
+						// Silently ignore errors for prefetches
+					});
+				}
 			}
 		}
 	}

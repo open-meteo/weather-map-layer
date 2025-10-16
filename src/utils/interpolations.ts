@@ -1,12 +1,11 @@
 import type { DimensionRange } from '../types';
-import type { TypedArray } from '@openmeteo/file-reader';
 
-export const noInterpolation = (values: TypedArray, index: number): number => {
+export const noInterpolation = (values: Float32Array, index: number): number => {
 	return Number(values[index]);
 };
 
 export const interpolateLinear = (
-	values: TypedArray,
+	values: Float32Array,
 	index: number,
 	xFraction: number,
 	yFraction: number,
@@ -56,7 +55,7 @@ const cardinalSpline = (
 };
 
 export const interpolateCardinal2D = (
-	values: TypedArray,
+	values: Float32Array,
 	nx: number,
 	index: number,
 	xFraction: number,
@@ -102,7 +101,7 @@ export const interpolateCardinal2D = (
 };
 
 export const interpolate2DHermite = (
-	values: TypedArray,
+	values: Float32Array,
 	index: number,
 	xFraction: number,
 	yFraction: number,

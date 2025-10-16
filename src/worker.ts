@@ -23,8 +23,6 @@ import type {
 
 import type { IconListPixels } from './utils/icons';
 
-import type { TypedArray } from '@openmeteo/file-reader';
-
 const TILE_SIZE = (Number(import.meta.env.VITE_TILE_SIZE) ?? 256) * 2;
 const OPACITY = Number(import.meta.env.VITE_TILE_OPACITY) ?? 75;
 
@@ -40,8 +38,8 @@ const drawArrow = (
 	latLonMinMax: [minLat: number, minLon: number, maxLat: number, maxLon: number],
 	variable: Variable,
 	projectionGrid: ProjectionGrid | null,
-	values: TypedArray,
-	directions: TypedArray,
+	values: Float32Array,
+	directions: Float32Array,
 	boxSize = TILE_SIZE / 8,
 	iconPixelData: IconListPixels,
 	interpolator: Interpolator
@@ -63,11 +61,9 @@ const drawArrow = (
 		latLonMinMax
 	);
 
-	const px = interpolator(values as Float32Array, index, xFraction, yFraction, ranges);
+	const px = interpolator(values, index, xFraction, yFraction, ranges);
 
-	const direction = degreesToRadians(
-		interpolator(directions as Float32Array, index, xFraction, yFraction, ranges)
-	);
+	const direction = degreesToRadians(interpolator(directions, index, xFraction, yFraction, ranges));
 
 	if (direction) {
 		for (let i = 0; i < boxSize; i++) {
