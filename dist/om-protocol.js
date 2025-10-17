@@ -215,7 +215,7 @@ const initPixelData = async () => {
   await Promise.all(Object.entries(arrowPixelsSource).map(([key, url]) => loadIcon(key, url)));
 };
 let data;
-const TILE_SIZE = Number("256") * 2;
+const TILE_SIZE = Number(void 0) * 2;
 const workerPool = new WorkerPool();
 const getValueFromLatLong = (lat, lon, colorScale) => {
   if (data) {
