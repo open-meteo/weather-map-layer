@@ -1,0 +1,17 @@
+{
+	"$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+	"release-type": "node",
+	"include-component-in-tag": false,
+	"plugins": [
+		{
+			"updateAllPackages": true,
+			"type": "node-workspace",
+			"updatePeerDependencies": true,
+			"merge": true
+		}
+	],
+	"bump-minor-pre-major": true,
+	"bump-patch-for-minor-pre-major": true,
+	"bootstrap-sha": "HEAD",
+	"include-v-in-tag": true
+}

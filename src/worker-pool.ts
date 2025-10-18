@@ -3,8 +3,7 @@ import TileWorker from './worker?worker&inline';
 
 import type { Data } from './om-protocol';
 
-import type { Domain, Variable, DimensionRange } from './types';
-import { ColorScale } from '../dist/types';
+import type { Domain, Variable, ColorScale, DimensionRange } from './types';
 
 export interface TileRequest {
 	type: 'GT';
