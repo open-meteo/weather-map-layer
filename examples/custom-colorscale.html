@@ -5,7 +5,7 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.css" />
 		<script src="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.js"></script>
-		<script src="../dist/index.umd.js"></script>
+		<script src="../dist/index.js"></script>
 		<style>
 			html,
 			body,
@@ -20,11 +20,12 @@
 		<div id="map"></div>
 		<script>
 			const customColorScales = {
-				temperature_2m: {
+				temperature_2m: { // use same key as variable name
 					min: -40,
 					max: 60,
 					steps: 30,
 					scalefactor: 30 / (60 - -40), // (steps / (max - min))
+
 					// colors as rgb array
 					colors: [
 						[128, 0, 128],
@@ -58,9 +59,10 @@
 						[170, 0, 114],
 						[128, 0, 128]
 					],
-					opacity: 65,
-					unit: 'C°',
-					interpolationMethod: 'linear'
+					interpolationMethod: 'linear' // linear or none
+
+					unit: 'C°', // optional
+					opacity: 65, // optional
 				}
 			};
 
