@@ -21,7 +21,7 @@ import type {
 	IndexAndFractions
 } from './types';
 
-import type { IconListPixels } from './utils/icons';
+import type { IconListPixels } from './utils/arrow';
 
 const TILE_SIZE = 256 * 2;
 const OPACITY = 75;

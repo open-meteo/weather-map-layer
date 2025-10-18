@@ -1,9 +1,13 @@
-import type { IconListPixels } from './icons';
-const arrowPixelsSource: IconListPixels = {};
-
-for (const [i, _] of Object.entries({ 0: 'arrow' })) {
-	const index = Number(i);
-	arrowPixelsSource[index] = `images/weather-icons/wi-direction-up2.svg`;
+export interface IconListPixels {
+	[key: number]: Uint8ClampedArray | string;
 }
 
-export default arrowPixelsSource;
+export const arrowSvg = `
+  <svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+	 viewBox="0 0 30 30" style="enable-background:new 0 0 30 30;" xml:space="preserve">
+  <path
+     d="m 12.702898,3.9566954 c -0.0053,0.209238 0.05183,0.388585 0.176242,0.538041 0.124406,0.149456 0.274729,0.221195 0.461339,0.215217 0.176241,0.01196 0.326564,-0.05978 0.456154,-0.221195 l 0.860474,-0.980432 V 28.216566 c -0.0052,0.209238 0.05703,0.382607 0.18661,0.526085 0.129589,0.143477 0.285096,0.209239 0.476888,0.20326 0.176241,0.01196 0.331749,-0.0538 0.461339,-0.191304 0.129589,-0.137499 0.202159,-0.316847 0.207343,-0.526085 V 3.5202834 l 0.850106,0.980432 c 0.119224,0.143477 0.274731,0.221194 0.456155,0.221194 0.18661,0 0.342117,-0.07174 0.466522,-0.215216 0.124406,-0.143478 0.18661,-0.316847 0.18661,-0.532064 -0.01037,-0.215217 -0.07775,-0.382607 -0.207344,-0.50815 l -1.938659,-2.295645 c -0.124405,-0.137499 -0.285096,-0.22119502 -0.476888,-0.23913002 -0.191792,0.01196 -0.352483,0.09565 -0.47689,0.24510802 l -1.943841,2.27771 c -0.134772,0.131521 -0.20216,0.298912 -0.20216,0.502173 z"
+     id="path1"
+     style="opacity:0.75;stroke-width:0.22267;stroke-dasharray:none" />
+  </svg>
+  `;

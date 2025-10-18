@@ -30,7 +30,6 @@ export default defineConfig({
 				'utils/arrow': 'src/utils/arrow.ts',
 				'utils/color-scales': 'src/utils/color-scales.ts',
 				'utils/domains': 'src/utils/domains.ts',
-				'utils/icons': 'src/utils/icons.ts',
 				'utils/index': 'src/utils/index.ts',
 				'utils/interpolations': 'src/utils/interpolations.ts',
 				'utils/math': 'src/utils/math.ts',

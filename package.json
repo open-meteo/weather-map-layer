@@ -74,7 +74,9 @@
 	"scripts": {
 		"dev": "vite build --watch",
 		"test": "vitest",
-		"build": "vite build -l info"
+		"build:esm": "vite build -l info --config vite.config.ts",
+		"build:umd": "vite build -l info --config vite.config.umd.ts",
+		"build": "npm run build:esm && npm run build:umd"
 	},
 	"devDependencies": {
 		"@types/d3": "^7.4.3",

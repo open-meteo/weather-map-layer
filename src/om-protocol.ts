@@ -27,7 +27,7 @@ import {
 
 import { OMapsFileReader } from './om-file-reader';
 
-import arrowPixelsSource from './utils/arrow';
+import arrowSvg from './utils/arrow';
 
 import type {
 	Bounds,
@@ -54,34 +54,34 @@ let projectionGrid: ProjectionGrid;
 setupGlobalCache();
 
 const arrowPixelData: Record<string, ImageDataArray> = {};
-const initPixelData = async () => {
-	const loadIcon = async (key: string, iconUrl: string) => {
-		const svgText = await fetch(iconUrl).then((r) => r.text());
-		const canvas = new OffscreenCanvas(32, 32);
+// const initPixelData = async () => {
+// 	const loadIcon = async (key: string, iconUrl: string) => {
+// 		const svgText = await fetch(iconUrl).then((r) => r.text());
+// 		const canvas = new OffscreenCanvas(32, 32);
 
-		return new Promise((resolve, reject) => {
-			const img = new Image();
-			img.onload = () => {
-				const ctx = canvas.getContext('2d');
-				if (!ctx) {
-					reject(new Error('Failed to get 2D context'));
-					return;
-				}
-				ctx.drawImage(img, 0, 0, 32, 32);
-				arrowPixelData[key] = ctx.getImageData(0, 0, 32, 32).data;
-				resolve(void 0);
-			};
-			img.onerror = reject;
-			img.src = `data:image/svg+xml;base64,${btoa(svgText)}`;
-		});
-	};
+// 		return new Promise((resolve, reject) => {
+// 			const img = new Image();
+// 			img.onload = () => {
+// 				const ctx = canvas.getContext('2d');
+// 				if (!ctx) {
+// 					reject(new Error('Failed to get 2D context'));
+// 					return;
+// 				}
+// 				ctx.drawImage(img, 0, 0, 32, 32);
+// 				arrowPixelData[key] = ctx.getImageData(0, 0, 32, 32).data;
+// 				resolve(void 0);
+// 			};
+// 			img.onerror = reject;
+// 			img.src = `data:image/svg+xml;base64,${btoa(svgText)}`;
+// 		});
+// 	};
 
-	if (Object.keys(arrowPixelData).length > 0) {
-		return; // Already loaded
-	}
+// 	if (Object.keys(arrowPixelData).length > 0) {
+// 		return; // Already loaded
+// 	}
 
-	await Promise.all(Object.entries(arrowPixelsSource).map(([key, url]) => loadIcon(key, url)));
-};
+// 	await Promise.all(Object.entries(arrowPixelsSource).map(([key, url]) => loadIcon(key, url)));
+// };
 
 export interface Data {
 	values: Float32Array | undefined;
@@ -218,7 +218,7 @@ const getTilejson = async (fullUrl: string): Promise<TileJSON> => {
 };
 
 const initOMFile = (url: string): Promise<void> => {
-	initPixelData();
+	// initPixelData();
 
 	return new Promise((resolve, reject) => {
 		const [omUrl, omParams] = url.replace('om://', '').split('?');
@@ -234,15 +234,14 @@ const initOMFile = (url: string): Promise<void> => {
 			?.split(',')
 			.map((b: string): number => Number(b)) as number[];
 
-		mapBoundsIndexes = getIndicesFromBounds(
-			mapBounds[0],
-			mapBounds[1],
-			mapBounds[2],
-			mapBounds[3],
-			domain
-		);
-
 		if (partial) {
+			mapBoundsIndexes = getIndicesFromBounds(
+				mapBounds[0],
+				mapBounds[1],
+				mapBounds[2],
+				mapBounds[3],
+				domain
+			);
 			ranges = [
 				{ start: mapBoundsIndexes[1], end: mapBoundsIndexes[3] },
 				{ start: mapBoundsIndexes[0], end: mapBoundsIndexes[2] }
