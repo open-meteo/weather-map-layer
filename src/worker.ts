@@ -41,11 +41,9 @@ const drawArrow = (
 	values: Float32Array,
 	directions: Float32Array,
 	boxSize = TILE_SIZE / 8,
-	iconPixelData: IconListPixels,
+	northArrow: Uint8ClampedArray,
 	interpolator: Interpolator
 ): void => {
-	const northArrow = iconPixelData['0'];
-
 	const iCenter = iBase + Math.floor(boxSize / 2);
 	const jCenter = jBase + Math.floor(boxSize / 2);
 
@@ -244,7 +242,7 @@ self.onmessage = async (message) => {
 			drawOnTiles.includes(variable.value)
 		) {
 			if (variable.value.startsWith('wave') || variable.value.startsWith('wind')) {
-				const iconPixelData = message.data.iconPixelData;
+				const northArrowPixelData = message.data.northArrow;
 				const directions = message.data.data.directions;
 
 				const boxSize = Math.floor(TILE_SIZE / 16);
@@ -265,7 +263,7 @@ self.onmessage = async (message) => {
 							values,
 							directions,
 							boxSize,
-							iconPixelData,
+							northArrowPixelData,
 							interpolator
 						);
 					}

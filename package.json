@@ -3,7 +3,7 @@
 	"version": "0.0.1",
 	"type": "module",
 	"main": "dist/index.js",
-	"types": "dist/index.d.ts",
+	"types": "dist/types.d.ts",
 	"author": "Open-Meteo <info@open-meteo.com>",
 	"module": "dist/index.js",
 	"repository": "git://github.com/open-meteo/mapbox-layer",
