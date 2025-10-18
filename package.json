@@ -20,8 +20,8 @@
 	"scripts": {
 		"dev": "vite build --watch",
 		"test": "vitest",
-		"build:esm": "vite build -l info --config vite.config.ts",
-		"build:umd": "vite build -l info --config vite.config.umd.ts",
+		"build:esm": "vite build",
+		"build:umd": "vite build --config vite.config.umd.ts",
 		"build": "npm run build:esm && npm run build:umd"
 	},
 	"devDependencies": {
