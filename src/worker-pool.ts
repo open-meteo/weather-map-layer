@@ -1,3 +1,4 @@
+// @ts-ignore
 import TileWorker from './worker?worker&inline';
 
 import type { Data } from './om-protocol';
@@ -18,7 +19,7 @@ export interface TileRequest {
 	variable: Variable;
 	colorScale: ColorScale;
 	mapBounds: number[];
-	iconPixelData: Record<string, ImageDataArray>;
+	northArrow: ImageDataArray;
 }
 
 export type TileResponse = {
@@ -44,7 +45,7 @@ export class WorkerPool {
 		const workerCount = navigator.hardwareConcurrency || 4;
 		for (let i = 0; i < workerCount; i++) {
 			const worker = new TileWorker();
-			worker.onmessage = (message) => this.handleMessage(message);
+			worker.onmessage = (message: MessageEvent) => this.handleMessage(message);
 			this.workers.push(worker);
 		}
 	}

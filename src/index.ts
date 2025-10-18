@@ -11,3 +11,5 @@ export {
 	getColorScale,
 	hideZero
 };
+
+export * from './types';
