@@ -1,14 +1,6 @@
 import { defineConfig } from 'vite';
-import dts from 'vite-plugin-dts';
 
 export default defineConfig({
-	plugins: [
-		dts({
-			insertTypesEntry: true,
-			entryRoot: 'src',
-			exclude: 'src/tests'
-		})
-	],
 	build: {
 		emptyOutDir: false, // so it doesn't wipe your main build
 		lib: {
@@ -18,7 +10,6 @@ export default defineConfig({
 			fileName: (format) => `index.umd.js`
 		},
 		rollupOptions: {
-			// external: ['@openmeteo/file-reader', '@openmeteo/file-format-wasm'],
 			output: {
 				globals: {
 					'@openmeteo/file-reader': 'OpenMeteoFileReader',
