@@ -2,8 +2,94 @@
 
 [![Build](https://github.com/open-meteo/maps/actions/workflows/build.yml/badge.svg)](https://github.com/open-meteo/maps/actions/workflows/build.yml) [![GitHub license](https://img.shields.io/github/license/open-meteo/mapbox-layer)](https://github.com/open-meteo/mapbox-layer/blob/main/LICENSE)
 
-> **⚠️ Notice:** This package is still under construction and not fully production ready yet. API changes may occur and some features might be incomplete.
+> **⚠️ Notice**
+> This package is still under construction and is not yet fully production‑ready.
+> API changes may occur and some features might be incomplete.
 
-This repository showcases the Open-Meteo file protocol for Mapbox / MapLibre GL JS maps. The OM files used are hosted on a S3 storage which can be found [here](https://openmeteo.s3.amazonaws.com/). The weather API code can be found in [this](https://github.com/open-meteo/open-meteo) repository.
+## Overview
 
-An working example can be found on [maps.open-meteo.com](https://maps.open-meteo.com/).
+This repository demonstrates how to use the **Open‑Meteo File Protocol** (`.om`) with Mapbox / MapLibre GL JS.
+The `.om` files are hosted on an S3 bucket and can be accessed directly via the `om` protocol:
+
+The actual weather API implementation lives in the [open‑meteo/open‑meteo](https://github.com/open-meteo/open-meteo) repository.
+
+An interactive demo is available at [maps.open‑meteo.com](https://maps.open‑meteo.com/).
+
+## Installation
+
+### Node
+
+```bash
+npm install @openmeteo/mapbox-layer
+```
+
+```ts
+...
+import { omProtocol } from '@openmeteo/mapbox-layer';
+
+// standard mapbox / maplibre setup
+...
+
+maplibregl.addProtocol('om', (params) => omProtocol(params, undefined, true));
+
+const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/15/1200Z/2025-10-15T1400.om?variable=temperature_2m`;
+
+map.on('load', () => {
+	map.addSource('omFileSource', {
+		url: 'om://' + omUrl,
+		type: 'raster',
+		tileSize: 256,
+		maxzoom: 12
+	});
+
+	map.addLayer({
+		id: 'omFileLayer',
+		type: 'raster',
+		source: 'omFileSource'
+	});
+});
+```
+
+### HTML / UNPKG
+
+For a standalone example, see `examples/temperature.html`.
+
+```ts
+...
+<script src="https://unpkg.com/@openmeteo/mapbox-layer/dist/index.js"></script>
+...
+
+<script>
+	// Standard Mapbox / MapLibre GL JS setup
+	// ...
+
+	maplibregl.addProtocol('om', omProtocol);
+
+	const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/15/1200Z/2025-10-15T1400.om?variable=temperature_2m`;
+
+	map.on('load', () => {
+		map.addSource('omFileSource', {
+			url: 'om://' + omUrl,
+			type: 'raster',
+			tileSize: 256,
+			maxzoom: 12
+		});
+
+		map.addLayer({
+			id: 'omFileLayer',
+			type: 'raster',
+			source: 'omFileSource'
+		});
+	});
+</script>
+```
+
+## Examples
+
+The repository contains an `examples` directory with ready‑to‑run demos:
+
+- `examples/temperature.html` – shows temperature data from an OM file.
+- `examples/precipitation.html` – displays precipitation using a similar setup.
+- `examples/custom-colorscale.html` – shows how to use your own color definition.
+
+Run the examples by opening the corresponding `.html` file in a browser.
