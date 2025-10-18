@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.css" />
+		<script src="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.js"></script>
+		<script src="../../blub/om_reader_wasm.web.js"></script>
+		<script src="../../blub2/index.umd.js"></script>
+		<script src="../dist/index.umd.js"></script>
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<script>
+			maplibregl.addProtocol('om', OpenMeteoMapboxLayer.omProtocol);
+
+			const map = new maplibregl.Map({
+				container: 'map',
+				zoom: 5.2,
+				center: {
+					lng: 8.21,
+					lat: 50.64
+				},
+				style: {
+					version: 8,
+					sources: {
+						osm: {
+							type: 'raster',
+							tiles: ['https://a.tile.openstreetmap.org/{z}/{x}/{y}.png'],
+							tileSize: 256,
+							attribution: '&copy; OpenStreetMap Contributors',
+							maxzoom: 19
+						}
+					},
+					layers: [
+						{
+							id: 'osm',
+							type: 'raster',
+							source: 'osm'
+						}
+					]
+				}
+			});
+
+			// s3 storage structure: /data_spatial/{domain}/{modelRun /year/month/day/time}Z/{selectedTime year-month-day-time.om?variable={{{  }}}}
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/15/1200Z/2025-10-15T1400.om?variable=temperature_2m`;
+
+			map.on('load', () => {
+				map.addSource('omFileSource', {
+					url: 'om://' + omUrl,
+					type: 'raster',
+					tileSize: 256
+				});
+
+				map.addLayer({
+					id: 'omFileLayer',
+					type: 'raster',
+					source: 'omFileSource'
+				});
+				console.log('map layers', map.getStyle().layers);
+			});
+		</script>
+	</body>
+</html>
