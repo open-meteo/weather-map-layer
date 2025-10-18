@@ -245,7 +245,7 @@ self.onmessage = async (message) => {
 
 		const tile = await createImageBitmap(new ImageData(rgba, TILE_SIZE, TILE_SIZE));
 
-		postMessage({ type: 'RT', tile: tile, key: key });
+		postMessage({ type: 'returnImage', tile: tile, key: key });
 	} else if (message.data.type == 'getArrayBuffer') {
 		const x = message.data.x;
 		const y = message.data.y;

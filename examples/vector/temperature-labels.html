@@ -1,12 +1,12 @@
 <!doctype html>
 <html lang="en">
 	<head>
-		<title>Open-Meteo Mapbox Layer - Pressure Contouring Example</title>
+		<title>Open-Meteo Mapbox Layer - Grid Points Example</title>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.css" />
 		<script src="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.js"></script>
-		<script src="../dist/index.js"></script>
+		<script src="../../dist/index.js"></script>
 		<style>
 			html,
 			body,
@@ -47,7 +47,7 @@
 			});
 
 			// s3 storage structure: /data_spatial/{domain}/{modelRun /year/month/day/time}Z/{selectedTime year-month-day-time.om}?variable={variable}
-			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/15/1200Z/2025-10-15T1400.om?variable=pressure_msl`;
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/15/1200Z/2025-10-15T1400.om?variable=temperature_2m`;
 
 			map.on('load', () => {
 				map.addSource('omFileRasterSource', {
@@ -63,68 +63,26 @@
 					source: 'omFileRasterSource'
 				});
 
-				map.addSource('omFileVectorSource', {
-					url: 'om://' + omUrl,
+				map.addSource('omFileGridSource', {
+					url: 'om://' + omUrl + '?grid=true',
 					type: 'vector'
 				});
 
 				map.addLayer({
-					id: 'omFileVectorLayer',
-					type: 'line',
-					source: 'omFileVectorSource',
-					'source-layer': 'contours',
-					layout: {
-						'line-join': 'round',
-						'line-cap': 'round'
-					},
-					paint: {
-						'line-color': ['case', ['boolean', ['feature-state', 'hover'], false], 'red', 'black'],
-						'line-width': [
-							'step',
-							['zoom'],
-							['case', ['boolean', ['feature-state', 'hover'], false], 4, ['get', 'lw']],
-							4,
-							['case', ['boolean', ['feature-state', 'hover'], false], 8, ['get', 'lw']],
-							8,
-							['case', ['boolean', ['feature-state', 'hover'], false], 12, ['get', 'lw']]
-						]
-					}
-				});
-
-				map.addLayer({
-					id: 'omFileVectorLabels',
+					id: 'omFileGridLabels',
 					type: 'symbol',
-					source: 'omFileVectorSource',
-					'source-layer': 'contours',
+					source: 'omFileGridSource',
+					'source-layer': 'grid',
 					layout: {
 						'symbol-placement': 'line-center',
 						'text-font': ['Open Sans Regular'],
-						'text-field': ['to-string', ['get', 'pressure']],
+						'text-field': ['to-string', ['get', 'value']],
 						'text-size': 16,
 						'icon-allow-overlap': true,
 						'text-allow-overlap': true,
 						'text-ignore-placement': true,
 						'icon-ignore-placement': true
 					}
-				});
-
-				let hoveredLevel = 0;
-				map.on('mouseenter', 'omFileVectorLayer', (e) => {
-					if (e.features.length > 0) {
-						hoveredLevel = e.features[0].id;
-						map.setFeatureState(
-							{ source: 'omFileVectorSource', id: hoveredLevel, sourceLayer: 'contours' },
-							{ hover: true }
-						);
-					}
-				});
-
-				map.on('mouseleave', 'omFileVectorLayer', () => {
-					map.setFeatureState(
-						{ source: 'omFileVectorSource', id: hoveredLevel, sourceLayer: 'contours' },
-						{ hover: false }
-					);
-					hoveredLevel = null;
 				});
 			});
 		</script>

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Mapbox Layer - Pressure Contouring Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.css" />
+		<script src="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.js"></script>
+		<script src="../../dist/index.js"></script>
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<script>
+			maplibregl.addProtocol('om', OpenMeteoMapboxLayer.omProtocol);
+
+			const map = new maplibregl.Map({
+				container: 'map',
+				maxZoom: 12,
+				style: {
+					version: 8,
+					sources: {
+						osm: {
+							type: 'raster',
+							tiles: ['https://a.tile.openstreetmap.org/{z}/{x}/{y}.png'],
+							tileSize: 256,
+							attribution: '&copy; OpenStreetMap Contributors'
+						}
+					},
+					layers: [
+						{
+							id: 'osm',
+							type: 'raster',
+							source: 'osm'
+						}
+					]
+				}
+			});
+
+			// s3 storage structure: /data_spatial/{domain}/{modelRun /year/month/day/time}Z/{selectedTime year-month-day-time.om}?variable={variable}
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/15/1200Z/2025-10-15T1400.om?variable=pressure_msl`;
+
+			map.on('load', () => {
+				map.addSource('omFileRasterSource', {
+					url: 'om://' + omUrl,
+					type: 'raster',
+					tileSize: 256,
+					maxzoom: 12
+				});
+
+				map.addLayer({
+					id: 'omFileRasterLayer',
+					type: 'raster',
+					source: 'omFileRasterSource'
+				});
+
+				map.addSource('omFileVectorSource', {
+					url: 'om://' + omUrl,
+					type: 'vector'
+				});
+
+				map.addLayer({
+					id: 'omFileVectorLayer',
+					type: 'line',
+					source: 'omFileVectorSource',
+					'source-layer': 'contours',
+					layout: {
+						'line-join': 'round',
+						'line-cap': 'round'
+					},
+					paint: {
+						'line-color': ['case', ['boolean', ['feature-state', 'hover'], false], 'red', 'black'],
+						'line-width': [
+							'step',
+							['zoom'],
+							['case', ['boolean', ['feature-state', 'hover'], false], 4, ['get', 'lw']],
+							4,
+							['case', ['boolean', ['feature-state', 'hover'], false], 8, ['get', 'lw']],
+							8,
+							['case', ['boolean', ['feature-state', 'hover'], false], 12, ['get', 'lw']]
+						]
+					}
+				});
+
+				let hoveredLevel = 0;
+				map.on('mouseenter', 'omFileVectorLayer', (e) => {
+					if (e.features.length > 0) {
+						hoveredLevel = e.features[0].id;
+						map.setFeatureState(
+							{ source: 'omFileVectorSource', id: hoveredLevel, sourceLayer: 'contours' },
+							{ hover: true }
+						);
+					}
+				});
+
+				map.on('mouseleave', 'omFileVectorLayer', () => {
+					map.setFeatureState(
+						{ source: 'omFileVectorSource', id: hoveredLevel, sourceLayer: 'contours' },
+						{ hover: false }
+					);
+					hoveredLevel = null;
+				});
+			});
+		</script>
+	</body>
+</html>
