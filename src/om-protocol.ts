@@ -4,13 +4,14 @@ import { setupGlobalCache } from '@openmeteo/file-reader';
 
 import { WorkerPool } from './worker-pool';
 
+import { getIndexFromLatLong } from './utils/math';
+
 import {
 	getBorderPoints,
 	getBoundsFromGrid,
-	getIndexFromLatLong,
-	getBoundsFromBorderPoints,
-	getIndicesFromBounds
-} from './utils/math';
+	getIndicesFromBounds,
+	getBoundsFromBorderPoints
+} from './utils/projections';
 
 import { getInterpolator } from './utils/color-scales';
 

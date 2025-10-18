@@ -1,9 +1,6 @@
-import {
-	getBorderPoints,
-	getBoundsFromBorderPoints,
-	getCenterFromBounds,
-	getCenterFromGrid
-} from './math';
+import { getCenterFromBounds, getCenterFromGrid } from './math';
+
+import { getBorderPoints, getBoundsFromBorderPoints } from './projections';
 
 import type { Domain } from '../types';
 
