@@ -10,11 +10,12 @@ export default defineConfig({
 		})
 	],
 	build: {
+		emptyOutDir: false, // so it doesn't wipe your main build
 		lib: {
 			entry: 'src/index.ts', // or your main entry
 			name: 'OpenMeteoMapboxLayer', // global variable name for UMD
 			formats: ['umd'],
-			fileName: (format) => `index.js`
+			fileName: (format) => `index.umd.js`
 		},
 		rollupOptions: {
 			// external: ['@openmeteo/file-reader', '@openmeteo/file-format-wasm'],
@@ -25,6 +26,6 @@ export default defineConfig({
 				}
 			}
 		},
-		minify: false
+		minify: true
 	}
 });
