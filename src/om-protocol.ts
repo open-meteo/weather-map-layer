@@ -150,15 +150,16 @@ const getTile = async ({ z, x, y }: TileIndex, omUrl: string): Promise<ImageBitm
 
 	return await workerPool.requestTile({
 		type: 'GT',
+
 		x,
 		y,
 		z,
 		key,
 		data,
+		dark: dark,
+		ranges,
 		domain,
 		variable,
-		ranges,
-		dark: dark,
 		mapBounds: mapBounds,
 		iconPixelData: iconList
 	});
@@ -217,7 +218,7 @@ const getTilejson = async (fullUrl: string): Promise<TileJSON> => {
 	};
 };
 
-const initOMFile = (url: string): Promise<void> => {
+const initOMFile = (url: string, useSAB: boolean): Promise<void> => {
 	// initPixelData();
 
 	return new Promise((resolve, reject) => {
@@ -254,7 +255,7 @@ const initOMFile = (url: string): Promise<void> => {
 		}
 
 		if (!omapsFileReader) {
-			omapsFileReader = new OMapsFileReader(domain, partial);
+			omapsFileReader = new OMapsFileReader(domain, partial, useSAB);
 		}
 
 		omapsFileReader.setReaderData(domain, partial);
@@ -275,11 +276,13 @@ const initOMFile = (url: string): Promise<void> => {
 };
 
 export const omProtocol = async (
-	params: RequestParameters
+	params: RequestParameters,
+	abortController?: AbortController,
+	useSAB = false
 ): Promise<GetResourceResponse<TileJSON | ImageBitmap>> => {
 	if (params.type == 'json') {
 		try {
-			await initOMFile(params.url);
+			await initOMFile(params.url, useSAB);
 		} catch (e) {
 			throw new Error(e as string);
 		}

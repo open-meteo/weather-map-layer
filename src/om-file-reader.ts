@@ -26,12 +26,14 @@ export class OMapsFileReader {
 	partial!: boolean;
 	ranges!: DimensionRange[];
 
+	useSAB!: boolean;
 	domain!: Domain;
 	projection!: Projection;
 	projectionGrid!: ProjectionGrid;
 
-	constructor(domain: Domain, partial: boolean) {
+	constructor(domain: Domain, partial: boolean, useSAB: boolean) {
 		this.setReaderData(domain, partial);
+		this.useSAB = useSAB;
 	}
 
 	async init(omUrl: string) {
@@ -87,12 +89,12 @@ export class OMapsFileReader {
 			const valuesUPromise = variableReaderU?.read({
 				type: OmDataType.FloatArray,
 				ranges: this.ranges,
-				intoSAB: false
+				intoSAB: this.useSAB
 			});
 			const valuesVPromise = variableReaderV?.read({
 				type: OmDataType.FloatArray,
 				ranges: this.ranges,
-				intoSAB: false
+				intoSAB: this.useSAB
 			});
 
 			const [valuesU, valuesV]: [Float32Array, Float32Array] = (await Promise.all([
@@ -123,7 +125,7 @@ export class OMapsFileReader {
 			values = await variableReader?.read({
 				type: OmDataType.FloatArray,
 				ranges: this.ranges,
-				intoSAB: false
+				intoSAB: this.useSAB
 			});
 		}
 
@@ -136,7 +138,7 @@ export class OMapsFileReader {
 			directions = await variableReader?.read({
 				type: OmDataType.FloatArray,
 				ranges: this.ranges,
-				intoSAB: false
+				intoSAB: this.useSAB
 			});
 		}
 		if (variable.value === 'wave_height') {
@@ -148,7 +150,7 @@ export class OMapsFileReader {
 			directions = await variableReader?.read({
 				type: OmDataType.FloatArray,
 				ranges: this.ranges,
-				intoSAB: false
+				intoSAB: this.useSAB
 			});
 		}
 
