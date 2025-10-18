@@ -1,0 +1,63 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: '/'
+    schedule:
+      interval: weekly
+      time: '13:00'
+    open-pull-requests-limit: 10
+    allow:
+      - dependency-type: direct
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-patch']
+    commit-message:
+      prefix: 'fix: '
+    groups:
+      openmeteo:
+        patterns:
+          - '*'
+      # svelte:
+      #   patterns:
+      #     - 'vite'
+      #     - 'svelte'
+
+      #     - 'vite-*'
+      #     - 'rollup*'
+      #     - 'svelte-*'
+      #     - '@sveltejs/*'
+
+      #     - 'mdsvex'
+      #     - 'mode-watcher'
+      # eslint:
+      #   patterns:
+      #     - 'eslint'
+      #     - 'prettier'
+      #     - 'typescript'
+
+      #     - 'eslint-*'
+      #     - 'prettier-*'
+      #     - '@typescript-eslint/*'
+
+      #     - '@eslint/compat'
+      # shadcn:
+      #   patterns:
+      #     - 'zod'
+      #     - 'simple-icons'
+
+      #     - '@lucide/svelte'
+      #     - 'lucide-svelte'
+      #     - 'lucide-static'
+      # tailwind:
+      #   patterns:
+      #     - 'tailwindcss'
+
+      #     - 'tailwind-*'
+      #     - '@tailwindcss*'
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: weekly
+      time: '10:00'
+    commit-message:
+      prefix: 'fix: '

@@ -20,11 +20,13 @@
 		<div id="map"></div>
 		<script>
 			const customColorScales = {
-				temperature_2m: { // use same key as variable name
+				// use same key as variable name
+				temperature_2m: {
 					min: -40,
 					max: 60,
 					steps: 30,
 					scalefactor: 30 / (60 - -40), // (steps / (max - min))
+					interpolationMethod: 'linear', // linear or none
 
 					// colors as rgb array
 					colors: [
@@ -59,10 +61,9 @@
 						[170, 0, 114],
 						[128, 0, 128]
 					],
-					interpolationMethod: 'linear' // linear or none
 
 					unit: 'C°', // optional
-					opacity: 65, // optional
+					opacity: 65 // optional
 				}
 			};
 
