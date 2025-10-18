@@ -320,30 +320,27 @@ self.onmessage = async (message) => {
 			});
 		} else {
 			const features = [];
-			for (let level = 950; level < 1050; level = level + 2) {
-				let cursor: [number, number] = [0, 0];
+			let cursor: [number, number] = [0, 0];
 
-				const segments = marchingSquares(values, level, z, y, x, domain);
+			const levels = marchingSquares(values, z, y, x, domain);
 
-				if (segments.length > 0) {
+			console.log(levels);
+
+			for (let [level, segments] of Object.entries(levels)) {
+				for (let line of segments) {
+					console.log(line);
 					const geom: number[] = [];
 					// move to first point in segments
 					let xt0, yt0, xt1, yt1;
 					geom.push(command(1, 1)); // MoveTo
-					[xt0, yt0] = segments[0];
+					[xt0, yt0] = [line[0], line[1]];
 					geom.push(zigzag(xt0 - cursor[0]));
 					geom.push(zigzag(yt0 - cursor[1]));
 					cursor = [xt0, yt0];
 
-					for (const s of segments) {
-						[xt0, yt0, xt1, yt1] = s;
-
-						// if (Math.abs(xt1 - cursor[0]) > 10 || Math.abs(yt1 - cursor[1]) > 10) {
-						geom.push(command(1, 1)); // MoveTo
-						geom.push(zigzag(xt0 - cursor[0]));
-						geom.push(zigzag(yt0 - cursor[1]));
-						cursor = [xt0, yt0];
-						//}
+					for (let i = 2; i < line.length / 2; i = i + 2) {
+						xt1 = line[i];
+						yt1 = line[i + 1];
 
 						geom.push(command(2, 1)); // LineTo
 						geom.push(zigzag(xt1 - cursor[0]));
