@@ -29,6 +29,8 @@
 		"publish": "npm publish --access public"
 	},
 	"devDependencies": {
+		"@mapbox/vector-tile": "^2.0.4",
+		"pbf": "^4.0.1",
 		"prettier": "^3.6.2",
 		"typescript": "5.9.3",
 		"vite": "^7.1.10",

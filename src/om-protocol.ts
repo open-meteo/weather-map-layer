@@ -43,6 +43,7 @@ import type {
 	DimensionRange,
 	ColorScales
 } from './types';
+import { capitalize } from './utils';
 
 let dark = false;
 let partial = false;
@@ -143,11 +144,15 @@ export const getValueFromLatLong = (
 	}
 };
 
-const getTile = async ({ z, x, y }: TileIndex, omUrl: string): Promise<ImageBitmap> => {
+const getTile = async (
+	{ z, x, y }: TileIndex,
+	omUrl: string,
+	type: 'image' | 'arrayBuffer'
+): Promise<ImageBitmap> => {
 	const key = `${omUrl}/${TILE_SIZE}/${z}/${x}/${y}`;
 
 	return await workerPool.requestTile({
-		type: 'GT',
+		type: ('get' + capitalize(type)) as 'getImage' | 'getArrayBuffer',
 
 		x,
 		y,
@@ -167,7 +172,7 @@ const getTile = async ({ z, x, y }: TileIndex, omUrl: string): Promise<ImageBitm
 
 const URL_REGEX = /^om:\/\/(.+)\/(\d+)\/(\d+)\/(\d+)$/;
 
-const renderTile = async (url: string) => {
+const renderTile = async (url: string, type: 'image' | 'arrayBuffer') => {
 	const result = url.match(URL_REGEX);
 	if (!result) {
 		throw new Error(`Invalid OM protocol URL '${url}'`);
@@ -180,7 +185,7 @@ const renderTile = async (url: string) => {
 	const y = parseInt(result[4]);
 
 	// Read OM data
-	return await getTile({ z, x, y }, omUrl);
+	return await getTile({ z, x, y }, omUrl, type);
 };
 
 const getTilejson = async (fullUrl: string): Promise<TileJSON> => {
@@ -290,9 +295,9 @@ export const omProtocol = async (
 		return {
 			data: await getTilejson(params.url)
 		};
-	} else if (params.type == 'image') {
+	} else if (params.type && ['image', 'arrayBuffer'].includes(params.type)) {
 		return {
-			data: await renderTile(params.url)
+			data: await renderTile(params.url, params.type as 'image' | 'arrayBuffer')
 		};
 	} else {
 		throw new Error(`Unsupported request type '${params.type}'`);
