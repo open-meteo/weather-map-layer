@@ -69,17 +69,26 @@ const a7 = -0.11643287;
 const a9 = 0.05265332;
 const a11 = -0.0117212;
 
+const copysign = (value: number, sign: number) => {
+	// If sign is -0, preserve -0
+	if (sign === 0 && 1 / sign === -Infinity) {
+		return -Math.abs(value);
+	}
+	return Math.sign(sign) === -1 ? -Math.abs(value) : Math.abs(value);
+};
+
 // https://mazzo.li/posts/vectorized-atan2.html
 export const fastAtan2 = (y: number, x: number) => {
 	const swap = Math.abs(x) < Math.abs(y);
-	const denominator = (swap ? y : x) === 0 ? 0.00000001 : swap ? y : x;
+	const selected = swap ? y : x;
+	const denominator = selected === 0 ? 0.00000001 : selected;
 	const atan_input = (swap ? x : y) / denominator;
 
 	const z_sq = atan_input * atan_input;
 	let res = atan_input * (a1 + z_sq * (a3 + z_sq * (a5 + z_sq * (a7 + z_sq * (a9 + z_sq * a11)))));
 
-	if (swap) res = (Math.sign(atan_input) * PI) / 2 - res;
-	if (x < 0.0) res = Math.sign(y) * PI + res;
+	if (swap) res = copysign(PI / 2, atan_input) - res;
+	if (x < 0.0) res = copysign(PI, y) + res;
 
 	return res;
 };
