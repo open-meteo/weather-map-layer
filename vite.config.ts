@@ -7,7 +7,8 @@ export default defineConfig({
 		dts({
 			insertTypesEntry: true,
 			entryRoot: 'src',
-			exclude: 'src/tests'
+			exclude: ['src/tests'],
+			rollupTypes: true // Bundle all types into a single file
 		})
 	],
 	optimizeDeps: {
