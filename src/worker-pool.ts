@@ -3,6 +3,7 @@ import TileWorker from './worker?worker&inline';
 import type { Data } from './om-protocol';
 
 import type { Domain, Variable, DimensionRange } from './types';
+import { ColorScale } from '../dist/types';
 
 export interface TileRequest {
 	type: 'GT';
@@ -11,10 +12,11 @@ export interface TileRequest {
 	z: number;
 	key: string;
 	data: Data;
+	dark: boolean;
+	ranges: DimensionRange[];
 	domain: Domain;
 	variable: Variable;
-	ranges: DimensionRange[];
-	dark: boolean;
+	colorScale: ColorScale;
 	mapBounds: number[];
 	iconPixelData: Record<string, ImageDataArray>;
 }

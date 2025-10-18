@@ -13,7 +13,11 @@ import {
 	getBoundsFromBorderPoints
 } from './utils/projections';
 
-import { getInterpolator } from './utils/color-scales';
+import {
+	getInterpolator,
+	colorScales as defaultColorScales,
+	getColorScale
+} from './utils/color-scales';
 
 import { domainOptions } from './utils/domains';
 import { variableOptions } from './utils/variables';
@@ -36,7 +40,8 @@ import type {
 	TileJSON,
 	TileIndex,
 	ColorScale,
-	DimensionRange
+	DimensionRange,
+	ColorScales
 } from './types';
 
 let dark = false;
@@ -160,6 +165,8 @@ const getTile = async ({ z, x, y }: TileIndex, omUrl: string): Promise<ImageBitm
 		ranges,
 		domain,
 		variable,
+		colorScale:
+			setColorScales?.custom ?? setColorScales[variable.value] ?? getColorScale(variable.value),
 		mapBounds: mapBounds,
 		iconPixelData: iconList
 	});
@@ -180,9 +187,7 @@ const renderTile = async (url: string) => {
 	const y = parseInt(result[4]);
 
 	// Read OM data
-	const tile = await getTile({ z, x, y }, omUrl);
-
-	return tile;
+	return await getTile({ z, x, y }, omUrl);
 };
 
 const getTilejson = async (fullUrl: string): Promise<TileJSON> => {
@@ -275,12 +280,15 @@ const initOMFile = (url: string, useSAB: boolean): Promise<void> => {
 	});
 };
 
+let setColorScales: ColorScales;
 export const omProtocol = async (
 	params: RequestParameters,
 	abortController?: AbortController,
-	useSAB = false
+	useSAB = false,
+	colorScales = defaultColorScales
 ): Promise<GetResourceResponse<TileJSON | ImageBitmap>> => {
 	if (params.type == 'json') {
+		setColorScales = colorScales;
 		try {
 			await initOMFile(params.url, useSAB);
 		} catch (e) {

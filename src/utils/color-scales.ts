@@ -1,8 +1,45 @@
 // import { interpolateHsl, color } from 'd3';
 
-import type { ColorScale, Interpolator, Variable } from '../types';
+import type { ColorScale, ColorScales, Interpolator, Variable } from '../types';
 
 import { noInterpolation, interpolateLinear, interpolate2DHermite } from './interpolations';
+
+const OPACITY = 75;
+
+export const getColor = (colorScale: ColorScale, px: number): number[] => {
+	return colorScale.colors[
+		Math.min(
+			colorScale.colors.length - 1,
+			Math.max(0, Math.floor((px - colorScale.min) * colorScale.scalefactor))
+		)
+	];
+};
+
+export const getOpacity = (
+	v: string,
+	px: number,
+	dark: boolean,
+	colorScale: ColorScale
+): number => {
+	if (colorScale.opacity) {
+		return 255 * (colorScale.opacity / 100);
+	} else if (v == 'cloud_cover' || v == 'thunderstorm_probability') {
+		// scale opacity with percentage
+		return 255 * (px ** 1.5 / 1000) * (OPACITY / 100);
+	} else if (v.startsWith('cloud_base')) {
+		// scale cloud base to 20900m
+		return Math.min(1 - px / 20900, 1) * 255 * (OPACITY / 100);
+	} else if (v.startsWith('precipitation')) {
+		// scale opacity with precip values below 1.5mm
+		return Math.min(px / 1.5, 1) * 255 * (OPACITY / 100);
+	} else if (v.startsWith('wind')) {
+		// scale opacity with wind values below 14kn
+		return Math.min((px - 2) / 12, 1) * 255 * (OPACITY / 100);
+	} else {
+		// else set the opacity with env variable and deduct 20% for darkmode
+		return 255 * (dark ? OPACITY / 100 - 0.2 : OPACITY / 100);
+	}
+};
 
 // function interpolateColorScaleHSL(colors: Array<string>, steps: number) {
 // 	const segments = colors.length - 1;
@@ -30,10 +67,6 @@ import { noInterpolation, interpolateLinear, interpolate2DHermite } from './inte
 
 // 	return rgbArray;
 // }
-
-type ColorScales = {
-	[key: string]: ColorScale;
-};
 
 // const precipScale: ColorScale = {
 // 	min: 0,

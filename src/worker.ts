@@ -10,7 +10,7 @@ import {
 	getIndexFromLatLong
 } from './utils/math';
 
-import { getColorScale, getInterpolator } from './utils/color-scales';
+import { getColor, getInterpolator, getOpacity } from './utils/color-scales';
 
 import type {
 	Domain,
@@ -33,16 +33,16 @@ const drawArrow = (
 	x: number,
 	y: number,
 	z: number,
-	ranges: DimensionRange[],
-	domain: Domain,
-	latLonMinMax: [minLat: number, minLon: number, maxLat: number, maxLon: number],
-	variable: Variable,
-	projectionGrid: ProjectionGrid | null,
 	values: Float32Array,
-	directions: Float32Array,
+	ranges: DimensionRange[],
 	boxSize = TILE_SIZE / 8,
+	domain: Domain,
+	variable: Variable,
+	directions: Float32Array,
+	interpolator: Interpolator,
 	iconPixelData: IconListPixels,
-	interpolator: Interpolator
+	projectionGrid: ProjectionGrid | null,
+	latLonMinMax: [minLat: number, minLon: number, maxLat: number, maxLon: number]
 ): void => {
 	const northArrow = iconPixelData['0'];
 
@@ -99,34 +99,6 @@ const drawArrow = (
 	}
 };
 
-const getColor = (colorScale: ColorScale, px: number): number[] => {
-	return colorScale.colors[
-		Math.min(
-			colorScale.colors.length - 1,
-			Math.max(0, Math.floor((px - colorScale.min) * colorScale.scalefactor))
-		)
-	];
-};
-
-const getOpacity = (v: string, px: number, dark: boolean): number => {
-	if (v == 'cloud_cover' || v == 'thunderstorm_probability') {
-		// scale opacity with percentage
-		return 255 * (px ** 1.5 / 1000) * (OPACITY / 100);
-	} else if (v.startsWith('cloud_base')) {
-		// scale cloud base to 20900m
-		return Math.min(1 - px / 20900, 1) * 255 * (OPACITY / 100);
-	} else if (v.startsWith('precipitation')) {
-		// scale opacity with precip values below 1.5mm
-		return Math.min(px / 1.5, 1) * 255 * (OPACITY / 100);
-	} else if (v.startsWith('wind')) {
-		// scale opacity with wind values below 14kn
-		return Math.min((px - 2) / 12, 1) * 255 * (OPACITY / 100);
-	} else {
-		// else set the opacity with env variable and deduct 20% for darkmode
-		return 255 * (dark ? OPACITY / 100 - 0.2 : OPACITY / 100);
-	}
-};
-
 const getIndexAndFractions = (
 	lat: number,
 	lon: number,
@@ -172,7 +144,7 @@ self.onmessage = async (message) => {
 
 		const domain = message.data.domain;
 		const variable = message.data.variable;
-		const colorScale = getColorScale(message.data.variable.value);
+		const colorScale = message.data.colorScale;
 
 		const pixels = TILE_SIZE * TILE_SIZE;
 		const rgba = new Uint8ClampedArray(pixels * 4);
@@ -230,7 +202,7 @@ self.onmessage = async (message) => {
 						rgba[4 * ind] = color[0];
 						rgba[4 * ind + 1] = color[1];
 						rgba[4 * ind + 2] = color[2];
-						rgba[4 * ind + 3] = getOpacity(variable.value, px, dark);
+						rgba[4 * ind + 3] = getOpacity(variable.value, px, dark, colorScale);
 					}
 				}
 			}
@@ -257,16 +229,16 @@ self.onmessage = async (message) => {
 							x,
 							y,
 							z,
-							ranges,
-							domain,
-							[latMin, lonMin, latMax, lonMax],
-							variable,
-							projectionGrid,
 							values,
-							directions,
+							ranges,
 							boxSize,
+							domain,
+							variable,
+							directions,
+							interpolator,
 							iconPixelData,
-							interpolator
+							projectionGrid,
+							[latMin, lonMin, latMax, lonMax]
 						);
 					}
 				}

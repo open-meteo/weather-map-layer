@@ -52,9 +52,15 @@ export type ColorScale = {
 	min: number;
 	max: number;
 	unit: string;
+	steps: number;
 	colors: number[][];
+	opacity?: number;
 	scalefactor: number;
 	interpolationMethod: InterpolationMethod;
+};
+
+export type ColorScales = {
+	[key: string]: ColorScale;
 };
 
 export type InterpolationMethod = 'none' | 'linear' | 'hermite2d';
