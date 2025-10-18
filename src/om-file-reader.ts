@@ -87,12 +87,12 @@ export class OMapsFileReader {
 			const valuesUPromise = variableReaderU?.read({
 				type: OmDataType.FloatArray,
 				ranges: this.ranges,
-				intoSAB: true
+				intoSAB: false
 			});
 			const valuesVPromise = variableReaderV?.read({
 				type: OmDataType.FloatArray,
 				ranges: this.ranges,
-				intoSAB: true
+				intoSAB: false
 			});
 
 			const [valuesU, valuesV]: [Float32Array, Float32Array] = (await Promise.all([
@@ -123,7 +123,7 @@ export class OMapsFileReader {
 			values = await variableReader?.read({
 				type: OmDataType.FloatArray,
 				ranges: this.ranges,
-				intoSAB: true
+				intoSAB: false
 			});
 		}
 
@@ -136,7 +136,7 @@ export class OMapsFileReader {
 			directions = await variableReader?.read({
 				type: OmDataType.FloatArray,
 				ranges: this.ranges,
-				intoSAB: true
+				intoSAB: false
 			});
 		}
 		if (variable.value === 'wave_height') {
@@ -148,7 +148,7 @@ export class OMapsFileReader {
 			directions = await variableReader?.read({
 				type: OmDataType.FloatArray,
 				ranges: this.ranges,
-				intoSAB: true
+				intoSAB: false
 			});
 		}
 
