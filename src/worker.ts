@@ -23,8 +23,8 @@ import type {
 
 import type { IconListPixels } from './utils/icons';
 
-const TILE_SIZE = (Number(import.meta.env.VITE_TILE_SIZE) ?? 256) * 2;
-const OPACITY = Number(import.meta.env.VITE_TILE_OPACITY) ?? 75;
+const TILE_SIZE = 256 * 2;
+const OPACITY = 75;
 
 const drawArrow = (
 	rgba: Uint8ClampedArray,

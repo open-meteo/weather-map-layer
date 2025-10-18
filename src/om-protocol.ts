@@ -89,7 +89,7 @@ export interface Data {
 
 let data: Data;
 
-const TILE_SIZE = Number(import.meta.env.VITE_TILE_SIZE) * 2;
+const TILE_SIZE = 256 * 2;
 const workerPool = new WorkerPool();
 
 export const getValueFromLatLong = (
