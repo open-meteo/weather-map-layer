@@ -324,11 +324,8 @@ self.onmessage = async (message) => {
 
 			const levels = marchingSquares(values, z, y, x, domain);
 
-			console.log(levels);
-
 			for (let [level, segments] of Object.entries(levels)) {
 				for (let line of segments) {
-					console.log(line);
 					const geom: number[] = [];
 					// move to first point in segments
 					let xt0, yt0, xt1, yt1;
@@ -347,7 +344,6 @@ self.onmessage = async (message) => {
 						geom.push(zigzag(yt1 - cursor[1]));
 						cursor = [xt1, yt1];
 					}
-					geom.push(command(7, 1)); // closepath
 
 					features.push({
 						id: level,
