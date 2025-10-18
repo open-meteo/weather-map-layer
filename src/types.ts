@@ -51,6 +51,7 @@ export type Variables = Variable[];
 export type ColorScale = {
 	min: number;
 	max: number;
+	steps: number;
 	unit: string;
 	colors: number[][];
 	scalefactor: number;
