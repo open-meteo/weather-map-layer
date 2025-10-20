@@ -114,7 +114,7 @@ export class OMapsFileReader {
 				} else {
 					values[i] = Math.sqrt(u * u + v * v);
 				}
-				directions[i] = (radiansToDegrees(fastAtan2(u, v)) + 360) % 360;
+				directions[i] = (radiansToDegrees(fastAtan2(u, v)) + 180) % 360;
 			}
 		} else {
 			const variableReader = await this.reader?.getChildByName(variable.value);

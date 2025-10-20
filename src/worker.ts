@@ -12,19 +12,38 @@ import {
 
 import { getColor, getInterpolator, getOpacity } from './utils/color-scales';
 
-import type {
-	Domain,
-	Variable,
-	ColorScale,
-	Interpolator,
-	DimensionRange,
-	IndexAndFractions
-} from './types';
-
-import type { IconListPixels } from './utils/arrow';
+import type { Domain, Variable, Interpolator, DimensionRange, IndexAndFractions } from './types';
 
 const TILE_SIZE = 256 * 2;
 const OPACITY = 75;
+
+let arrowCanvas: OffscreenCanvasRenderingContext2D | null = null;
+function getArrowCanvas() {
+	if (arrowCanvas != null) {
+		return arrowCanvas;
+	}
+
+	const size = 64;
+	const canvas = new OffscreenCanvas(size, size);
+	const ctx = canvas.getContext('2d');
+	if (ctx == null) {
+		throw new Error('Failed to create arrow canvas');
+	}
+
+	ctx.clearRect(0, 0, size, size);
+	ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+	ctx.beginPath();
+	ctx.moveTo(size / 2, size * 0.1);
+	ctx.lineTo(size * 0.63, size * 0.32);
+	ctx.lineTo(size / 2, size * 0.1);
+	ctx.lineTo(size * 0.37, size * 0.32);
+	ctx.lineTo(size / 2, size * 0.1);
+	ctx.lineTo(size / 2, size * 0.95);
+	ctx.stroke();
+
+	arrowCanvas = ctx;
+	return ctx;
+}
 
 const drawArrow = (
 	rgba: Uint8ClampedArray,
@@ -41,9 +60,10 @@ const drawArrow = (
 	directions: Float32Array,
 	interpolator: Interpolator,
 	projectionGrid: ProjectionGrid | null,
-	northArrowPixelData: Uint8ClampedArray,
 	latLonMinMax: [minLat: number, minLon: number, maxLat: number, maxLon: number]
 ): void => {
+	const arrow = getArrowCanvas();
+
 	const iCenter = iBase + Math.floor(boxSize / 2);
 	const jCenter = jBase + Math.floor(boxSize / 2);
 
@@ -60,8 +80,12 @@ const drawArrow = (
 	);
 
 	const px = interpolator(values, index, xFraction, yFraction, ranges);
+	const direction = degreesToRadians(
+		interpolator(directions, index, xFraction, yFraction, ranges) + 180
+	);
 
-	const direction = degreesToRadians(interpolator(directions, index, xFraction, yFraction, ranges));
+	arrow.rotate(direction);
+	const arrowPixelData = arrow.getImageData(0, 0, 64, 64).data;
 
 	if (direction) {
 		for (let i = 0; i < boxSize; i++) {
@@ -81,17 +105,17 @@ const drawArrow = (
 				let opacityValue;
 
 				if (variable.value.startsWith('wind')) {
-					opacityValue = Math.min(((px - 2) / 200) * 50, 100);
+					opacityValue = Math.min(((px - 2) / 2) * 0.5, 1);
 				} else {
 					opacityValue = 0.8;
 				}
 
-				if (northArrowPixelData[4 * ind + 3]) {
+				if (arrowPixelData[4 * ind + 3]) {
 					rgba[4 * indTile] = 0;
 					rgba[4 * indTile + 1] = 0;
 					rgba[4 * indTile + 2] = 0;
 					rgba[4 * indTile + 3] =
-						Number(northArrowPixelData[4 * ind + 3]) * opacityValue * (OPACITY / 50);
+						Number(arrowPixelData[4 * ind + 3]) * opacityValue * (OPACITY / 25);
 				}
 			}
 		}
@@ -215,10 +239,9 @@ self.onmessage = async (message) => {
 			drawOnTiles.includes(variable.value)
 		) {
 			if (variable.value.startsWith('wave') || variable.value.startsWith('wind')) {
-				const northArrowPixelData = message.data.northArrow;
 				const directions = message.data.data.directions;
 
-				const boxSize = Math.floor(TILE_SIZE / 16);
+				const boxSize = Math.floor(TILE_SIZE / 8);
 				for (let i = 0; i < TILE_SIZE; i += boxSize) {
 					for (let j = 0; j < TILE_SIZE; j += boxSize) {
 						drawArrow(
@@ -236,7 +259,6 @@ self.onmessage = async (message) => {
 							directions,
 							interpolator,
 							projectionGrid,
-							northArrowPixelData,
 							[latMin, lonMin, latMax, lonMax]
 						);
 					}
