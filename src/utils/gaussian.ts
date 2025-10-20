@@ -85,26 +85,23 @@ export class GaussianGrid {
     getLinearInterpolatedValue(values: Float32Array, lat: number, lon: number): number {
         const latitudeLines = this.latitudeLines
         const dy = 180 / (2 * latitudeLines + 0.5);
-        const count = this.count;
-        const yLower = (Math.floor(latitudeLines - 1 - (lat - dy / 2) / dy) + 2 * latitudeLines) % (2 * latitudeLines);
-        const yFraction = (latitudeLines - 1 - (lat - dy / 2) / dy) % 1
+        const yLower = modPositive(Math.floor(latitudeLines - 1 - (lat - dy / 2) / dy), 2 * latitudeLines);
+        const yFraction = modPositive((latitudeLines - 1 - (lat - dy / 2) / dy), 1)
         const yUpper = yLower + 1;
         const nxLower = this.nxOf(yLower);
         const nxUpper = this.nxOf(yUpper);
         const dxLower = 360 / nxLower;
         const dxUpper = 360 / nxUpper;
-        const xLower0 = (Math.floor(lon / dxLower) + nxLower) % nxLower;
-        const xUpper0 = (Math.floor(lon / dxUpper) + nxUpper) % nxUpper;
+        const xLower0 = modPositive(Math.floor(lon / dxLower), nxLower);
+        const xUpper0 = modPositive(Math.floor(lon / dxUpper), nxUpper);
         const integralLower = this.integral(yLower);
         const integralUpper = this.integral(yUpper);
-        const indexLower = integralLower + xLower0;
-        const indexUpper = integralUpper + xUpper0;
-        const xFractionLower = (lon / dxLower) % 1
-        const xFractionUpper = (lon / dxUpper) % 1
-        const p0 = values[indexLower]
-        const p1 = values[indexLower+1]
-        const p2 = values[indexUpper]
-        const p3 = values[indexUpper+1]
+        const xFractionLower = modPositive(lon / dxLower, 1)
+        const xFractionUpper = modPositive(lon / dxUpper, 1)
+        const p0 = values[integralLower + xLower0]
+        const p1 = values[integralLower + (xLower0+1)%nxLower]
+        const p2 = values[integralUpper + xUpper0]
+        const p3 = values[integralUpper + (xUpper0+1)%nxUpper]
         return p0 * (1 - xFractionLower) * (1 - yFraction) +
             p1 * xFractionLower * (1 - yFraction) +
             p2 * (1 - xFractionUpper) * yFraction +
@@ -115,13 +112,21 @@ export class GaussianGrid {
     getNearestNeighborValue(values: Float32Array, lat: number, lon: number): number {
         const latitudeLines = this.latitudeLines
         const dy = 180 / (2 * latitudeLines + 0.5);
-        const count = this.count;
-        const y = (Math.round(latitudeLines - 1 - (lat - dy / 2) / dy) + 2 * latitudeLines) % (2 * latitudeLines);
+        const y = modPositive(Math.round(latitudeLines - 1 - (lat - dy / 2) / dy), 2 * latitudeLines);
         const nx = this.nxOf(y);
         const dx = 360 / nx;
-        const x = (Math.floor(lon / dx) + nx) % nx;
+        const x = modPositive(Math.floor(lon / dx), nx);
         const integral = this.integral(y);
         const index = integral + x
         return values[index]
     }
+}
+
+/**
+ * Computes a positive modulo (always returns in range [0, m))
+ * @param n Dividend (can be negative)
+ * @param m Divisor (must be > 0)
+ */
+function modPositive(n: number, m: number): number {
+  return ((n % m) + m) % m;
 }
