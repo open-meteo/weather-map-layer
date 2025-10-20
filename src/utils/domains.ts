@@ -377,6 +377,27 @@ export const domainOptions: Array<Domain> = [
 		model_interval: 6,
 		windUVComponents: true
 	},
+		{
+		value: 'ecmwf_ifs',
+		label: 'ECMWF IFS HRES',
+		grid: {
+			nx: 1440, // 6599680
+			ny: 721,
+			latMin: -90,
+			lonMin: -180,
+			dx: 360 / 1440,
+			dy: 180 / (721 - 1),
+			zoom: 3.2,
+			gaussianGridLatitudeLines: 1280,
+			center: function () {
+				this.center = getCenterPoint(this);
+				return this;
+			}
+		},
+		time_interval: 1,
+		model_interval: 3,
+		windUVComponents: true
+	},
 
 	// GEM
 	{

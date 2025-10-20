@@ -172,16 +172,60 @@ self.onmessage = async (message) => {
 				const ind = j + i * TILE_SIZE;
 				const lon = tile2lon(x + j / TILE_SIZE, z);
 
-				const { index, xFraction, yFraction } = getIndexAndFractions(
-					lat,
-					lon,
-					domain,
-					projectionGrid,
-					ranges,
-					[latMin, lonMin, latMax, lonMax]
-				);
+				let px = NaN
+				if (domain.grid.gaussianGridLatitudeLines) {
+					const latitudeLines = domain.grid.gaussianGridLatitudeLines
+					const dy = 180 / (2 * latitudeLines + 0.5);
+					const count = 6599680;
 
-				let px = interpolator(values as Float32Array, index, xFraction, yFraction, ranges);
+					const nearestNeighbor = false
+					if (nearestNeighbor) {
+						// nearest neighbor
+						const y = (Math.round(latitudeLines - 1 - (lat - dy / 2) / dy) + 2 * latitudeLines) % (2 * latitudeLines);
+						const nx = y < latitudeLines ? 20 + y * 4 : (2 * latitudeLines - y - 1) * 4 + 20;
+						const dx = 360 / nx;
+						const x = (Math.floor(lon / dx) + nx) % nx;
+						const integral = y < latitudeLines ? 2 * y * y + 18 * y : count - (2 * (2 * latitudeLines - y) * (2 * latitudeLines - y) + 18 * (2 * latitudeLines - y));
+						const index = integral + x
+						px = values[index]
+					} else {
+						// linear interpolation
+						const yLower = (Math.floor(latitudeLines - 1 - (lat - dy / 2) / dy) + 2 * latitudeLines) % (2 * latitudeLines);
+						const yFraction = (latitudeLines - 1 - (lat - dy / 2) / dy) % 1
+						const yUpper = yLower + 1;
+						const nxLower = yLower < latitudeLines ? 20 + yLower * 4 : (2 * latitudeLines - yLower - 1) * 4 + 20;
+						const nxUpper = yUpper < latitudeLines ? 20 + yUpper * 4 : (2 * latitudeLines - yUpper - 1) * 4 + 20;
+						const dxLower = 360 / nxLower;
+						const dxUpper = 360 / nxUpper;
+						const xLower0 = (Math.floor(lon / dxLower) + nxLower) % nxLower;
+						const xUpper0 = (Math.floor(lon / dxUpper) + nxUpper) % nxUpper;
+						const integralLower = yLower < latitudeLines ? 2 * yLower * yLower + 18 * yLower : count - (2 * (2 * latitudeLines - yLower) * (2 * latitudeLines - yLower) + 18 * (2 * latitudeLines - yLower));
+						const integralUpper = yUpper < latitudeLines ? 2 * yUpper * yUpper + 18 * yUpper : count - (2 * (2 * latitudeLines - yUpper) * (2 * latitudeLines - yUpper) + 18 * (2 * latitudeLines - yUpper));
+						const indexLower = integralLower + xLower0;
+						const indexUpper = integralUpper + xUpper0;
+						const xFractionLower = (lon / dxLower) % 1
+						const xFractionUpper = (lon / dxUpper) % 1
+						const p0 = values[indexLower]
+						const p1 = values[indexLower+1]
+						const p2 = values[indexUpper]
+						const p3 = values[indexUpper+1]
+						px = p0 * (1 - xFractionLower) * (1 - yFraction) +
+							p1 * xFractionLower * (1 - yFraction) +
+							p2 * (1 - xFractionUpper) * yFraction +
+							p3 * xFractionUpper * yFraction
+					}
+				} else {
+					const { index, xFraction, yFraction } = getIndexAndFractions(
+						lat,
+						lon,
+						domain,
+						projectionGrid,
+						ranges,
+						[latMin, lonMin, latMax, lonMax]
+					);
+
+					px = interpolator(values as Float32Array, index, xFraction, yFraction, ranges);
+				}
 
 				if (hideZero.includes(variable.value)) {
 					if (px < 0.25) {
