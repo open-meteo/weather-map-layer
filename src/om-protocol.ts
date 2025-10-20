@@ -31,8 +31,6 @@ import {
 
 import { OMapsFileReader } from './om-file-reader';
 
-import { arrowSvg } from './utils/arrow';
-
 import type {
 	Bounds,
 	Domain,
@@ -57,34 +55,6 @@ let projection: Projection;
 let projectionGrid: ProjectionGrid;
 
 setupGlobalCache();
-
-let arrowPixelData: ImageDataArray | undefined;
-const initPixelData = async () => {
-	// Helper to load SVG string into pixel data
-	const renderIcon = async (svgText: string): Promise<ImageDataArray> => {
-		const canvas = new OffscreenCanvas(32, 32);
-		return new Promise((resolve, reject) => {
-			const img = new Image();
-			img.onload = () => {
-				const ctx = canvas.getContext('2d');
-				if (!ctx) {
-					reject(new Error('Failed to get 2D context'));
-					return;
-				}
-				ctx.drawImage(img, 0, 0, 32, 32);
-				const iconData = ctx.getImageData(0, 0, 32, 32).data;
-				resolve(iconData);
-			};
-			img.onerror = reject;
-			img.src = `data:image/svg+xml;base64,${btoa(svgText)}`;
-		});
-	};
-	// Only load if not already loaded
-	if (arrowPixelData) {
-		return;
-	}
-	arrowPixelData = await renderIcon(arrowSvg);
-};
 
 export interface Data {
 	values: Float32Array | undefined;
@@ -160,8 +130,7 @@ const getTile = async ({ z, x, y }: TileIndex, omUrl: string): Promise<ImageBitm
 		variable,
 		colorScale:
 			setColorScales?.custom ?? setColorScales[variable.value] ?? getColorScale(variable.value),
-		mapBounds: mapBounds,
-		northArrow: arrowPixelData!
+		mapBounds: mapBounds
 	});
 };
 
@@ -217,8 +186,6 @@ const getTilejson = async (fullUrl: string): Promise<TileJSON> => {
 };
 
 const initOMFile = (url: string, useSAB: boolean): Promise<void> => {
-	initPixelData();
-
 	return new Promise((resolve, reject) => {
 		const [omUrl, omParams] = url.replace('om://', '').split('?');
 
