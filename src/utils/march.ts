@@ -3,6 +3,7 @@ import type { Domain } from '../types';
 import { lon2tile, lat2tile, tile2lat, tile2lon } from './math';
 
 import type { TypedArray } from '@openmeteo/file-reader';
+import { getIndicesFromBounds } from './projections';
 
 // prettier-ignore
 export const edgeTable = [
@@ -171,7 +172,7 @@ const ratio = (a: number, b: number, c: number) => {
 };
 
 export const marchingSquares = (
-	values: TypedArray,
+	values: Float32Array,
 	z: number,
 	y: number,
 	x: number,
@@ -191,17 +192,38 @@ export const marchingSquares = (
 	const tileSize = 4096;
 	const margin = 256;
 
+	const minLonTile = tile2lon(x, z);
+	const minLatTile = tile2lat(y + 1, z);
+	const maxLonTile = tile2lon(x + 1, z);
+	const maxLatTile = tile2lat(y, z);
+
+	// console.log(x, y, z);
+	// console.log(minLatTile, minLonTile, maxLatTile, maxLonTile);
+	// const indices = getIndicesFromBounds(minLatTile, minLonTile, maxLatTile, maxLonTile, domain);
+	// console.log(indices);
+
 	const interval = 5;
 	const buffer = 1;
+
+	// const tile = {
+	// 	width: indices[3] - indices[1],
+	// 	height: indices[2] - indices[0],
+	// 	get: (x: number, y: number) => {
+	// 		return values[y * (indices[3] - indices[1]) + x];
+	// 	}
+	// };
+
 	const tile = {
 		width: nx,
-		height: nx,
+		height: ny,
 		get: (x: number, y: number) => {
 			return values[y * nx + x];
 		}
 	};
 
-	const multiplier = 1;
+	console.log(tile);
+
+	const multiplier = 10;
 	let tld: number, trd: number, bld: number, brd: number;
 	let r: number, c: number;
 	const segments: { [ele: string]: number[][] } = {};
