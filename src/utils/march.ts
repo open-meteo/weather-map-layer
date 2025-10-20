@@ -221,9 +221,7 @@ export const marchingSquares = (
 		}
 	};
 
-	console.log(tile);
-
-	const multiplier = 10;
+	const multiplier = 1.5;
 	let tld: number, trd: number, bld: number, brd: number;
 	let r: number, c: number;
 	const segments: { [ele: string]: number[][] } = {};
