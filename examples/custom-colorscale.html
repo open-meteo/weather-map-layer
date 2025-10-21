@@ -6,7 +6,8 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.css" />
 		<script src="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.js"></script>
-		<script src="../dist/index.js"></script>
+		<script src="https://unpkg.com/@openmeteo/mapbox-layer/dist/index.js"></script>
+		<!-- Local development: <script src="../dist/index.js"></script>-->
 		<style>
 			html,
 			body,
@@ -92,7 +93,8 @@
 							source: 'osm'
 						}
 					]
-				}
+				},
+				hash: true
 			});
 
 			// s3 storage structure: /data_spatial/{domain}/{modelRun /year/month/day/time}Z/{selectedTime year-month-day-time.om}?variable={variable}
