@@ -7,7 +7,7 @@ export default defineConfig({
 		dts({
 			exclude: ['src/tests'],
 			entryRoot: 'src',
-			// rollupTypes: true,
+			rollupTypes: true,
 			insertTypesEntry: true
 		})
 	],
