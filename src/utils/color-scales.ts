@@ -45,6 +45,28 @@ export const getOpacity = (
 	}
 };
 
+export const getColorScale = (variable: Variable['value']) => {
+	return (
+		colorScales[variable] ??
+		colorScales[variable.split('_')[0]] ??
+		colorScales[variable.split('_')[0] + '_' + variable.split('_')[1]] ??
+		colorScales['temperature']
+	);
+};
+
+export const getInterpolator = (colorScale: ColorScale): Interpolator => {
+	if (!colorScale.interpolationMethod || colorScale.interpolationMethod === 'none') {
+		return noInterpolation;
+	} else if (colorScale.interpolationMethod === 'linear') {
+		return interpolateLinear;
+	} else if (colorScale.interpolationMethod === 'hermite2d') {
+		return interpolate2DHermite;
+	} else {
+		// default is linear
+		return interpolateLinear;
+	}
+};
+
 // function interpolateColorScaleHSL(colors: Array<string>, steps: number) {
 // 	const segments = colors.length - 1;
 // 	const stepsPerSegment = Math.floor(steps / segments);
@@ -1552,25 +1574,3 @@ export const colorScales: ColorScales = {
 		unit: 'km/h'
 	}
 };
-
-export function getColorScale(variable: Variable['value']) {
-	return (
-		colorScales[variable] ??
-		colorScales[variable.split('_')[0]] ??
-		colorScales[variable.split('_')[0] + '_' + variable.split('_')[1]] ??
-		colorScales['temperature']
-	);
-}
-
-export function getInterpolator(colorScale: ColorScale): Interpolator {
-	if (!colorScale.interpolationMethod || colorScale.interpolationMethod === 'none') {
-		return noInterpolation;
-	} else if (colorScale.interpolationMethod === 'linear') {
-		return interpolateLinear;
-	} else if (colorScale.interpolationMethod === 'hermite2d') {
-		return interpolate2DHermite;
-	} else {
-		// default is linear
-		return interpolateLinear;
-	}
-}

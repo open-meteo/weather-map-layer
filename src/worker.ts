@@ -48,18 +48,6 @@ const getArrowCanvas = () => {
 	return ctx;
 };
 
-let gaussian: GaussianGrid | undefined | null;
-const getGaussianGrid = (domain: Domain) => {
-	if (gaussian) {
-		return gaussian;
-	}
-	if (domain.grid.gaussianGridLatitudeLines) {
-		gaussian = new GaussianGrid(domain.grid.gaussianGridLatitudeLines);
-	} else {
-		return null;
-	}
-};
-
 const drawArrow = (
 	rgba: Uint8ClampedArray,
 	iBase: number,
@@ -72,13 +60,13 @@ const drawArrow = (
 	boxSize = TILE_SIZE / 8,
 	domain: Domain,
 	variable: Variable,
+	gaussion: GaussianGrid | undefined,
 	directions: Float32Array,
 	interpolator: Interpolator,
 	projectionGrid: ProjectionGrid | null,
 	latLonMinMax: [minLat: number, minLon: number, maxLat: number, maxLon: number]
 ): void => {
 	const arrow = getArrowCanvas();
-	const gaussianGrid = getGaussianGrid(domain);
 
 	const iCenter = iBase + Math.floor(boxSize / 2);
 	const jCenter = jBase + Math.floor(boxSize / 2);
@@ -95,19 +83,12 @@ const drawArrow = (
 		latLonMinMax
 	);
 
-	let px;
-	if (gaussianGrid && domain.grid.gaussianGridLatitudeLines) {
-		px = gaussianGrid.getLinearInterpolatedValue(values, lat, lon);
+	let px, direction;
+	if (gaussion) {
+		px = gaussion.getLinearInterpolatedValue(values, lat, lon);
+		direction = degreesToRadians(gaussion.getLinearInterpolatedValue(directions, lat, lon) + 180);
 	} else {
 		px = interpolator(values, index, xFraction, yFraction, ranges);
-	}
-
-	let direction;
-	if (gaussianGrid && domain.grid.gaussianGridLatitudeLines) {
-		direction = degreesToRadians(
-			gaussianGrid.getLinearInterpolatedValue(directions, lat, lon) + 180
-		);
-	} else {
 		direction = degreesToRadians(
 			interpolator(directions, index, xFraction, yFraction, ranges) + 180
 		);
@@ -219,7 +200,10 @@ self.onmessage = async (message) => {
 		const lonMax = domain.grid.lonMin + domain.grid.dx * ranges[1]['end'];
 		const latMax = domain.grid.latMin + domain.grid.dy * ranges[0]['end'];
 
-		const gaussianGrid = getGaussianGrid(domain);
+		let gaussian;
+		if (domain.grid.gaussianGridLatitudeLines) {
+			gaussian = new GaussianGrid(domain.grid.gaussianGridLatitudeLines);
+		}
 
 		for (let i = 0; i < TILE_SIZE; i++) {
 			const lat = tile2lat(y + i / TILE_SIZE, z);
@@ -228,9 +212,8 @@ self.onmessage = async (message) => {
 				const lon = tile2lon(x + j / TILE_SIZE, z);
 
 				let px = NaN;
-				if (gaussianGrid && domain.grid.gaussianGridLatitudeLines) {
-					px = gaussianGrid.getLinearInterpolatedValue(values, lat, lon);
-					// or use nearest neighbour with: px = gaussian.getNearestNeighborValue(values, lat, lon);
+				if (gaussian && domain.grid.gaussianGridLatitudeLines) {
+					px = gaussian.getLinearInterpolatedValue(values, lat, lon);
 				} else {
 					const { index, xFraction, yFraction } = getIndexAndFractions(
 						lat,
@@ -297,6 +280,7 @@ self.onmessage = async (message) => {
 							boxSize,
 							domain,
 							variable,
+							gaussian,
 							directions,
 							interpolator,
 							projectionGrid,
