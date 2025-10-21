@@ -391,7 +391,7 @@ self.onmessage = async (message) => {
 			//const levels = marchingSquares(values, z, y, x, domain);
 
 			const interval = 2;
-			const buffer = 2;
+			const buffer = 1;
 
 			const width = 128;
 			const height = width;
@@ -462,7 +462,7 @@ self.onmessage = async (message) => {
 				let minR = Math.min(trd, brd);
 				let maxR = Math.max(trd, brd);
 
-				for (j = 1 - buffer; j < width + buffer; j++) {
+				for (j = 0 - buffer; j < width + buffer; j++) {
 					const lon = tile2lon(x + j / width, z);
 
 					tld = trd;
