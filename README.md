@@ -1,6 +1,6 @@
 # Open-Meteo Mapbox Layer
 
-![Test](https://github.com/open-meteo/typescript-omfiles/actions/workflows/test.yml/badge.svg)
+![Test](https://github.com/open-meteo/mapbox-layer/actions/workflows/test.yml/badge.svg)
 [![GitHub license](https://img.shields.io/github/license/open-meteo/mapbox-layer)](https://github.com/open-meteo/mapbox-layer/blob/main/LICENSE)
 ![npm version](https://img.shields.io/npm/v/@openmeteo/mapbox-layer?label=@openmeteo/mapbox-layer)
 
@@ -41,7 +41,7 @@ map.on('load', () => {
 		url: 'om://' + omUrl,
 		type: 'raster',
 		tileSize: 256,
-		maxzoom: 12
+		maxzoom: 12 // tiles look pretty much the same below zoom-level 12, even on the high res models
 	});
 
 	map.addLayer({
@@ -74,7 +74,7 @@ For a standalone example, see `examples/temperature.html`.
 			url: 'om://' + omUrl,
 			type: 'raster',
 			tileSize: 256,
-			maxzoom: 12
+			maxzoom: 12 // tiles look pretty much the same below zoom-level 12, even on the high res models
 		});
 
 		map.addLayer({
