@@ -41,11 +41,10 @@ import type {
 	DimensionRange,
 	ColorScales
 } from './types';
-<<<<<<< HEAD
+
 import { capitalize } from './utils';
-=======
+
 import { MS_TO_KMH } from './utils/constants';
->>>>>>> main
 
 let dark = false;
 let partial = false;
