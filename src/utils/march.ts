@@ -25,7 +25,7 @@ export const edgeTable = [
 	 []                 // 15
 ];
 
-const CASES: [number, number][][][] = [
+export const CASES: [number, number][][][] = [
 	[],
 	[
 		[
@@ -122,7 +122,7 @@ const CASES: [number, number][][][] = [
 	[]
 ];
 
-class Fragment {
+export class Fragment {
 	start: number;
 	end: number;
 	points: number[];
@@ -161,13 +161,35 @@ class Fragment {
 	}
 }
 
-const index = (width: number, x: number, y: number, point: [number, number]) => {
+export const index = (width: number, x: number, y: number, point: [number, number]) => {
 	x = x * 2 + point[0];
 	y = y * 2 + point[1];
 	return x + y * (width + 1) * 2;
 };
 
-const ratio = (a: number, b: number, c: number) => {
+export function interpolate(
+	x: number, y: number,
+	point: [number, number],
+	threshold: number,
+	multiplier: number,
+	bld: number, tld: number, brd: number, trd: number,
+	accept: (x: number, y: number) => void
+) {
+	if (point[0] === 0) {
+		accept(multiplier * (x - 1), multiplier * (y - ratio(bld, threshold, tld)));
+	} else if (point[0] === 2) {
+		// right
+		accept(multiplier * x, multiplier * (y - ratio(brd, threshold, trd)));
+	} else if (point[1] === 0) {
+		// top
+		accept(multiplier * (x - ratio(trd, threshold, tld)), multiplier * (y - 1));
+	} else {
+		// bottom
+		accept(multiplier * (x - ratio(brd, threshold, bld)), multiplier * y);
+	}
+}
+
+export const ratio = (a: number, b: number, c: number) => {
 	return (b - a) / (c - a);
 };
 
