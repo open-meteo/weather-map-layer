@@ -33,8 +33,12 @@ export const getOpacity = (
 		// scale opacity with precip values below 1.5mm
 		return Math.min(px / 1.5, 1) * 255 * (OPACITY / 100);
 	} else if (v.startsWith('wind')) {
-		// scale opacity with wind values below 14kn
-		return Math.min((px - 2) / 12, 1) * 255 * (OPACITY / 100);
+		// scale opacity with wind values below 10kmh
+		if (px < 10) {
+			return Math.min(Math.pow(px - 2, 3) / 1000, 1) * 255 * (OPACITY / 100);
+		} else {
+			return 255 * (OPACITY / 100);
+		}
 	} else {
 		// else set the opacity with env variable and deduct 20% for darkmode
 		return 255 * (dark ? OPACITY / 100 - 0.2 : OPACITY / 100);
@@ -1499,9 +1503,9 @@ export const colorScales: ColorScales = {
 	},
 	wind: {
 		min: 0,
-		max: 40,
+		max: 70,
 		steps: 40,
-		scalefactor: 1,
+		scalefactor: 40 / 70,
 		colors: [
 			[0, 0, 255],
 			[0, 54, 241],
@@ -1545,7 +1549,7 @@ export const colorScales: ColorScales = {
 			[255, 0, 0]
 		],
 		interpolationMethod: 'linear',
-		unit: 'm/s'
+		unit: 'km/h'
 	}
 };
 

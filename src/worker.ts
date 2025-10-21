@@ -15,12 +15,13 @@ import { getColor, getInterpolator, getOpacity } from './utils/color-scales';
 import type { Domain, Variable, Interpolator, DimensionRange, IndexAndFractions } from './types';
 
 import { GaussianGrid } from './utils/gaussian';
+import { MS_TO_KMH } from './utils/constants';
 
 const TILE_SIZE = 256 * 2;
 const OPACITY = 75;
 
 let arrowCanvas: OffscreenCanvasRenderingContext2D | null = null;
-function getArrowCanvas() {
+const getArrowCanvas = () => {
 	if (arrowCanvas != null) {
 		return arrowCanvas;
 	}
@@ -45,7 +46,19 @@ function getArrowCanvas() {
 
 	arrowCanvas = ctx;
 	return ctx;
-}
+};
+
+let gaussian: GaussianGrid | undefined | null;
+const getGaussianGrid = (domain: Domain) => {
+	if (gaussian) {
+		return gaussian;
+	}
+	if (domain.grid.gaussianGridLatitudeLines) {
+		gaussian = new GaussianGrid(domain.grid.gaussianGridLatitudeLines);
+	} else {
+		return null;
+	}
+};
 
 const drawArrow = (
 	rgba: Uint8ClampedArray,
@@ -65,6 +78,7 @@ const drawArrow = (
 	latLonMinMax: [minLat: number, minLon: number, maxLat: number, maxLon: number]
 ): void => {
 	const arrow = getArrowCanvas();
+	const gaussianGrid = getGaussianGrid(domain);
 
 	const iCenter = iBase + Math.floor(boxSize / 2);
 	const jCenter = jBase + Math.floor(boxSize / 2);
@@ -81,10 +95,23 @@ const drawArrow = (
 		latLonMinMax
 	);
 
-	const px = interpolator(values, index, xFraction, yFraction, ranges);
-	const direction = degreesToRadians(
-		interpolator(directions, index, xFraction, yFraction, ranges) + 180
-	);
+	let px;
+	if (gaussianGrid && domain.grid.gaussianGridLatitudeLines) {
+		px = gaussianGrid.getLinearInterpolatedValue(values, lat, lon);
+	} else {
+		px = interpolator(values, index, xFraction, yFraction, ranges);
+	}
+
+	let direction;
+	if (gaussianGrid && domain.grid.gaussianGridLatitudeLines) {
+		direction = degreesToRadians(
+			gaussianGrid.getLinearInterpolatedValue(directions, lat, lon) + 180
+		);
+	} else {
+		direction = degreesToRadians(
+			interpolator(directions, index, xFraction, yFraction, ranges) + 180
+		);
+	}
 
 	arrow.rotate(direction);
 	const arrowPixelData = arrow.getImageData(0, 0, 64, 64).data;
@@ -107,12 +134,12 @@ const drawArrow = (
 				let opacityValue;
 
 				if (variable.value.startsWith('wind')) {
-					opacityValue = Math.min(((px - 2) / 2) * 0.5, 1);
+					opacityValue = Math.min(((px - 0.4) / 1) * 0.5, 1);
 				} else {
 					opacityValue = 0.8;
 				}
 
-				if (arrowPixelData[4 * ind + 3]) {
+				if (arrowPixelData[4 * ind + 3] && opacityValue > 0.1) {
 					rgba[4 * indTile] = 0;
 					rgba[4 * indTile + 1] = 0;
 					rgba[4 * indTile + 2] = 0;
@@ -192,10 +219,7 @@ self.onmessage = async (message) => {
 		const lonMax = domain.grid.lonMin + domain.grid.dx * ranges[1]['end'];
 		const latMax = domain.grid.latMin + domain.grid.dy * ranges[0]['end'];
 
-		let gaussian;
-		if (domain.grid.gaussianGridLatitudeLines) {
-			gaussian = new GaussianGrid(domain.grid.gaussianGridLatitudeLines);
-		}
+		const gaussianGrid = getGaussianGrid(domain);
 
 		for (let i = 0; i < TILE_SIZE; i++) {
 			const lat = tile2lat(y + i / TILE_SIZE, z);
@@ -204,8 +228,8 @@ self.onmessage = async (message) => {
 				const lon = tile2lon(x + j / TILE_SIZE, z);
 
 				let px = NaN;
-				if (gaussian && domain.grid.gaussianGridLatitudeLines) {
-					px = gaussian.getLinearInterpolatedValue(values, lat, lon);
+				if (gaussianGrid && domain.grid.gaussianGridLatitudeLines) {
+					px = gaussianGrid.getLinearInterpolatedValue(values, lat, lon);
 					// or use nearest neighbour with: px = gaussian.getNearestNeighborValue(values, lat, lon);
 				} else {
 					const { index, xFraction, yFraction } = getIndexAndFractions(
@@ -224,6 +248,10 @@ self.onmessage = async (message) => {
 					if (px < 0.25) {
 						px = NaN;
 					}
+				}
+
+				if (variable.value.includes('wind')) {
+					px = px * MS_TO_KMH;
 				}
 
 				if (isNaN(px) || px === Infinity || variable.value === 'weather_code') {
