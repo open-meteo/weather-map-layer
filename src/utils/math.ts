@@ -41,6 +41,10 @@ export const secondDerivative = (fm1: number, f0: number, fp1: number): number =
 	return fm1 - 2 * f0 + fp1;
 };
 
+export const modPositive = (n: number, m: number): number => {
+	return ((n % m) + m) % m;
+};
+
 export const getCenterFromBounds = (bounds: Bounds): Center => {
 	return {
 		lng: (bounds[2] - bounds[0]) / 2 + bounds[0],
