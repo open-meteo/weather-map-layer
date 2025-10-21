@@ -16,7 +16,14 @@ import {
 
 import { getColor, getInterpolator, getOpacity } from './utils/color-scales';
 
-import type { Domain, Variable, Interpolator, DimensionRange, IndexAndFractions, ColorScale } from './types';
+import type {
+	Domain,
+	Variable,
+	Interpolator,
+	DimensionRange,
+	IndexAndFractions,
+	ColorScale
+} from './types';
 
 import { CASES, Fragment, index, interpolate, marchingSquares } from './utils/march';
 
@@ -439,24 +446,32 @@ self.onmessage = async (message) => {
 					trd = gaussian.getLinearInterpolatedValue(values, latBottom, lon);
 					brd = gaussian.getLinearInterpolatedValue(values, latTop, lon);
 				} else {
-					const idx = getIndexAndFractions(
-						latBottom,
-						lon,
-						domain,
-						projectionGrid,
-						ranges,
-						[latMin, lonMin, latMax, lonMax]
+					const idx = getIndexAndFractions(latBottom, lon, domain, projectionGrid, ranges, [
+						latMin,
+						lonMin,
+						latMax,
+						lonMax
+					]);
+					const idx2 = getIndexAndFractions(latTop, lon, domain, projectionGrid, ranges, [
+						latMin,
+						lonMin,
+						latMax,
+						lonMax
+					]);
+					trd = interpolator(
+						values as Float32Array,
+						idx.index,
+						idx.xFraction,
+						idx.yFraction,
+						ranges
 					);
-					const idx2 = getIndexAndFractions(
-						latTop,
-						lon,
-						domain,
-						projectionGrid,
-						ranges,
-						[latMin, lonMin, latMax, lonMax]
+					brd = interpolator(
+						values as Float32Array,
+						idx2.index,
+						idx2.xFraction,
+						idx2.yFraction,
+						ranges
 					);
-					trd = interpolator(values as Float32Array, idx.index, idx.xFraction, idx.yFraction, ranges);
-					brd = interpolator(values as Float32Array, idx2.index, idx2.xFraction, idx2.yFraction, ranges);
 				}
 
 				let minR = Math.min(trd, brd);
@@ -473,24 +488,32 @@ self.onmessage = async (message) => {
 						trd = gaussian.getLinearInterpolatedValue(values, latBottom, lon);
 						brd = gaussian.getLinearInterpolatedValue(values, latTop, lon);
 					} else {
-						const idx = getIndexAndFractions(
-							latBottom,
-							lon,
-							domain,
-							projectionGrid,
-							ranges,
-							[latMin, lonMin, latMax, lonMax]
+						const idx = getIndexAndFractions(latBottom, lon, domain, projectionGrid, ranges, [
+							latMin,
+							lonMin,
+							latMax,
+							lonMax
+						]);
+						const idx2 = getIndexAndFractions(latTop, lon, domain, projectionGrid, ranges, [
+							latMin,
+							lonMin,
+							latMax,
+							lonMax
+						]);
+						trd = interpolator(
+							values as Float32Array,
+							idx.index,
+							idx.xFraction,
+							idx.yFraction,
+							ranges
 						);
-						const idx2 = getIndexAndFractions(
-							latTop,
-							lon,
-							domain,
-							projectionGrid,
-							ranges,
-							[latMin, lonMin, latMax, lonMax]
+						brd = interpolator(
+							values as Float32Array,
+							idx2.index,
+							idx2.xFraction,
+							idx2.yFraction,
+							ranges
 						);
-						trd = interpolator(values as Float32Array, idx.index, idx.xFraction, idx.yFraction, ranges);
-						brd = interpolator(values as Float32Array, idx2.index, idx2.xFraction, idx2.yFraction, ranges);
 					}
 
 					// trd = tile.get(j, i - 1);
@@ -512,7 +535,9 @@ self.onmessage = async (message) => {
 						const tr = trd > threshold;
 						const bl = bld > threshold;
 						const br = brd > threshold;
-						for (const segment of CASES[(tl ? 8 : 0) | (tr ? 4 : 0) | (br ? 2 : 0) | (bl ? 1 : 0)]) {
+						for (const segment of CASES[
+							(tl ? 8 : 0) | (tr ? 4 : 0) | (br ? 2 : 0) | (bl ? 1 : 0)
+						]) {
 							let fragmentByStart = fragmentByStartByLevel.get(threshold);
 							if (!fragmentByStart)
 								fragmentByStartByLevel.set(threshold, (fragmentByStart = new Map()));
@@ -583,7 +608,6 @@ self.onmessage = async (message) => {
 			for (let [level, segments] of Object.entries(levels)) {
 				//console.log("level", level, segments)
 				for (let line of segments) {
-					const lvl = Number(level)
 					const geom: number[] = [];
 					// move to first point in segments
 					let xt0, yt0, xt1, yt1;
@@ -607,8 +631,7 @@ self.onmessage = async (message) => {
 						id: level,
 						type: 2, // 2 = LineString
 						properties: {
-							lw: lvl % 100 === 0 ? 2 : lvl % 50 === 0 ? 1.5 : lvl % 10 === 0 ? 1 : 0.5,
-							pressure: level
+							value: level
 						},
 						geom
 					});
