@@ -44,7 +44,8 @@
 							type: 'raster',
 							source: 'osm'
 						}
-					]
+					],
+					glyphs: 'https://maptiler.servert.nl/fonts/{fontstack}/{range}.pbf'
 				},
 				hash: true
 			});
@@ -83,14 +84,43 @@
 					paint: {
 						'line-color': ['case', ['boolean', ['feature-state', 'hover'], false], 'red', 'black'],
 						'line-width': [
-							'step',
-							['zoom'],
-							['case', ['boolean', ['feature-state', 'hover'], false], 4, ['get', 'lw']],
+							'case',
+							['boolean', ['feature-state', 'hover'], false],
 							4,
-							['case', ['boolean', ['feature-state', 'hover'], false], 8, ['get', 'lw']],
-							8,
-							['case', ['boolean', ['feature-state', 'hover'], false], 12, ['get', 'lw']]
+							[
+								'case',
+								['boolean', ['==', ['%', ['to-number', ['get', 'value']], 100], 0], false],
+								3,
+								[
+									'case',
+									['boolean', ['==', ['%', ['to-number', ['get', 'value']], 50], 0], false],
+									2,
+									[
+										'case',
+										['boolean', ['==', ['%', ['to-number', ['get', 'value']], 10], 0], false],
+										1.5,
+										1
+									]
+								]
+							]
 						]
+					}
+				});
+
+				map.addLayer({
+					id: 'omFileVectorLayerLabels',
+					type: 'symbol',
+					source: 'omFileVectorSource',
+					'source-layer': 'contours',
+					layout: {
+						'symbol-placement': 'line-center',
+						'text-font': ['Noto Sans Regular'],
+						'text-field': ['to-string', ['get', 'value']],
+						'text-size': 16
+						// 'icon-allow-overlap': true,
+						// 'text-allow-overlap': true,
+						// 'text-ignore-placement': true,
+						// 'icon-ignore-placement': true
 					}
 				});
 
