@@ -1,6 +1,11 @@
 import { hideZero, drawOnTiles } from './utils/variables';
 
-import { DynamicProjection, ProjectionGrid, type Projection } from './utils/projections';
+import {
+	DynamicProjection,
+	getIndexAndFractions,
+	ProjectionGrid,
+	type Projection
+} from './utils/projections';
 
 import {
 	tile2lat,
@@ -130,40 +135,6 @@ const drawArrow = (
 			}
 		}
 	}
-};
-
-const getIndexAndFractions = (
-	lat: number,
-	lon: number,
-	domain: Domain,
-	projectionGrid: ProjectionGrid | null,
-	ranges = [
-		{ start: 0, end: domain.grid.ny },
-		{ start: 0, end: domain.grid.nx }
-	],
-	latLonMinMax: [minLat: number, minLon: number, maxLat: number, maxLon: number]
-) => {
-	let indexObject: IndexAndFractions;
-	if (domain.grid.projection && projectionGrid) {
-		indexObject = projectionGrid.findPointInterpolated(lat, lon, ranges);
-	} else {
-		indexObject = getIndexFromLatLong(
-			lat,
-			lon,
-			domain.grid.dx,
-			domain.grid.dy,
-			ranges[1]['end'] - ranges[1]['start'],
-			latLonMinMax
-		);
-	}
-
-	return (
-		indexObject ?? {
-			index: NaN,
-			xFraction: 0,
-			yFraction: 0
-		}
-	);
 };
 
 self.onmessage = async (message) => {
