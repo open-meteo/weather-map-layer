@@ -31,7 +31,7 @@ import { omProtocol } from '@openmeteo/mapbox-layer';
 // standard mapbox / maplibre setup
 ...
 
-maplibregl.addProtocol('om', (params) => omProtocol(params, undefined, true));
+maplibregl.addProtocol('om', omProtocol);
 
 const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/15/1200Z/2025-10-15T1400.om?variable=temperature_2m`;
 
