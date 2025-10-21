@@ -6,7 +6,10 @@
 	"types": "dist/index.d.ts",
 	"author": "Open-Meteo <info@open-meteo.com>",
 	"module": "dist/index.mjs",
-	"repository": "git://github.com/open-meteo/mapbox-layer",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/open-meteo/mapbox-layer.git"
+	},
 	"description": "Protocol to read OMfiles and parse them to tiles for Mapbox / Maplibre",
 	"keywords": [
 		"open-meteo",
