@@ -14,6 +14,8 @@ import { getColor, getInterpolator, getOpacity } from './utils/color-scales';
 
 import type { Domain, Variable, Interpolator, DimensionRange, IndexAndFractions } from './types';
 
+import { GaussianGrid } from './utils/gaussian';
+
 const TILE_SIZE = 256 * 2;
 const OPACITY = 75;
 
@@ -190,22 +192,33 @@ self.onmessage = async (message) => {
 		const lonMax = domain.grid.lonMin + domain.grid.dx * ranges[1]['end'];
 		const latMax = domain.grid.latMin + domain.grid.dy * ranges[0]['end'];
 
+		let gaussian;
+		if (domain.grid.gaussianGridLatitudeLines) {
+			gaussian = new GaussianGrid(domain.grid.gaussianGridLatitudeLines);
+		}
+
 		for (let i = 0; i < TILE_SIZE; i++) {
 			const lat = tile2lat(y + i / TILE_SIZE, z);
 			for (let j = 0; j < TILE_SIZE; j++) {
 				const ind = j + i * TILE_SIZE;
 				const lon = tile2lon(x + j / TILE_SIZE, z);
 
-				const { index, xFraction, yFraction } = getIndexAndFractions(
-					lat,
-					lon,
-					domain,
-					projectionGrid,
-					ranges,
-					[latMin, lonMin, latMax, lonMax]
-				);
+				let px = NaN;
+				if (gaussian && domain.grid.gaussianGridLatitudeLines) {
+					px = gaussian.getLinearInterpolatedValue(values, lat, lon);
+					// or use nearest neighbour with: px = gaussian.getNearestNeighborValue(values, lat, lon);
+				} else {
+					const { index, xFraction, yFraction } = getIndexAndFractions(
+						lat,
+						lon,
+						domain,
+						projectionGrid,
+						ranges,
+						[latMin, lonMin, latMax, lonMax]
+					);
 
-				let px = interpolator(values as Float32Array, index, xFraction, yFraction, ranges);
+					px = interpolator(values as Float32Array, index, xFraction, yFraction, ranges);
+				}
 
 				if (hideZero.includes(variable.value)) {
 					if (px < 0.25) {

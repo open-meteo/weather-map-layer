@@ -103,6 +103,7 @@ export interface Domain {
 					lat: number;
 			  }
 			| Function;
+		gaussianGridLatitudeLines?: number;
 	};
 	time_interval: number;
 	model_interval: number;
