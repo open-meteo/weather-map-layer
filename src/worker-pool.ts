@@ -19,7 +19,6 @@ export interface TileRequest {
 	variable: Variable;
 	colorScale: ColorScale;
 	mapBounds: number[];
-	northArrow: ImageDataArray;
 }
 
 export type TileResponse = {

@@ -1,6 +1,6 @@
 {
 	"name": "@openmeteo/mapbox-layer",
-	"version": "0.0.1",
+	"version": "0.0.0",
 	"type": "module",
 	"main": "dist/index.cjs",
 	"types": "dist/index.d.ts",
@@ -33,12 +33,12 @@
 		"pbf": "^4.0.1",
 		"prettier": "^3.6.2",
 		"typescript": "5.9.3",
-		"vite": "^7.1.10",
-		"vite-plugin-dts": "^4.5.4",
 		"vitest": "^3.2.4"
 	},
 	"dependencies": {
 		"@openmeteo/file-reader": "^0.0.12",
-		"maplibre-gl": "^5.9.0"
+		"maplibre-gl": "^5.9.0",
+		"vite": "^7.1.11",
+		"vite-plugin-dts": "^4.5.4"
 	}
 }

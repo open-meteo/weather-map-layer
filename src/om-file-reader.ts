@@ -15,8 +15,6 @@ import {
 	type ProjectionName
 } from './utils/projections';
 
-import { MS_TO_KNOTS } from './utils/constants';
-
 export class OMapsFileReader {
 	static s3BackendCache: Map<string, OmHttpBackend> = new Map();
 
@@ -109,12 +107,8 @@ export class OMapsFileReader {
 			for (let i = 0; i < valuesU.length; ++i) {
 				const u = valuesU[i];
 				const v = valuesV[i];
-				if (variable.value.includes('wind')) {
-					values[i] = Math.sqrt(u * u + v * v) * MS_TO_KNOTS;
-				} else {
-					values[i] = Math.sqrt(u * u + v * v);
-				}
-				directions[i] = (radiansToDegrees(fastAtan2(u, v)) + 360) % 360;
+				values[i] = Math.sqrt(u * u + v * v);
+				directions[i] = (radiansToDegrees(fastAtan2(u, v)) + 180) % 360;
 			}
 		} else {
 			const variableReader = await this.reader?.getChildByName(variable.value);
