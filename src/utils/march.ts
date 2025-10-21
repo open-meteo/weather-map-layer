@@ -164,7 +164,7 @@ export class Fragment {
 export const index = (width: number, x: number, y: number, point: [number, number]) => {
 	x = x * 2 + point[0];
 	y = y * 2 + point[1];
-	return x + y * width * 2;
+	return x + y * (width+1) * 2;
 };
 
 export function interpolate(

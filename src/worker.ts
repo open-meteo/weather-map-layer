@@ -391,7 +391,7 @@ self.onmessage = async (message) => {
 			//const levels = marchingSquares(values, z, y, x, domain);
 
 			const interval = 2;
-			const buffer = 1;
+			const buffer = 2;
 
 			const width = 128;
 			const height = width;
@@ -520,8 +520,8 @@ self.onmessage = async (message) => {
 							if (!fragmentByEnd) fragmentByEndByLevel.set(threshold, (fragmentByEnd = new Map()));
 							const start = segment[0];
 							const end = segment[1];
-							const startIndex = index(width, j, i, start);
-							const endIndex = index(width, j, i, end);
+							const startIndex = index(width + buffer, j, i, start);
+							const endIndex = index(width + buffer, j, i, end);
 							let f, g;
 
 							if ((f = fragmentByEnd.get(startIndex))) {
