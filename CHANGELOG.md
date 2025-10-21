@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.2](https://github.com/open-meteo/mapbox-layer/compare/v0.0.1...v0.0.2) (2025-10-21)
+
+
+### Bug Fixes
+
+* Expose gaussian ([18b644d](https://github.com/open-meteo/mapbox-layer/commit/18b644d8e318a868fc4bfdeb613528c47d548dfb))
+
 ## 0.0.1 (2025-10-21)
 
 
