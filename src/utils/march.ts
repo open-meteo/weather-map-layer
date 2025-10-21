@@ -174,8 +174,8 @@ const ratio = (a: number, b: number, c: number) => {
 export const marchingSquares = (
 	values: Float32Array,
 	z: number,
-	y: number,
-	x: number,
+	yTile: number,
+	xTile: number,
 	domain: Domain
 ): number[][] => {
 	// const segments = [];
@@ -192,10 +192,10 @@ export const marchingSquares = (
 	const tileSize = 4096;
 	const margin = 256;
 
-	const minLonTile = tile2lon(x, z);
-	const minLatTile = tile2lat(y + 1, z);
-	const maxLonTile = tile2lon(x + 1, z);
-	const maxLatTile = tile2lat(y, z);
+	const minLonTile = tile2lon(xTile, z);
+	const minLatTile = tile2lat(yTile + 1, z);
+	const maxLonTile = tile2lon(xTile + 1, z);
+	const maxLatTile = tile2lat(yTile, z);
 
 	// console.log(x, y, z);
 	// console.log(minLatTile, minLonTile, maxLatTile, maxLonTile);
@@ -223,42 +223,43 @@ export const marchingSquares = (
 
 	const multiplier = 1.5;
 	let tld: number, trd: number, bld: number, brd: number;
-	let r: number, c: number;
+	let y: number, x: number;
 	const segments: { [ele: string]: number[][] } = {};
 	const fragmentByStartByLevel: Map<number, Map<number, Fragment>> = new Map();
 	const fragmentByEndByLevel: Map<number, Map<number, Fragment>> = new Map();
 
 	function interpolate(
+		x: number, y: number,
 		point: [number, number],
 		threshold: number,
 		accept: (x: number, y: number) => void
 	) {
 		if (point[0] === 0) {
 			// left
-			accept(multiplier * (c - 1), multiplier * (r - ratio(bld, threshold, tld)));
+			accept(multiplier * (x - 1), multiplier * (y - ratio(bld, threshold, tld)));
 		} else if (point[0] === 2) {
 			// right
-			accept(multiplier * c, multiplier * (r - ratio(brd, threshold, trd)));
+			accept(multiplier * x, multiplier * (y - ratio(brd, threshold, trd)));
 		} else if (point[1] === 0) {
 			// top
-			accept(multiplier * (c - ratio(trd, threshold, tld)), multiplier * (r - 1));
+			accept(multiplier * (x - ratio(trd, threshold, tld)), multiplier * (y - 1));
 		} else {
 			// bottom
-			accept(multiplier * (c - ratio(brd, threshold, bld)), multiplier * r);
+			accept(multiplier * (x - ratio(brd, threshold, bld)), multiplier * y);
 		}
 	}
 
-	for (r = 1 - buffer; r < tile.height + buffer; r++) {
-		trd = tile.get(0, r - 1);
-		brd = tile.get(0, r);
+	for (y = 1 - buffer; y < tile.height + buffer; y++) {
+		trd = tile.get(0, y - 1);
+		brd = tile.get(0, y);
 		let minR = Math.min(trd, brd);
 		let maxR = Math.max(trd, brd);
 
-		for (c = 1 - buffer; c < tile.width + buffer; c++) {
+		for (x = 1 - buffer; x < tile.width + buffer; x++) {
 			tld = trd;
 			bld = brd;
-			trd = tile.get(c, r - 1);
-			brd = tile.get(c, r);
+			trd = tile.get(x, y - 1);
+			brd = tile.get(x, y);
 			const minL = minR;
 			const maxL = maxR;
 			minR = Math.min(trd, brd);
@@ -283,8 +284,8 @@ export const marchingSquares = (
 					if (!fragmentByEnd) fragmentByEndByLevel.set(threshold, (fragmentByEnd = new Map()));
 					const start = segment[0];
 					const end = segment[1];
-					const startIndex = index(tile.width, c, r, start);
-					const endIndex = index(tile.width, c, r, end);
+					const startIndex = index(tile.width, x, y, start);
+					const endIndex = index(tile.width, x, y, end);
 					let f, g;
 
 					if ((f = fragmentByEnd.get(startIndex))) {
@@ -293,7 +294,7 @@ export const marchingSquares = (
 							fragmentByStart.delete(endIndex);
 							if (f === g) {
 								// closing a ring
-								interpolate(end, threshold, f.append);
+								interpolate(x, y, end, threshold, f.append);
 								if (!f.isEmpty()) {
 									let list = segments[threshold];
 									if (!list) {
@@ -308,19 +309,19 @@ export const marchingSquares = (
 							}
 						} else {
 							// adding to the end of f
-							interpolate(end, threshold, f.append);
+							interpolate(x, y, end, threshold, f.append);
 							fragmentByEnd.set((f.end = endIndex), f);
 						}
 					} else if ((f = fragmentByStart.get(endIndex))) {
 						fragmentByStart.delete(endIndex);
 						// extending the start of f
-						interpolate(start, threshold, f.prepend);
+						interpolate(x, y, start, threshold, f.prepend);
 						fragmentByStart.set((f.start = startIndex), f);
 					} else {
 						// starting a new fragment
 						const newFrag = new Fragment(startIndex, endIndex);
-						interpolate(start, threshold, newFrag.append);
-						interpolate(end, threshold, newFrag.append);
+						interpolate(x, y, start, threshold, newFrag.append);
+						interpolate(x, y, end, threshold, newFrag.append);
 						fragmentByStart.set(startIndex, newFrag);
 						fragmentByEnd.set(endIndex, newFrag);
 					}
