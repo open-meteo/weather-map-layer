@@ -6,6 +6,8 @@ export * from './utils/interpolations';
 export * from './utils/math';
 export * from './utils/projections';
 export * from './utils/variables';
+export * from './utils/gaussian';
+
 export * from './om-file-reader';
 export * from './om-protocol';
 export * from './worker-pool';

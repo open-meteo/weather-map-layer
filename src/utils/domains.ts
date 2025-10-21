@@ -377,7 +377,7 @@ export const domainOptions: Array<Domain> = [
 		model_interval: 6,
 		windUVComponents: true
 	},
-		{
+	{
 		value: 'ecmwf_ifs',
 		label: 'ECMWF IFS HRES',
 		grid: {
