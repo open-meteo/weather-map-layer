@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 	<head>
-		<title>Open-Meteo Mapbox Layer - Temperature Labels Example</title>
+		<title>Open-Meteo Mapbox Layer - Temperature Example</title>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.css" />
@@ -9,7 +9,7 @@
 		<!-- Set to latest version -->
 		<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.3/dist/index.js"></script>
 		<!-- Local development -->
-		<!--<script src="../../dist/index.js"></script>-->
+		<!--<script src="../dist/index.js"></script>-->
 		<style>
 			html,
 			body,
@@ -27,7 +27,6 @@
 
 			const map = new maplibregl.Map({
 				container: 'map',
-				maxZoom: 12,
 				style: {
 					version: 8,
 					sources: {
@@ -44,17 +43,16 @@
 							type: 'raster',
 							source: 'osm'
 						}
-					],
-					glyphs: 'https://maptiler.servert.nl/fonts/{fontstack}/{range}.pbf'
+					]
 				},
 				hash: true
 			});
 
 			// s3 storage structure: /data_spatial/{domain}/{modelRun /year/month/day/time}Z/{selectedTime year-month-day-time.om}?variable={variable}
-			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/15/1200Z/2025-10-15T1400.om?variable=temperature_2m`;
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/15/1200Z/2025-10-15T1400.om?variable=wind_10m`;
 
 			map.on('load', () => {
-				map.addSource('omFileRasterSource', {
+				map.addSource('omFileSource', {
 					url: 'om://' + omUrl,
 					type: 'raster',
 					tileSize: 256,
@@ -62,31 +60,9 @@
 				});
 
 				map.addLayer({
-					id: 'omFileRasterLayer',
+					id: 'omFileLayer',
 					type: 'raster',
-					source: 'omFileRasterSource'
-				});
-
-				map.addSource('omFileGridSource', {
-					url: 'om://' + omUrl + '?grid=true',
-					type: 'vector'
-				});
-
-				map.addLayer({
-					id: 'omFileGridLabels',
-					type: 'symbol',
-					source: 'omFileGridSource',
-					'source-layer': 'grid',
-					layout: {
-						'symbol-placement': 'line-center',
-						'text-font': ['Noto Sans Regular'],
-						'text-field': ['to-string', ['get', 'value']],
-						'text-size': 16,
-						'icon-allow-overlap': true,
-						'text-allow-overlap': true,
-						'text-ignore-placement': true,
-						'icon-ignore-placement': true
-					}
+					source: 'omFileSource'
 				});
 			});
 		</script>
