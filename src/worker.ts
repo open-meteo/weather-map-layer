@@ -420,7 +420,7 @@ self.onmessage = async (message) => {
 				gaussian = new GaussianGrid(domain.grid.gaussianGridLatitudeLines);
 			}
 
-			const multiplier = extent / (width - 1);
+			const multiplier = extent / width;
 			let tld: number, trd: number, bld: number, brd: number;
 			let i: number, j: number;
 			const segments: { [ele: number]: number[][] } = {};
