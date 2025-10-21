@@ -15,12 +15,13 @@ import { getColor, getInterpolator, getOpacity } from './utils/color-scales';
 import type { Domain, Variable, Interpolator, DimensionRange, IndexAndFractions } from './types';
 
 import { GaussianGrid } from './utils/gaussian';
+import { MS_TO_KMH } from './utils/constants';
 
 const TILE_SIZE = 256 * 2;
 const OPACITY = 75;
 
 let arrowCanvas: OffscreenCanvasRenderingContext2D | null = null;
-function getArrowCanvas() {
+const getArrowCanvas = () => {
 	if (arrowCanvas != null) {
 		return arrowCanvas;
 	}
@@ -45,7 +46,7 @@ function getArrowCanvas() {
 
 	arrowCanvas = ctx;
 	return ctx;
-}
+};
 
 const drawArrow = (
 	rgba: Uint8ClampedArray,
@@ -59,6 +60,7 @@ const drawArrow = (
 	boxSize = TILE_SIZE / 8,
 	domain: Domain,
 	variable: Variable,
+	gaussion: GaussianGrid | undefined,
 	directions: Float32Array,
 	interpolator: Interpolator,
 	projectionGrid: ProjectionGrid | null,
@@ -81,10 +83,16 @@ const drawArrow = (
 		latLonMinMax
 	);
 
-	const px = interpolator(values, index, xFraction, yFraction, ranges);
-	const direction = degreesToRadians(
-		interpolator(directions, index, xFraction, yFraction, ranges) + 180
-	);
+	let px, direction;
+	if (gaussion) {
+		px = gaussion.getLinearInterpolatedValue(values, lat, lon);
+		direction = degreesToRadians(gaussion.getLinearInterpolatedValue(directions, lat, lon) + 180);
+	} else {
+		px = interpolator(values, index, xFraction, yFraction, ranges);
+		direction = degreesToRadians(
+			interpolator(directions, index, xFraction, yFraction, ranges) + 180
+		);
+	}
 
 	arrow.rotate(direction);
 	const arrowPixelData = arrow.getImageData(0, 0, 64, 64).data;
@@ -107,12 +115,12 @@ const drawArrow = (
 				let opacityValue;
 
 				if (variable.value.startsWith('wind')) {
-					opacityValue = Math.min(((px - 2) / 2) * 0.5, 1);
+					opacityValue = Math.min(((px - 0.4) / 1) * 0.5, 1);
 				} else {
 					opacityValue = 0.8;
 				}
 
-				if (arrowPixelData[4 * ind + 3]) {
+				if (arrowPixelData[4 * ind + 3] && opacityValue > 0.1) {
 					rgba[4 * indTile] = 0;
 					rgba[4 * indTile + 1] = 0;
 					rgba[4 * indTile + 2] = 0;
@@ -206,7 +214,6 @@ self.onmessage = async (message) => {
 				let px = NaN;
 				if (gaussian && domain.grid.gaussianGridLatitudeLines) {
 					px = gaussian.getLinearInterpolatedValue(values, lat, lon);
-					// or use nearest neighbour with: px = gaussian.getNearestNeighborValue(values, lat, lon);
 				} else {
 					const { index, xFraction, yFraction } = getIndexAndFractions(
 						lat,
@@ -224,6 +231,10 @@ self.onmessage = async (message) => {
 					if (px < 0.25) {
 						px = NaN;
 					}
+				}
+
+				if (variable.value.includes('wind')) {
+					px = px * MS_TO_KMH;
 				}
 
 				if (isNaN(px) || px === Infinity || variable.value === 'weather_code') {
@@ -269,6 +280,7 @@ self.onmessage = async (message) => {
 							boxSize,
 							domain,
 							variable,
+							gaussian,
 							directions,
 							interpolator,
 							projectionGrid,

@@ -41,6 +41,7 @@ import type {
 	DimensionRange,
 	ColorScales
 } from './types';
+import { MS_TO_KMH } from './utils/constants';
 
 let dark = false;
 let partial = false;
@@ -69,6 +70,7 @@ const workerPool = new WorkerPool();
 export const getValueFromLatLong = (
 	lat: number,
 	lon: number,
+	variable: Variable,
 	colorScale: ColorScale
 ): { index: number; value: number; direction?: number } => {
 	if (data) {
@@ -102,7 +104,10 @@ export const getValueFromLatLong = (
 		if (values && index) {
 			const interpolator = getInterpolator(colorScale);
 
-			const px = interpolator(values, index, xFraction, yFraction, ranges);
+			let px = interpolator(values, index, xFraction, yFraction, ranges);
+			if (variable.value.includes('wind')) {
+				px = px * MS_TO_KMH;
+			}
 
 			return { index: index, value: px };
 		} else {
