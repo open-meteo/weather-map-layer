@@ -42,6 +42,7 @@ import type {
 	ColorScales
 } from './types';
 import { MS_TO_KMH } from './utils/constants';
+import { GaussianGrid } from './utils/gaussian';
 
 let dark = false;
 let partial = false;
@@ -81,6 +82,7 @@ export const getValueFromLatLong = (
 		const lonMax = domain.grid.lonMin + domain.grid.dx * ranges[1]['end'];
 		const latMax = domain.grid.latMin + domain.grid.dy * ranges[0]['end'];
 
+		// let index, xFraction, yFraction;
 		let indexObject;
 		if (domain.grid.projection) {
 			indexObject = projectionGrid.findPointInterpolated(lat, lon, ranges);
@@ -95,7 +97,7 @@ export const getValueFromLatLong = (
 			);
 		}
 
-		const { index, xFraction, yFraction } = indexObject ?? {
+		let { index, xFraction, yFraction } = indexObject ?? {
 			index: NaN,
 			xFraction: 0,
 			yFraction: 0
@@ -190,8 +192,12 @@ const getTilejson = async (fullUrl: string): Promise<TileJSON> => {
 	};
 };
 
-const initOMFile = (url: string, useSAB: boolean): Promise<void> => {
+let setColorScales: ColorScales;
+export const initOMFile = (url: string, omProtocolSettings: OmProtocolSettings): Promise<void> => {
 	return new Promise((resolve, reject) => {
+		const { useSAB, prefetch } = omProtocolSettings;
+		setColorScales = omProtocolSettings.colorScales;
+
 		const [omUrl, omParams] = url.replace('om://', '').split('?');
 
 		const urlParams = new URLSearchParams(omParams);
@@ -235,8 +241,11 @@ const initOMFile = (url: string, useSAB: boolean): Promise<void> => {
 				omapsFileReader.readVariable(variable, ranges).then((values) => {
 					data = values;
 					resolve();
-					// prefetch first bytes of the previous and next timesteps to trigger CF caching
-					omapsFileReader.prefetch(omUrl);
+
+					if (prefetch) {
+						// prefetch first bytes of the previous and next timesteps to trigger CF caching
+						omapsFileReader.prefetch(omUrl);
+					}
 				});
 			})
 			.catch((e) => {
@@ -245,17 +254,26 @@ const initOMFile = (url: string, useSAB: boolean): Promise<void> => {
 	});
 };
 
-let setColorScales: ColorScales;
+export interface OmProtocolSettings {
+	useSAB: boolean;
+	prefetch: boolean;
+	colorScales: ColorScales;
+}
+
+const defaultOmProtocolSettings = {
+	useSAB: false,
+	prefetch: false,
+	colorScales: defaultColorScales
+};
+
 export const omProtocol = async (
 	params: RequestParameters,
 	abortController?: AbortController,
-	useSAB = false,
-	colorScales = defaultColorScales
+	omProtocolSettings: OmProtocolSettings = defaultOmProtocolSettings
 ): Promise<GetResourceResponse<TileJSON | ImageBitmap>> => {
 	if (params.type == 'json') {
-		setColorScales = colorScales;
 		try {
-			await initOMFile(params.url, useSAB);
+			await initOMFile(params.url, omProtocolSettings);
 		} catch (e) {
 			throw new Error(e as string);
 		}
