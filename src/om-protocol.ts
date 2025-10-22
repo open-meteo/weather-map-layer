@@ -19,8 +19,8 @@ import {
 	getColorScale
 } from './utils/color-scales';
 
-import { domainOptions } from './utils/domains';
-import { variableOptions } from './utils/variables';
+import { domainOptions as defaultDomainOptions } from './utils/domains';
+import { variableOptions as defaultVariableOptions } from './utils/variables';
 
 import {
 	DynamicProjection,
@@ -30,6 +30,8 @@ import {
 } from './utils/projections';
 
 import { OMapsFileReader } from './om-file-reader';
+
+import { MS_TO_KMH } from './utils/constants';
 
 import type {
 	Bounds,
@@ -41,8 +43,6 @@ import type {
 	DimensionRange,
 	ColorScales
 } from './types';
-import { MS_TO_KMH } from './utils/constants';
-import { GaussianGrid } from './utils/gaussian';
 
 let dark = false;
 let partial = false;
@@ -193,19 +193,24 @@ const getTilejson = async (fullUrl: string): Promise<TileJSON> => {
 };
 
 let setColorScales: ColorScales;
+let setDomainOptions: Domain[];
+let setVariableOptions: Variable[];
 export const initOMFile = (url: string, omProtocolSettings: OmProtocolSettings): Promise<void> => {
 	return new Promise((resolve, reject) => {
 		const { useSAB, prefetch } = omProtocolSettings;
 		setColorScales = omProtocolSettings.colorScales;
+		setDomainOptions = omProtocolSettings.domainOptions;
+		setVariableOptions = omProtocolSettings.variableOptions;
 
 		const [omUrl, omParams] = url.replace('om://', '').split('?');
 
 		const urlParams = new URLSearchParams(omParams);
 		dark = urlParams.get('dark') === 'true';
 		partial = urlParams.get('partial') === 'true';
-		domain = domainOptions.find((dm) => dm.value === omUrl.split('/')[4]) ?? domainOptions[0];
+		domain = setDomainOptions.find((dm) => dm.value === omUrl.split('/')[4]) ?? setDomainOptions[0];
 		variable =
-			variableOptions.find((v) => urlParams.get('variable') === v.value) ?? variableOptions[0];
+			setVariableOptions.find((v) => urlParams.get('variable') === v.value) ??
+			setVariableOptions[0];
 		mapBounds = urlParams
 			.get('bounds')
 			?.split(',')
@@ -258,12 +263,16 @@ export interface OmProtocolSettings {
 	useSAB: boolean;
 	prefetch: boolean;
 	colorScales: ColorScales;
+	domainOptions: Domain[];
+	variableOptions: Variable[];
 }
 
 const defaultOmProtocolSettings = {
 	useSAB: false,
 	prefetch: false,
-	colorScales: defaultColorScales
+	colorScales: defaultColorScales,
+	domainOptions: defaultDomainOptions,
+	variableOptions: defaultVariableOptions
 };
 
 export const omProtocol = async (
