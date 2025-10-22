@@ -267,7 +267,7 @@ export interface OmProtocolSettings {
 	variableOptions: Variable[];
 }
 
-const defaultOmProtocolSettings = {
+export const defaultOmProtocolSettings = {
 	useSAB: false,
 	prefetch: false,
 	colorScales: defaultColorScales,
@@ -278,7 +278,7 @@ const defaultOmProtocolSettings = {
 export const omProtocol = async (
 	params: RequestParameters,
 	abortController?: AbortController,
-	omProtocolSettings: OmProtocolSettings = defaultOmProtocolSettings
+	omProtocolSettings = defaultOmProtocolSettings
 ): Promise<GetResourceResponse<TileJSON | ImageBitmap>> => {
 	if (params.type == 'json') {
 		try {
