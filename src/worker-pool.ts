@@ -6,7 +6,8 @@ import type { Data } from './om-protocol';
 import type { Domain, Variable, ColorScale, DimensionRange } from './types';
 
 export interface TileRequest {
-	type: 'GT';
+	type: 'getArrayBuffer' | 'getImage';
+
 	x: number;
 	y: number;
 	z: number;
@@ -15,6 +16,7 @@ export interface TileRequest {
 	dark: boolean;
 	ranges: DimensionRange[];
 	tileSize: number;
+	interval: number;
 	domain: Domain;
 	variable: Variable;
 	colorScale: ColorScale;
@@ -22,7 +24,7 @@ export interface TileRequest {
 }
 
 export type TileResponse = {
-	type: 'RT';
+	type: 'returnImage' | 'returnArrayBuffer';
 	tile: ImageBitmap;
 	key: string;
 };
@@ -51,7 +53,7 @@ export class WorkerPool {
 
 	private handleMessage(message: MessageEvent): void {
 		const data = message.data as TileResponse;
-		if (data.type === 'RT') {
+		if (data.type.startsWith('return')) {
 			const resolve = this.resolvers.get(data.key);
 			if (resolve) {
 				resolve(data.tile);

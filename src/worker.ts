@@ -1,25 +1,27 @@
+import Pbf from 'pbf';
+
 import { hideZero, drawOnTiles } from './utils/variables';
 
 import {
 	DynamicProjection,
 	getIndexAndFractions,
 	ProjectionGrid,
+	ProjectionName,
 	type Projection
 } from './utils/projections';
 
-import {
-	tile2lat,
-	tile2lon,
-	rotatePoint,
-	degreesToRadians,
-	getIndexFromLatLong
-} from './utils/math';
+import { tile2lat, tile2lon, rotatePoint, degreesToRadians } from './utils/math';
 
 import { getColor, getInterpolator, getOpacity } from './utils/color-scales';
 
 import type { Domain, Variable, Interpolator, DimensionRange, IndexAndFractions } from './types';
 
+import { generateGrid } from './utils/grid';
+
+import { generateContours } from './utils/contours';
+
 import { GaussianGrid } from './utils/gaussian';
+
 import { MS_TO_KMH } from './utils/constants';
 
 const OPACITY = 75;
@@ -137,11 +139,14 @@ const drawArrow = (
 };
 
 self.onmessage = async (message) => {
-	if (message.data.type == 'GT') {
+	if (message.data.type == 'getImage') {
 		const key = message.data.key;
+
 		const x = message.data.x;
 		const y = message.data.y;
 		const z = message.data.z;
+
+		const dark = message.data.dark;
 		const values = message.data.data.values;
 		const ranges = message.data.ranges;
 		const tileSize = message.data.tileSize;
@@ -151,11 +156,10 @@ self.onmessage = async (message) => {
 
 		const pixels = tileSize * tileSize;
 		const rgba = new Uint8ClampedArray(pixels * 4);
-		const dark = message.data.dark;
 
 		let projectionGrid = null;
 		if (domain.grid.projection) {
-			const projectionName = domain.grid.projection.name;
+			const projectionName = domain.grid.projection.name as ProjectionName;
 			const projection = new DynamicProjection(
 				projectionName,
 				domain.grid.projection
@@ -267,6 +271,29 @@ self.onmessage = async (message) => {
 
 		const tile = await createImageBitmap(new ImageData(rgba, tileSize, tileSize));
 
-		postMessage({ type: 'RT', tile: tile, key: key });
+		postMessage({ type: 'returnImage', tile: tile, key: key });
+	} else if (message.data.type == 'getArrayBuffer') {
+		const x = message.data.x;
+		const y = message.data.y;
+		const z = message.data.z;
+		const key = message.data.key;
+		const values = message.data.data.values;
+		const ranges = message.data.ranges;
+		const domain = message.data.domain;
+		const interval = message.data.interval;
+		const directions = message.data.directions;
+
+		const extent = 4096;
+		const margin = 256;
+
+		const pbf = new Pbf();
+
+		if (key.includes('grid=true')) {
+			generateGrid(pbf, values, directions, domain, x, y, z, margin, extent);
+		} else {
+			generateContours(pbf, values, domain, ranges, x, y, z, extent, interval);
+		}
+
+		postMessage({ type: 'returnArrayBuffer', tile: pbf.finish(), key: key });
 	}
 };

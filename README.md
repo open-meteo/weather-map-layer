@@ -58,7 +58,7 @@ For a standalone example, see `examples/temperature.html`.
 
 ```ts
 ...
-<script src="https://unpkg.com/@openmeteo/mapbox-layer/dist/index.js"></script>
+<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.3/dist/index.js"></script>
 ...
 
 <script>
@@ -95,3 +95,29 @@ The repository contains an `examples` directory with ready‑to‑run demos:
 - `examples/custom-colorscale.html` – shows how to use your own color definition.
 
 Run the examples by opening the corresponding `.html` file in a browser.
+
+## Contouring
+
+For contouring a new source must be added, since the contouring functionality uses vector tiles.
+
+```ts
+...
+
+map.on('load', () => {
+	map.addSource('omFileVectorSource', {
+		url: 'om://' + omUrl,
+		type: 'vector'
+	});
+
+	map.addLayer({
+		id: 'omFileVectorLayer',
+		type: 'line',
+		source: 'omFileVectorSource',
+		'source-layer': 'contours',
+		paint: {
+			'line-color': 'black',
+			'line-width': 4
+		}
+	});
+});
+```

@@ -32,6 +32,8 @@ import {
 
 import { OMapsFileReader } from './om-file-reader';
 
+import { GaussianGrid } from './utils/gaussian';
+
 import { MS_TO_KMH } from './utils/constants';
 
 import type {
@@ -42,14 +44,15 @@ import type {
 	TileIndex,
 	ColorScale,
 	DimensionRange,
-	ColorScales,
-	IndexAndFractions
+	ColorScales
 } from './types';
-import { GaussianGrid } from './utils/gaussian';
+
+import { capitalize } from './utils';
 
 let dark = false;
 let partial = false;
 let tileSize = 128;
+let interval = 2;
 let domain: Domain;
 let variable: Variable;
 let mapBounds: number[];
@@ -112,11 +115,15 @@ export const getValueFromLatLong = (
 	}
 };
 
-const getTile = async ({ z, x, y }: TileIndex, omUrl: string): Promise<ImageBitmap> => {
+const getTile = async (
+	{ z, x, y }: TileIndex,
+	omUrl: string,
+	type: 'image' | 'arrayBuffer'
+): Promise<ImageBitmap> => {
 	const key = `${omUrl}/${tileSize}/${z}/${x}/${y}`;
 
 	return await workerPool.requestTile({
-		type: 'GT',
+		type: ('get' + capitalize(type)) as 'getImage' | 'getArrayBuffer',
 		x,
 		y,
 		z,
@@ -125,6 +132,7 @@ const getTile = async ({ z, x, y }: TileIndex, omUrl: string): Promise<ImageBitm
 		dark,
 		ranges,
 		tileSize: resolutionFactor * tileSize,
+		interval,
 		domain,
 		variable,
 		colorScale:
@@ -135,7 +143,7 @@ const getTile = async ({ z, x, y }: TileIndex, omUrl: string): Promise<ImageBitm
 
 const URL_REGEX = /^om:\/\/(.+)\/(\d+)\/(\d+)\/(\d+)$/;
 
-const renderTile = async (url: string) => {
+const renderTile = async (url: string, type: 'image' | 'arrayBuffer') => {
 	const result = url.match(URL_REGEX);
 	if (!result) {
 		throw new Error(`Invalid OM protocol URL '${url}'`);
@@ -148,7 +156,7 @@ const renderTile = async (url: string) => {
 	const y = parseInt(result[4]);
 
 	// Read OM data
-	return await getTile({ z, x, y }, omUrl);
+	return await getTile({ z, x, y }, omUrl, type);
 };
 
 const getTilejson = async (fullUrl: string): Promise<TileJSON> => {
@@ -192,12 +200,11 @@ export const initOMFile = (url: string, omProtocolSettings: OmProtocolSettings):
 		const { useSAB } = omProtocolSettings;
 		tileSize = omProtocolSettings.tileSize;
 		setColorScales = omProtocolSettings.colorScales;
+		resolutionFactor = omProtocolSettings.resolutionFactor;
 		setDomainOptions = omProtocolSettings.domainOptions;
 		setVariableOptions = omProtocolSettings.variableOptions;
-		resolutionFactor = omProtocolSettings.resolutionFactor;
 
-		const { dark, partial, domain, variable, ranges, omUrl } =
-			omProtocolSettings.parseUrlCallback(url);
+		const { partial, domain, variable, ranges, omUrl } = omProtocolSettings.parseUrlCallback(url);
 
 		if (!omFileReader) {
 			omFileReader = new OMapsFileReader(domain, partial, useSAB);
@@ -232,6 +239,7 @@ export const parseOmUrl = (url: string): OmParseUrlCallbackResult => {
 	const urlParams = new URLSearchParams(omParams);
 	dark = urlParams.get('dark') === 'true';
 	partial = urlParams.get('partial') === 'true';
+	interval = Number(urlParams.get('interval'));
 	domain = setDomainOptions.find((dm) => dm.value === omUrl.split('/')[4]) ?? setDomainOptions[0];
 	variable =
 		setVariableOptions.find((v) => urlParams.get('variable') === v.value) ?? setVariableOptions[0];
@@ -258,11 +266,10 @@ export const parseOmUrl = (url: string): OmParseUrlCallbackResult => {
 			{ start: 0, end: domain.grid.nx }
 		];
 	}
-	return { dark, partial, domain, variable, ranges, omUrl };
+	return { partial, domain, variable, ranges, omUrl };
 };
 
 export interface OmParseUrlCallbackResult {
-	dark: boolean;
 	partial: boolean;
 	domain: Domain;
 	variable: Variable;
@@ -308,9 +315,9 @@ export const omProtocol = async (
 		return {
 			data: await getTilejson(params.url)
 		};
-	} else if (params.type == 'image') {
+	} else if (params.type && ['image', 'arrayBuffer'].includes(params.type)) {
 		return {
-			data: await renderTile(params.url)
+			data: await renderTile(params.url, params.type as 'image' | 'arrayBuffer')
 		};
 	} else {
 		throw new Error(`Unsupported request type '${params.type}'`);
