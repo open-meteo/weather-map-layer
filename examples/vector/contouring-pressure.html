@@ -114,13 +114,16 @@
 					'source-layer': 'contours',
 					layout: {
 						'symbol-placement': 'line-center',
+						'symbol-spacing': 1,
 						'text-font': ['Noto Sans Regular'],
 						'text-field': ['to-string', ['get', 'value']],
-						'text-size': 16
-						// 'icon-allow-overlap': true,
-						// 'text-allow-overlap': true,
-						// 'text-ignore-placement': true,
-						// 'icon-ignore-placement': true
+						'text-padding': 1,
+						'text-offset': [0, -0.6]
+						//'text-allow-overlap': true,
+						//'text-ignore-placement': true
+					},
+					paint: {
+						'text-color': ['case', ['boolean', ['feature-state', 'hover'], false], 'red', 'black']
 					}
 				});
 
