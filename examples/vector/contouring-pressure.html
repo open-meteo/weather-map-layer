@@ -51,7 +51,7 @@
 			});
 
 			// s3 storage structure: /data_spatial/{domain}/{modelRun /year/month/day/time}Z/{selectedTime year-month-day-time.om}?variable={variable}
-			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/15/1200Z/2025-10-15T1400.om?variable=pressure_msl`;
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/15/1200Z/2025-10-15T1400.om?variable=pressure_msl&interval=2`;
 
 			map.on('load', () => {
 				map.addSource('omFileRasterSource', {
@@ -77,10 +77,6 @@
 					type: 'line',
 					source: 'omFileVectorSource',
 					'source-layer': 'contours',
-					layout: {
-						'line-join': 'round',
-						'line-cap': 'round'
-					},
 					paint: {
 						'line-color': ['case', ['boolean', ['feature-state', 'hover'], false], 'red', 'black'],
 						'line-width': [

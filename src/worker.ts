@@ -278,8 +278,9 @@ self.onmessage = async (message) => {
 		const z = message.data.z;
 		const key = message.data.key;
 		const values = message.data.data.values;
-		const domain = message.data.domain;
 		const ranges = message.data.ranges;
+		const domain = message.data.domain;
+		const interval = message.data.interval;
 		const directions = message.data.directions;
 
 		const extent = 4096;
@@ -290,7 +291,7 @@ self.onmessage = async (message) => {
 		if (key.includes('grid=true')) {
 			generateGrid(pbf, values, directions, domain, x, y, z, margin, extent);
 		} else {
-			generateContours(pbf, values, domain, ranges, x, y, z, extent);
+			generateContours(pbf, values, domain, ranges, x, y, z, extent, interval);
 		}
 
 		postMessage({ type: 'returnArrayBuffer', tile: pbf.finish(), key: key });

@@ -52,6 +52,7 @@ import { capitalize } from './utils';
 let dark = false;
 let partial = false;
 let tileSize = 128;
+let interval = 2;
 let domain: Domain;
 let variable: Variable;
 let mapBounds: number[];
@@ -131,6 +132,7 @@ const getTile = async (
 		dark,
 		ranges,
 		tileSize: resolutionFactor * tileSize,
+		interval,
 		domain,
 		variable,
 		colorScale:
@@ -237,6 +239,7 @@ export const parseOmUrl = (url: string): OmParseUrlCallbackResult => {
 	const urlParams = new URLSearchParams(omParams);
 	dark = urlParams.get('dark') === 'true';
 	partial = urlParams.get('partial') === 'true';
+	interval = Number(urlParams.get('interval'));
 	domain = setDomainOptions.find((dm) => dm.value === omUrl.split('/')[4]) ?? setDomainOptions[0];
 	variable =
 		setVariableOptions.find((v) => urlParams.get('variable') === v.value) ?? setVariableOptions[0];

@@ -195,12 +195,12 @@ export const generateContours = (
 	x: number,
 	y: number,
 	z: number,
-	extent: number
+	extent: number,
+	interval: number = 2
 ) => {
 	const features = [];
 	let cursor: [number, number] = [0, 0];
 
-	const interval = 2;
 	const buffer = 1;
 
 	const width = 128;
@@ -410,9 +410,8 @@ export const generateContours = (
 				geom.push(zigzag(yt1 - cursor[1]));
 				cursor = [xt1, yt1];
 			}
-
 			features.push({
-				id: level,
+				id: 1000000 + Number(level),
 				type: 2, // 2 = LineString
 				properties: {
 					value: level
