@@ -64,7 +64,7 @@ const drawArrow = (
 	boxSize: number,
 	domain: Domain,
 	variable: Variable,
-	gaussion: GaussianGrid | undefined,
+	gaussian: GaussianGrid | undefined,
 	directions: Float32Array,
 	interpolator: Interpolator,
 	projectionGrid: ProjectionGrid | null,
@@ -88,9 +88,9 @@ const drawArrow = (
 	);
 
 	let px, direction;
-	if (gaussion) {
-		px = gaussion.getLinearInterpolatedValue(values, lat, lon);
-		direction = degreesToRadians(gaussion.getLinearInterpolatedValue(directions, lat, lon) + 180);
+	if (gaussian) {
+		px = gaussian.getLinearInterpolatedValue(values, lat, lon);
+		direction = degreesToRadians(gaussian.getLinearInterpolatedValue(directions, lat, lon) + 180);
 	} else {
 		px = interpolator(values, index, xFraction, yFraction, ranges);
 		direction = degreesToRadians(
@@ -175,6 +175,17 @@ self.onmessage = async (message) => {
 			gaussian = new GaussianGrid(domain.grid.gaussianGridLatitudeLines);
 		}
 
+		const isWind = variable.value.includes('wind');
+		const isWeatherCode = variable.value === 'weather_code';
+		const isDirection =
+			(variable.value.startsWith('wave') && !variable.value.includes('_period')) ||
+			(variable.value.startsWith('wind') &&
+				!variable.value.includes('_gusts') &&
+				!variable.value.includes('_wave')) ||
+			(drawOnTiles.includes(variable.value) &&
+				(variable.value.startsWith('wave') || variable.value.startsWith('wind')));
+		const isHideZero = hideZero.includes(variable.value);
+
 		for (let i = 0; i < tileSize; i++) {
 			const lat = tile2lat(y + i / tileSize, z);
 			for (let j = 0; j < tileSize; j++) {
@@ -197,17 +208,17 @@ self.onmessage = async (message) => {
 					px = interpolator(values as Float32Array, index, xFraction, yFraction, ranges);
 				}
 
-				if (hideZero.includes(variable.value)) {
+				if (isHideZero) {
 					if (px < 0.25) {
 						px = NaN;
 					}
 				}
 
-				if (variable.value.includes('wind')) {
+				if (isWind) {
 					px = px * MS_TO_KMH;
 				}
 
-				if (isNaN(px) || px === Infinity || variable.value === 'weather_code') {
+				if (isNaN(px) || px === Infinity || isWeatherCode) {
 					rgba[4 * ind] = 0;
 					rgba[4 * ind + 1] = 0;
 					rgba[4 * ind + 2] = 0;
@@ -225,39 +236,31 @@ self.onmessage = async (message) => {
 			}
 		}
 
-		if (
-			(variable.value.startsWith('wave') && !variable.value.includes('_period')) ||
-			(variable.value.startsWith('wind') &&
-				!variable.value.includes('_gusts') &&
-				!variable.value.includes('_wave')) ||
-			drawOnTiles.includes(variable.value)
-		) {
-			if (variable.value.startsWith('wave') || variable.value.startsWith('wind')) {
-				const directions = message.data.data.directions;
+		if (isDirection) {
+			const directions = message.data.data.directions;
 
-				const boxSize = Math.floor(tileSize / 8);
-				for (let i = 0; i < tileSize; i += boxSize) {
-					for (let j = 0; j < tileSize; j += boxSize) {
-						drawArrow(
-							rgba,
-							i,
-							j,
-							x,
-							y,
-							z,
-							values,
-							ranges,
-							tileSize,
-							boxSize,
-							domain,
-							variable,
-							gaussian,
-							directions,
-							interpolator,
-							projectionGrid,
-							[latMin, lonMin, latMax, lonMax]
-						);
-					}
+			const boxSize = Math.floor(tileSize / 8);
+			for (let i = 0; i < tileSize; i += boxSize) {
+				for (let j = 0; j < tileSize; j += boxSize) {
+					drawArrow(
+						rgba,
+						i,
+						j,
+						x,
+						y,
+						z,
+						values,
+						ranges,
+						tileSize,
+						boxSize,
+						domain,
+						variable,
+						gaussian,
+						directions,
+						interpolator,
+						projectionGrid,
+						[latMin, lonMin, latMax, lonMax]
+					);
 				}
 			}
 		}
