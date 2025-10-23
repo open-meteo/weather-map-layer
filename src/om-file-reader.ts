@@ -29,7 +29,7 @@ export class OMapsFileReader {
 	projection!: Projection;
 	projectionGrid!: ProjectionGrid;
 
-	constructor(domain: Domain, partial: boolean, useSAB: boolean, prefetch = false) {
+	constructor(domain: Domain, partial: boolean, useSAB: boolean) {
 		this.setReaderData(domain, partial);
 		this.useSAB = useSAB;
 	}
