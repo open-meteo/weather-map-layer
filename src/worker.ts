@@ -269,9 +269,8 @@ self.onmessage = async (message) => {
 			}
 		}
 
-		const tile = await createImageBitmap(new ImageData(rgba, tileSize, tileSize));
-
-		postMessage({ type: 'returnImage', tile: tile, key: key });
+		const buffer = await createImageBitmap(new ImageData(rgba, tileSize, tileSize));
+		postMessage({ type: 'returnImage', tile: buffer, key: key }, { transfer: [buffer] });
 	} else if (message.data.type == 'getArrayBuffer') {
 		const x = message.data.x;
 		const y = message.data.y;
@@ -294,6 +293,7 @@ self.onmessage = async (message) => {
 			generateContours(pbf, values, domain, ranges, x, y, z, extent, interval);
 		}
 
-		postMessage({ type: 'returnArrayBuffer', tile: pbf.finish(), key: key });
+		const buffer = pbf.finish();
+		postMessage({ type: 'returnArrayBuffer', tile: buffer, key: key }, { transfer: [buffer] });
 	}
 };
