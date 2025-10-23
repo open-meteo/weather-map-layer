@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 	<head>
-		<title>Open-Meteo Mapbox Layer - Custom Colorscales</title>
+		<title>Open-Meteo Mapbox Layer - Temperature Labels Example</title>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.css" />
@@ -9,7 +9,7 @@
 		<!-- Set to latest version -->
 		<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.3/dist/index.js"></script>
 		<!-- Local development -->
-		<!--<script src="../dist/index.js"></script>-->
+		<!--<script src="../../dist/index.js"></script>-->
 		<style>
 			html,
 			body,
@@ -23,64 +23,19 @@
 	<body>
 		<div id="map"></div>
 		<script>
-			const customColorScales = {
-				// use same key as variable name
-				temperature_2m: {
-					min: -40,
-					max: 60,
-					steps: 30,
-					scalefactor: 30 / (60 - -40), // (steps / (max - min))
-					interpolationMethod: 'linear', // linear or none
-
-					// colors as rgb array
-					colors: [
-						[128, 0, 128],
-						[127, 0, 140],
-						[124, 0, 151],
-						[118, 0, 163],
-						[111, 0, 174],
-						[101, 0, 186],
-						[90, 0, 197],
-						[76, 0, 209],
-						[60, 0, 220],
-						[42, 0, 232],
-						[22, 0, 243],
-						[0, 0, 255],
-						[0, 0, 255],
-						[0, 112, 223],
-						[0, 192, 192],
-						[0, 160, 80],
-						[0, 128, 0],
-						[0, 128, 0],
-						[77, 170, 0],
-						[192, 213, 0],
-						[255, 165, 0],
-						[255, 165, 0],
-						[255, 124, 0],
-						[255, 83, 0],
-						[255, 41, 0],
-						[255, 0, 0],
-						[255, 0, 0],
-						[213, 0, 71],
-						[170, 0, 114],
-						[128, 0, 128]
-					],
-
-					unit: 'C°', // optional
-					opacity: 65 // optional
-				}
-			};
-
 			const omProtocolOptions = OpenMeteoMapboxLayer.defaultOmProtocolSettings;
-			omProtocolOptions.colorScales = customColorScales;
+			omProtocolOptions.customThresholds = [];
 
 			// use the settings as argument for the protocol
 			maplibregl.addProtocol('om', (params) =>
 				OpenMeteoMapboxLayer.omProtocol(params, undefined, omProtocolOptions)
 			);
 
+			maplibregl.addProtocol('om', OpenMeteoMapboxLayer.omProtocol);
+
 			const map = new maplibregl.Map({
 				container: 'map',
+				maxZoom: 12,
 				style: {
 					version: 8,
 					sources: {
@@ -97,7 +52,8 @@
 							type: 'raster',
 							source: 'osm'
 						}
-					]
+					],
+					glyphs: 'https://maptiler.servert.nl/fonts/{fontstack}/{range}.pbf'
 				},
 				hash: true
 			});
@@ -106,7 +62,7 @@
 			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/15/1200Z/2025-10-15T1400.om?variable=temperature_2m`;
 
 			map.on('load', () => {
-				map.addSource('omFileSource', {
+				map.addSource('omFileRasterSource', {
 					url: 'om://' + omUrl,
 					type: 'raster',
 					tileSize: 256,
@@ -114,9 +70,56 @@
 				});
 
 				map.addLayer({
-					id: 'omFileLayer',
+					id: 'omFileRasterLayer',
 					type: 'raster',
-					source: 'omFileSource'
+					source: 'omFileRasterSource'
+				});
+
+				map.addSource('omFileVectorSource', {
+					url: 'om://' + omUrl,
+					type: 'vector'
+				});
+
+				map.addLayer({
+					id: 'omFileVectorLayer',
+					type: 'line',
+					source: 'omFileVectorSource',
+					'source-layer': 'contours',
+					paint: {
+						'line-width': [
+							'case',
+							['boolean', ['==', ['%', ['to-number', ['get', 'value']], 100], 0], false],
+							3,
+							[
+								'case',
+								['boolean', ['==', ['%', ['to-number', ['get', 'value']], 50], 0], false],
+								2,
+								[
+									'case',
+									['boolean', ['==', ['%', ['to-number', ['get', 'value']], 10], 0], false],
+									1.5,
+									1
+								]
+							]
+						]
+					}
+				});
+
+				map.addLayer({
+					id: 'omFileVectorLayerLabels',
+					type: 'symbol',
+					source: 'omFileVectorSource',
+					'source-layer': 'contours',
+					layout: {
+						'symbol-placement': 'line-center',
+						'symbol-spacing': 1,
+						'text-font': ['Noto Sans Regular'],
+						'text-field': ['to-string', ['get', 'value']],
+						'text-padding': 1,
+						'text-offset': [0, -0.6]
+						//'text-allow-overlap': true,
+						//'text-ignore-placement': true
+					}
 				});
 			});
 		</script>

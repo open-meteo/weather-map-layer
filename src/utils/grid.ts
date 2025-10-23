@@ -13,8 +13,8 @@ export const generateGrid = (
 	x: number,
 	y: number,
 	z: number,
-	margin: number,
-	extent: number
+	extent: number = 4096,
+	margin: number = 0
 ) => {
 	const features = [];
 

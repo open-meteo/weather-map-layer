@@ -273,25 +273,24 @@ self.onmessage = async (message) => {
 
 		postMessage({ type: 'returnImage', tile: tile, key: key });
 	} else if (message.data.type == 'getArrayBuffer') {
+		const key = message.data.key;
+
 		const x = message.data.x;
 		const y = message.data.y;
 		const z = message.data.z;
-		const key = message.data.key;
+
 		const values = message.data.data.values;
 		const ranges = message.data.ranges;
 		const domain = message.data.domain;
 		const interval = message.data.interval;
 		const directions = message.data.directions;
 
-		const extent = 4096;
-		const margin = 256;
-
 		const pbf = new Pbf();
 
 		if (key.includes('grid=true')) {
-			generateGrid(pbf, values, directions, domain, x, y, z, margin, extent);
+			generateGrid(pbf, values, directions, domain, x, y, z);
 		} else {
-			generateContours(pbf, values, domain, ranges, x, y, z, extent, interval);
+			generateContours(pbf, values, domain, ranges, x, y, z, interval ? interval : 2);
 		}
 
 		postMessage({ type: 'returnArrayBuffer', tile: pbf.finish(), key: key });

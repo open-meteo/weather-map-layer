@@ -195,8 +195,9 @@ export const generateContours = (
 	x: number,
 	y: number,
 	z: number,
-	extent: number,
-	interval: number = 2
+	interval: number = 2,
+	threshold = undefined,
+	extent: number = 4096
 ) => {
 	const features = [];
 	let cursor: [number, number] = [0, 0];
@@ -390,7 +391,6 @@ export const generateContours = (
 	const levels = segments;
 
 	for (let [level, segments] of Object.entries(levels)) {
-		//console.log("level", level, segments)
 		for (let line of segments) {
 			const geom: number[] = [];
 			// move to first point in segments
