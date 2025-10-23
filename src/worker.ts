@@ -269,7 +269,9 @@ self.onmessage = async (message) => {
 			}
 		}
 
-		const buffer = await createImageBitmap(new ImageData(rgba, tileSize, tileSize));
+		const buffer = await createImageBitmap(new ImageData(rgba, tileSize, tileSize), {
+			premultiplyAlpha: 'premultiply'
+		});
 		postMessage({ type: 'returnImage', tile: buffer, key: key }, { transfer: [buffer] });
 	} else if (message.data.type == 'getArrayBuffer') {
 		const x = message.data.x;
