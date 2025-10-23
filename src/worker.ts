@@ -22,16 +22,15 @@ import type { Domain, Variable, Interpolator, DimensionRange, IndexAndFractions 
 import { GaussianGrid } from './utils/gaussian';
 import { MS_TO_KMH } from './utils/constants';
 
-const TILE_SIZE = 256 * 2;
 const OPACITY = 75;
 
 let arrowCanvas: OffscreenCanvasRenderingContext2D | null = null;
-const getArrowCanvas = () => {
+const getArrowCanvas = (tileSize: number) => {
 	if (arrowCanvas != null) {
 		return arrowCanvas;
 	}
 
-	const size = 64;
+	const size = tileSize / 8;
 	const canvas = new OffscreenCanvas(size, size);
 	const ctx = canvas.getContext('2d');
 	if (ctx == null) {
@@ -62,7 +61,7 @@ const drawArrow = (
 	z: number,
 	values: Float32Array,
 	ranges: DimensionRange[],
-	boxSize = TILE_SIZE / 8,
+	tileSize: number,
 	domain: Domain,
 	variable: Variable,
 	gaussion: GaussianGrid | undefined,
@@ -71,13 +70,14 @@ const drawArrow = (
 	projectionGrid: ProjectionGrid | null,
 	latLonMinMax: [minLat: number, minLon: number, maxLat: number, maxLon: number]
 ): void => {
-	const arrow = getArrowCanvas();
+	const boxSize = tileSize / 8;
+	const arrow = getArrowCanvas(tileSize);
 
 	const iCenter = iBase + Math.floor(boxSize / 2);
 	const jCenter = jBase + Math.floor(boxSize / 2);
 
-	const lat = tile2lat(y + iCenter / TILE_SIZE, z);
-	const lon = tile2lon(x + jCenter / TILE_SIZE, z);
+	const lat = tile2lat(y + iCenter / tileSize, z);
+	const lon = tile2lon(x + jCenter / tileSize, z);
 
 	const { index, xFraction, yFraction } = getIndexAndFractions(
 		lat,
@@ -100,7 +100,7 @@ const drawArrow = (
 	}
 
 	arrow.rotate(direction);
-	const arrowPixelData = arrow.getImageData(0, 0, 64, 64).data;
+	const arrowPixelData = arrow.getImageData(0, 0, tileSize / 8, tileSize / 8).data;
 
 	if (direction) {
 		for (let i = 0; i < boxSize; i++) {
@@ -115,7 +115,7 @@ const drawArrow = (
 				);
 				const newI = Math.floor(rotatedPoint[0]);
 				const newJ = Math.floor(rotatedPoint[1]);
-				const indTile = jBase + newJ + (iBase + newI) * TILE_SIZE;
+				const indTile = jBase + newJ + (iBase + newI) * tileSize;
 
 				let opacityValue;
 
@@ -145,12 +145,12 @@ self.onmessage = async (message) => {
 		const z = message.data.z;
 		const values = message.data.data.values;
 		const ranges = message.data.ranges;
-
+		const tileSize = message.data.tileSize;
 		const domain = message.data.domain;
 		const variable = message.data.variable;
 		const colorScale = message.data.colorScale;
 
-		const pixels = TILE_SIZE * TILE_SIZE;
+		const pixels = tileSize * tileSize;
 		const rgba = new Uint8ClampedArray(pixels * 4);
 		const dark = message.data.dark;
 
@@ -176,11 +176,11 @@ self.onmessage = async (message) => {
 			gaussian = new GaussianGrid(domain.grid.gaussianGridLatitudeLines);
 		}
 
-		for (let i = 0; i < TILE_SIZE; i++) {
-			const lat = tile2lat(y + i / TILE_SIZE, z);
-			for (let j = 0; j < TILE_SIZE; j++) {
-				const ind = j + i * TILE_SIZE;
-				const lon = tile2lon(x + j / TILE_SIZE, z);
+		for (let i = 0; i < tileSize; i++) {
+			const lat = tile2lat(y + i / tileSize, z);
+			for (let j = 0; j < tileSize; j++) {
+				const ind = j + i * tileSize;
+				const lon = tile2lon(x + j / tileSize, z);
 
 				let px = NaN;
 				if (gaussian && domain.grid.gaussianGridLatitudeLines) {
@@ -236,9 +236,9 @@ self.onmessage = async (message) => {
 			if (variable.value.startsWith('wave') || variable.value.startsWith('wind')) {
 				const directions = message.data.data.directions;
 
-				const boxSize = Math.floor(TILE_SIZE / 8);
-				for (let i = 0; i < TILE_SIZE; i += boxSize) {
-					for (let j = 0; j < TILE_SIZE; j += boxSize) {
+				const boxSize = Math.floor(tileSize / 8);
+				for (let i = 0; i < tileSize; i += boxSize) {
+					for (let j = 0; j < tileSize; j += boxSize) {
 						drawArrow(
 							rgba,
 							i,
@@ -248,7 +248,7 @@ self.onmessage = async (message) => {
 							z,
 							values,
 							ranges,
-							boxSize,
+							tileSize,
 							domain,
 							variable,
 							gaussian,
@@ -262,7 +262,7 @@ self.onmessage = async (message) => {
 			}
 		}
 
-		const tile = await createImageBitmap(new ImageData(rgba, TILE_SIZE, TILE_SIZE));
+		const tile = await createImageBitmap(new ImageData(rgba, tileSize, tileSize));
 
 		postMessage({ type: 'RT', tile: tile, key: key });
 	}

@@ -46,10 +46,11 @@ import type {
 
 let dark = false;
 let partial = false;
+let tileSize = 128;
 let domain: Domain;
 let variable: Variable;
 let mapBounds: number[];
-let omapsFileReader: OMapsFileReader;
+let omFileReader: OMapsFileReader;
 let mapBoundsIndexes: number[];
 let ranges: DimensionRange[];
 
@@ -65,7 +66,6 @@ export interface Data {
 
 let data: Data;
 
-const TILE_SIZE = 256 * 2;
 const workerPool = new WorkerPool();
 
 export const getValueFromLatLong = (
@@ -121,7 +121,7 @@ export const getValueFromLatLong = (
 };
 
 const getTile = async ({ z, x, y }: TileIndex, omUrl: string): Promise<ImageBitmap> => {
-	const key = `${omUrl}/${TILE_SIZE}/${z}/${x}/${y}`;
+	const key = `${omUrl}/${tileSize}/${z}/${x}/${y}`;
 
 	return await workerPool.requestTile({
 		type: 'GT',
@@ -133,6 +133,7 @@ const getTile = async ({ z, x, y }: TileIndex, omUrl: string): Promise<ImageBitm
 		data,
 		dark: dark,
 		ranges,
+		tileSize: tileSize,
 		domain,
 		variable,
 		colorScale:
@@ -197,11 +198,64 @@ let setDomainOptions: Domain[];
 let setVariableOptions: Variable[];
 export const initOMFile = (url: string, omProtocolSettings: OmProtocolSettings): Promise<void> => {
 	return new Promise((resolve, reject) => {
-		const { useSAB, prefetch } = omProtocolSettings;
+		const { useSAB } = omProtocolSettings;
+		tileSize = omProtocolSettings.tileSize;
 		setColorScales = omProtocolSettings.colorScales;
 		setDomainOptions = omProtocolSettings.domainOptions;
 		setVariableOptions = omProtocolSettings.variableOptions;
 
+		const { dark, partial, domain, variable, ranges, omUrl } =
+			omProtocolSettings.urlParseCallback(url);
+
+		if (!omFileReader) {
+			omFileReader = new OMapsFileReader(domain, partial, useSAB);
+		}
+
+		omFileReader.setReaderData(domain, partial);
+		omFileReader
+			.init(omUrl)
+			.then(() => {
+				omFileReader.readVariable(variable, ranges).then((values) => {
+					data = values;
+					resolve();
+
+					if (omProtocolSettings.postReadCallback) {
+						omProtocolSettings.postReadCallback(omFileReader, omUrl, data);
+					}
+				});
+			})
+			.catch((e) => {
+				reject(e);
+			});
+	});
+};
+
+export interface OmProtocolSettings {
+	tileSize: number;
+	useSAB: boolean;
+	colorScales: ColorScales;
+	domainOptions: Domain[];
+	variableOptions: Variable[];
+	enhancedResolution: boolean;
+	urlParseCallback: (url: string) => {
+		dark: boolean;
+		partial: boolean;
+		domain: Domain;
+		variable: Variable;
+		ranges: DimensionRange[];
+		omUrl: string;
+	};
+	postReadCallback: (omFileReader: OMapsFileReader, omUrl: string, data: Data) => void;
+}
+
+export const defaultOmProtocolSettings: OmProtocolSettings = {
+	tileSize: 128,
+	useSAB: false,
+	colorScales: defaultColorScales,
+	domainOptions: defaultDomainOptions,
+	variableOptions: defaultVariableOptions,
+	enhancedResolution: false,
+	urlParseCallback: (url: string) => {
 		const [omUrl, omParams] = url.replace('om://', '').split('?');
 
 		const urlParams = new URLSearchParams(omParams);
@@ -234,45 +288,9 @@ export const initOMFile = (url: string, omProtocolSettings: OmProtocolSettings):
 				{ start: 0, end: domain.grid.nx }
 			];
 		}
-
-		if (!omapsFileReader) {
-			omapsFileReader = new OMapsFileReader(domain, partial, useSAB);
-		}
-
-		omapsFileReader.setReaderData(domain, partial);
-		omapsFileReader
-			.init(omUrl)
-			.then(() => {
-				omapsFileReader.readVariable(variable, ranges).then((values) => {
-					data = values;
-					resolve();
-
-					if (prefetch) {
-						// prefetch first bytes of the previous and next timesteps to trigger CF caching
-						omapsFileReader.prefetch(omUrl);
-					}
-				});
-			})
-			.catch((e) => {
-				reject(e);
-			});
-	});
-};
-
-export interface OmProtocolSettings {
-	useSAB: boolean;
-	prefetch: boolean;
-	colorScales: ColorScales;
-	domainOptions: Domain[];
-	variableOptions: Variable[];
-}
-
-export const defaultOmProtocolSettings = {
-	useSAB: false,
-	prefetch: false,
-	colorScales: defaultColorScales,
-	domainOptions: defaultDomainOptions,
-	variableOptions: defaultVariableOptions
+		return { dark, partial, domain, variable, ranges, omUrl };
+	},
+	postReadCallback: (omFileReader: OMapsFileReader, omUrl: string, data: Data) => {}
 };
 
 export const omProtocol = async (

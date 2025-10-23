@@ -41,7 +41,7 @@ map.on('load', () => {
 		url: 'om://' + omUrl,
 		type: 'raster',
 		tileSize: 256,
-		maxzoom: 12 // tiles look pretty much the same below zoom-level 12, even on the high res models
+		maxzoom: 14 // tiles look pretty much the same below zoom-level 12, even on the high res models
 	});
 
 	map.addLayer({
