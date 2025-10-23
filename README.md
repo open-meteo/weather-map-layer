@@ -1,6 +1,8 @@
 # Open-Meteo Mapbox Layer
 
-[![Build](https://github.com/open-meteo/maps/actions/workflows/build.yml/badge.svg)](https://github.com/open-meteo/maps/actions/workflows/build.yml) [![GitHub license](https://img.shields.io/github/license/open-meteo/mapbox-layer)](https://github.com/open-meteo/mapbox-layer/blob/main/LICENSE)
+![Test](https://github.com/open-meteo/mapbox-layer/actions/workflows/test.yml/badge.svg)
+[![GitHub license](https://img.shields.io/github/license/open-meteo/mapbox-layer)](https://github.com/open-meteo/mapbox-layer/blob/main/LICENSE)
+![npm version](https://img.shields.io/npm/v/@openmeteo/mapbox-layer?label=@openmeteo/mapbox-layer)
 
 > **⚠️ Notice**
 > This package is still under construction and is not yet fully production‑ready.
@@ -30,7 +32,7 @@ import { omProtocol } from '@openmeteo/mapbox-layer';
 // standard mapbox / maplibre setup
 ...
 
-maplibregl.addProtocol('om', (params) => omProtocol(params, undefined, true));
+maplibregl.addProtocol('om', omProtocol);
 
 const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/15/1200Z/2025-10-15T1400.om?variable=temperature_2m`;
 
@@ -39,7 +41,7 @@ map.on('load', () => {
 		url: 'om://' + omUrl,
 		type: 'raster',
 		tileSize: 256,
-		maxzoom: 12
+		maxzoom: 12 // tiles look pretty much the same below zoom-level 12, even on the high res models
 	});
 
 	map.addLayer({
@@ -72,7 +74,7 @@ For a standalone example, see `examples/temperature.html`.
 			url: 'om://' + omUrl,
 			type: 'raster',
 			tileSize: 256,
-			maxzoom: 12
+			maxzoom: 12 // tiles look pretty much the same below zoom-level 12, even on the high res models
 		});
 
 		map.addLayer({
