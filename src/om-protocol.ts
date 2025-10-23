@@ -10,7 +10,8 @@ import {
 	getBorderPoints,
 	getBoundsFromGrid,
 	getIndicesFromBounds,
-	getBoundsFromBorderPoints
+	getBoundsFromBorderPoints,
+	getIndexAndFractions
 } from './utils/projections';
 
 import {
@@ -41,8 +42,10 @@ import type {
 	TileIndex,
 	ColorScale,
 	DimensionRange,
-	ColorScales
+	ColorScales,
+	IndexAndFractions
 } from './types';
+import { GaussianGrid } from './utils/gaussian';
 
 let dark = false;
 let partial = false;
@@ -74,50 +77,38 @@ export const getValueFromLatLong = (
 	lon: number,
 	variable: Variable,
 	colorScale: ColorScale
-): { index: number; value: number; direction?: number } => {
-	if (data) {
-		const values = data.values;
+): { value: number; direction?: number } => {
+	if (!data?.values) {
+		return { value: NaN };
+	}
 
-		const lonMin = domain.grid.lonMin + domain.grid.dx * ranges[1]['start'];
-		const latMin = domain.grid.latMin + domain.grid.dy * ranges[0]['start'];
-		const lonMax = domain.grid.lonMin + domain.grid.dx * ranges[1]['end'];
-		const latMax = domain.grid.latMin + domain.grid.dy * ranges[0]['end'];
+	const values = data.values;
+	const lonMin = domain.grid.lonMin + domain.grid.dx * ranges[1]['start'];
+	const latMin = domain.grid.latMin + domain.grid.dy * ranges[0]['start'];
+	const lonMax = domain.grid.lonMin + domain.grid.dx * ranges[1]['end'];
+	const latMax = domain.grid.latMin + domain.grid.dy * ranges[0]['end'];
 
-		// let index, xFraction, yFraction;
-		let indexObject;
-		if (domain.grid.projection) {
-			indexObject = projectionGrid.findPointInterpolated(lat, lon, ranges);
-		} else {
-			indexObject = getIndexFromLatLong(
-				lat,
-				lon,
-				domain.grid.dx,
-				domain.grid.dy,
-				ranges[1]['end'] - ranges[1]['start'],
-				[latMin, lonMin, latMax, lonMax]
-			);
-		}
-
-		let { index, xFraction, yFraction } = indexObject ?? {
-			index: NaN,
-			xFraction: 0,
-			yFraction: 0
-		};
-
-		if (values && index) {
-			const interpolator = getInterpolator(colorScale);
-
-			let px = interpolator(values, index, xFraction, yFraction, ranges);
-			if (variable.value.includes('wind')) {
-				px = px * MS_TO_KMH;
-			}
-
-			return { index: index, value: px };
-		} else {
-			return { index: NaN, value: NaN };
-		}
+	if (domain.grid.gaussianGridLatitudeLines) {
+		const gaussian = new GaussianGrid(domain.grid.gaussianGridLatitudeLines);
+		const value = gaussian.getLinearInterpolatedValue(values, lat, lon);
+		return { value: value };
 	} else {
-		return { index: NaN, value: NaN };
+		const { index, xFraction, yFraction } = getIndexAndFractions(
+			lat,
+			lon,
+			domain,
+			projectionGrid,
+			ranges,
+			[latMin, lonMin, latMax, lonMax]
+		);
+
+		const interpolator = getInterpolator(colorScale);
+		let px = interpolator(values, index, xFraction, yFraction, ranges);
+		if (variable.value.includes('wind')) {
+			px = px * MS_TO_KMH;
+		}
+
+		return { value: px };
 	}
 };
 

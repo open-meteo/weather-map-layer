@@ -570,7 +570,7 @@ export const getIndexAndFractions = (
 		{ start: 0, end: domain.grid.nx }
 	],
 	latLonMinMax: [minLat: number, minLon: number, maxLat: number, maxLon: number]
-) => {
+): IndexAndFractions => {
 	let indexObject: IndexAndFractions;
 	if (domain.grid.projection && projectionGrid) {
 		indexObject = projectionGrid.findPointInterpolated(lat, lon, ranges);
