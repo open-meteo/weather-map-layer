@@ -1,8 +1,8 @@
 # Open-Meteo Mapbox Layer
 
-![Test](https://github.com/open-meteo/mapbox-layer/actions/workflows/test.yml/badge.svg)
+[![Test](https://github.com/open-meteo/mapbox-layer/actions/workflows/test.yml/badge.svg)](https://github.com/open-meteo/mapbox-layer/actions/workflows/test.yml)
 [![GitHub license](https://img.shields.io/github/license/open-meteo/mapbox-layer)](https://github.com/open-meteo/mapbox-layer/blob/main/LICENSE)
-![npm version](https://img.shields.io/npm/v/@openmeteo/mapbox-layer?label=@openmeteo/mapbox-layer)
+[![npm version](https://img.shields.io/npm/v/@openmeteo/mapbox-layer?label=@openmeteo/mapbox-layer)](https://www.npmjs.com/package/@openmeteo/mapbox-layer)
 
 > **⚠️ Notice**
 > This package is still under construction and is not yet fully production‑ready.
@@ -92,6 +92,7 @@ The repository contains an `examples` directory with ready‑to‑run demos:
 
 - `examples/temperature.html` – shows temperature data from an OM file.
 - `examples/precipitation.html` – displays precipitation using a similar setup.
+- `examples/wind.html` – displays wind values with directional arrows.
 - `examples/custom-colorscale.html` – shows how to use your own color definition.
 
 Run the examples by opening the corresponding `.html` file in a browser.
@@ -121,3 +122,9 @@ map.on('load', () => {
 	});
 });
 ```
+
+For the contouring there is the `examples/vector` directory with ready‑to‑run demos:
+
+- `examples/vector/contouring-pressure.html` – shows how to use contouring with a pressure map
+- `examples/vector/grid-points.html` – displays all grid points for a model, with value data on each point.
+- `examples/vector/temperature_labels.html` – displays all grid points for a model, using value data to show temperature labels.
