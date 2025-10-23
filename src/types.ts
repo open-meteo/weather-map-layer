@@ -43,7 +43,7 @@ export type TilePixel = {
 
 export type Variable = {
 	value: string;
-	label: string;
+	label?: string;
 };
 
 export type Variables = Variable[];
@@ -75,7 +75,7 @@ export type Interpolator = (
 
 export interface Domain {
 	value: string;
-	label: string;
+	label?: string;
 	grid: {
 		nx: number;
 		ny: number;

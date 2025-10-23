@@ -68,9 +68,12 @@
 				}
 			};
 
+			const omProtocolOptions = OpenMeteoMapboxLayer.defaultOmProtocolSettings;
+			omProtocolOptions.colorScales = customColorScales;
+
 			// use the object as argument for the protocol
 			maplibregl.addProtocol('om', (params) =>
-				OpenMeteoMapboxLayer.omProtocol(params, undefined, false, customColorScales)
+				OpenMeteoMapboxLayer.omProtocol(params, undefined, omProtocolOptions)
 			);
 
 			const map = new maplibregl.Map({
