@@ -95,7 +95,7 @@ export const getValueFromLatLong = (
 	} else {
 		const { index, xFraction, yFraction } = getIndexAndFractions(
 			lat,
-			lon,
+			((((lon + 180) % 360) + 360) % 360) - 180,
 			domain,
 			projectionGrid,
 			ranges,
