@@ -2,7 +2,13 @@ import Pbf from 'pbf';
 
 import { getInterpolator } from './color-scales';
 
-import { DynamicProjection, Projection, ProjectionGrid } from './projections';
+import {
+	DynamicProjection,
+	getIndexAndFractions,
+	Projection,
+	ProjectionGrid,
+	ProjectionName
+} from './projections';
 import { ColorScale, DimensionRange, Domain } from '../types';
 import { GaussianGrid } from './gaussian';
 import { command, writeLayer, zigzag } from './pbf';
@@ -202,7 +208,7 @@ export const generateContours = (
 
 	let projectionGrid = null;
 	if (domain.grid.projection) {
-		const projectionName = domain.grid.projection.name;
+		const projectionName = domain.grid.projection.name as ProjectionName;
 		const projection = new DynamicProjection(projectionName, domain.grid.projection) as Projection;
 		projectionGrid = new ProjectionGrid(projection, domain.grid, ranges);
 	}

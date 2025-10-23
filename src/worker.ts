@@ -6,6 +6,7 @@ import {
 	DynamicProjection,
 	getIndexAndFractions,
 	ProjectionGrid,
+	ProjectionName,
 	type Projection
 } from './utils/projections';
 
@@ -166,7 +167,7 @@ self.onmessage = async (message) => {
 
 		let projectionGrid = null;
 		if (domain.grid.projection) {
-			const projectionName = domain.grid.projection.name;
+			const projectionName = domain.grid.projection.name as ProjectionName;
 			const projection = new DynamicProjection(
 				projectionName,
 				domain.grid.projection
