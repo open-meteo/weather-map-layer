@@ -10,7 +10,8 @@ import {
 	getBorderPoints,
 	getBoundsFromGrid,
 	getIndicesFromBounds,
-	getBoundsFromBorderPoints
+	getBoundsFromBorderPoints,
+	getIndexAndFractions
 } from './utils/projections';
 
 import {
@@ -19,8 +20,8 @@ import {
 	getColorScale
 } from './utils/color-scales';
 
-import { domainOptions } from './utils/domains';
-import { variableOptions } from './utils/variables';
+import { domainOptions as defaultDomainOptions } from './utils/domains';
+import { variableOptions as defaultVariableOptions } from './utils/variables';
 
 import {
 	DynamicProjection,
@@ -30,6 +31,10 @@ import {
 } from './utils/projections';
 
 import { OMapsFileReader } from './om-file-reader';
+
+import { GaussianGrid } from './utils/gaussian';
+
+import { MS_TO_KMH } from './utils/constants';
 
 import type {
 	Bounds,
@@ -44,14 +49,14 @@ import type {
 
 import { capitalize } from './utils';
 
-import { MS_TO_KMH } from './utils/constants';
-
 let dark = false;
 let partial = false;
+let tileSize = 128;
 let domain: Domain;
 let variable: Variable;
 let mapBounds: number[];
-let omapsFileReader: OMapsFileReader;
+let omFileReader: OMapsFileReader;
+let resolutionFactor = 1;
 let mapBoundsIndexes: number[];
 let ranges: DimensionRange[];
 
@@ -67,7 +72,6 @@ export interface Data {
 
 let data: Data;
 
-const TILE_SIZE = 256 * 2;
 const workerPool = new WorkerPool();
 
 export const getValueFromLatLong = (
@@ -75,49 +79,38 @@ export const getValueFromLatLong = (
 	lon: number,
 	variable: Variable,
 	colorScale: ColorScale
-): { index: number; value: number; direction?: number } => {
-	if (data) {
-		const values = data.values;
+): { value: number; direction?: number } => {
+	if (!data?.values) {
+		return { value: NaN };
+	}
 
-		const lonMin = domain.grid.lonMin + domain.grid.dx * ranges[1]['start'];
-		const latMin = domain.grid.latMin + domain.grid.dy * ranges[0]['start'];
-		const lonMax = domain.grid.lonMin + domain.grid.dx * ranges[1]['end'];
-		const latMax = domain.grid.latMin + domain.grid.dy * ranges[0]['end'];
+	const values = data.values;
+	const lonMin = domain.grid.lonMin + domain.grid.dx * ranges[1]['start'];
+	const latMin = domain.grid.latMin + domain.grid.dy * ranges[0]['start'];
+	const lonMax = domain.grid.lonMin + domain.grid.dx * ranges[1]['end'];
+	const latMax = domain.grid.latMin + domain.grid.dy * ranges[0]['end'];
 
-		let indexObject;
-		if (domain.grid.projection) {
-			indexObject = projectionGrid.findPointInterpolated(lat, lon, ranges);
-		} else {
-			indexObject = getIndexFromLatLong(
-				lat,
-				lon,
-				domain.grid.dx,
-				domain.grid.dy,
-				ranges[1]['end'] - ranges[1]['start'],
-				[latMin, lonMin, latMax, lonMax]
-			);
-		}
-
-		const { index, xFraction, yFraction } = indexObject ?? {
-			index: NaN,
-			xFraction: 0,
-			yFraction: 0
-		};
-
-		if (values && index) {
-			const interpolator = getInterpolator(colorScale);
-
-			let px = interpolator(values, index, xFraction, yFraction, ranges);
-			if (variable.value.includes('wind')) {
-				px = px * MS_TO_KMH;
-			}
-
-			return { index: index, value: px };
-		} else {
-			return { index: NaN, value: NaN };
-		}
+	if (domain.grid.gaussianGridLatitudeLines) {
+		const gaussian = new GaussianGrid(domain.grid.gaussianGridLatitudeLines);
+		const value = gaussian.getLinearInterpolatedValue(values, lat, lon);
+		return { value: value };
 	} else {
-		return { index: NaN, value: NaN };
+		const { index, xFraction, yFraction } = getIndexAndFractions(
+			lat,
+			((((lon + 180) % 360) + 360) % 360) - 180,
+			domain,
+			projectionGrid,
+			ranges,
+			[latMin, lonMin, latMax, lonMax]
+		);
+
+		const interpolator = getInterpolator(colorScale);
+		let px = interpolator(values, index, xFraction, yFraction, ranges);
+		if (variable.value.includes('wind')) {
+			px = px * MS_TO_KMH;
+		}
+
+		return { value: px };
 	}
 };
 
@@ -126,18 +119,18 @@ const getTile = async (
 	omUrl: string,
 	type: 'image' | 'arrayBuffer'
 ): Promise<ImageBitmap> => {
-	const key = `${omUrl}/${TILE_SIZE}/${z}/${x}/${y}`;
+	const key = `${omUrl}/${tileSize}/${z}/${x}/${y}`;
 
 	return await workerPool.requestTile({
 		type: ('get' + capitalize(type)) as 'getImage' | 'getArrayBuffer',
-
 		x,
 		y,
 		z,
 		key,
 		data,
-		dark: dark,
+		dark,
 		ranges,
+		tileSize: resolutionFactor * tileSize,
 		domain,
 		variable,
 		colorScale:
@@ -197,53 +190,35 @@ const getTilejson = async (fullUrl: string): Promise<TileJSON> => {
 	};
 };
 
-const initOMFile = (url: string, useSAB: boolean): Promise<void> => {
+let setColorScales: ColorScales;
+let setDomainOptions: Domain[];
+let setVariableOptions: Variable[];
+export const initOMFile = (url: string, omProtocolSettings: OmProtocolSettings): Promise<void> => {
 	return new Promise((resolve, reject) => {
-		const [omUrl, omParams] = url.replace('om://', '').split('?');
+		const { useSAB } = omProtocolSettings;
+		tileSize = omProtocolSettings.tileSize;
+		setColorScales = omProtocolSettings.colorScales;
+		resolutionFactor = omProtocolSettings.resolutionFactor;
+		setDomainOptions = omProtocolSettings.domainOptions;
+		setVariableOptions = omProtocolSettings.variableOptions;
 
-		const urlParams = new URLSearchParams(omParams);
-		dark = urlParams.get('dark') === 'true';
-		partial = urlParams.get('partial') === 'true';
-		domain = domainOptions.find((dm) => dm.value === omUrl.split('/')[4]) ?? domainOptions[0];
-		variable =
-			variableOptions.find((v) => urlParams.get('variable') === v.value) ?? variableOptions[0];
-		mapBounds = urlParams
-			.get('bounds')
-			?.split(',')
-			.map((b: string): number => Number(b)) as number[];
+		const { partial, domain, variable, ranges, omUrl } = omProtocolSettings.parseUrlCallback(url);
 
-		if (partial) {
-			mapBoundsIndexes = getIndicesFromBounds(
-				mapBounds[0],
-				mapBounds[1],
-				mapBounds[2],
-				mapBounds[3],
-				domain
-			);
-			ranges = [
-				{ start: mapBoundsIndexes[1], end: mapBoundsIndexes[3] },
-				{ start: mapBoundsIndexes[0], end: mapBoundsIndexes[2] }
-			];
-		} else {
-			ranges = [
-				{ start: 0, end: domain.grid.ny },
-				{ start: 0, end: domain.grid.nx }
-			];
+		if (!omFileReader) {
+			omFileReader = new OMapsFileReader(domain, partial, useSAB);
 		}
 
-		if (!omapsFileReader) {
-			omapsFileReader = new OMapsFileReader(domain, partial, useSAB);
-		}
-
-		omapsFileReader.setReaderData(domain, partial);
-		omapsFileReader
+		omFileReader.setReaderData(domain, partial);
+		omFileReader
 			.init(omUrl)
 			.then(() => {
-				omapsFileReader.readVariable(variable, ranges).then((values) => {
+				omFileReader.readVariable(variable, ranges).then((values) => {
 					data = values;
 					resolve();
-					// prefetch first bytes of the previous and next timesteps to trigger CF caching
-					omapsFileReader.prefetch(omUrl);
+
+					if (omProtocolSettings.postReadCallback) {
+						omProtocolSettings.postReadCallback(omFileReader, omUrl, data);
+					}
 				});
 			})
 			.catch((e) => {
@@ -252,17 +227,85 @@ const initOMFile = (url: string, useSAB: boolean): Promise<void> => {
 	});
 };
 
-let setColorScales: ColorScales;
+/**
+ * Parses an OM protocol URL and extracts settings for rendering.
+ * Returns an object with dark mode, partial mode, domain, variable, ranges, and omUrl.
+ */
+export const parseOmUrl = (url: string): OmParseUrlCallbackResult => {
+	const [omUrl, omParams] = url.replace('om://', '').split('?');
+
+	const urlParams = new URLSearchParams(omParams);
+	dark = urlParams.get('dark') === 'true';
+	partial = urlParams.get('partial') === 'true';
+	domain = setDomainOptions.find((dm) => dm.value === omUrl.split('/')[4]) ?? setDomainOptions[0];
+	variable =
+		setVariableOptions.find((v) => urlParams.get('variable') === v.value) ?? setVariableOptions[0];
+	mapBounds = urlParams
+		.get('bounds')
+		?.split(',')
+		.map((b: string): number => Number(b)) as number[];
+
+	if (partial) {
+		mapBoundsIndexes = getIndicesFromBounds(
+			mapBounds[0],
+			mapBounds[1],
+			mapBounds[2],
+			mapBounds[3],
+			domain
+		);
+		ranges = [
+			{ start: mapBoundsIndexes[1], end: mapBoundsIndexes[3] },
+			{ start: mapBoundsIndexes[0], end: mapBoundsIndexes[2] }
+		];
+	} else {
+		ranges = [
+			{ start: 0, end: domain.grid.ny },
+			{ start: 0, end: domain.grid.nx }
+		];
+	}
+	return { partial, domain, variable, ranges, omUrl };
+};
+
+export interface OmParseUrlCallbackResult {
+	partial: boolean;
+	domain: Domain;
+	variable: Variable;
+	ranges: DimensionRange[];
+	omUrl: string;
+}
+
+export interface OmProtocolSettings {
+	tileSize: number;
+	useSAB: boolean;
+	colorScales: ColorScales;
+	domainOptions: Domain[];
+	variableOptions: Variable[];
+	resolutionFactor: 0.5 | 1 | 2;
+	parseUrlCallback: (url: string) => OmParseUrlCallbackResult;
+	postReadCallback:
+		| ((omFileReader: OMapsFileReader, omUrl: string, data: Data) => void)
+		| undefined;
+}
+
+export const defaultOmProtocolSettings: OmProtocolSettings = {
+	tileSize: 256,
+	useSAB: false,
+	colorScales: defaultColorScales,
+	domainOptions: defaultDomainOptions,
+	variableOptions: defaultVariableOptions,
+	resolutionFactor: 1,
+	parseUrlCallback: parseOmUrl,
+	postReadCallback: undefined
+};
+
 export const omProtocol = async (
 	params: RequestParameters,
 	abortController?: AbortController,
-	useSAB = false,
-	colorScales = defaultColorScales
+	omProtocolSettings = defaultOmProtocolSettings
 ): Promise<GetResourceResponse<TileJSON | ImageBitmap>> => {
 	if (params.type == 'json') {
-		setColorScales = colorScales;
 		try {
-			await initOMFile(params.url, useSAB);
+			await initOMFile(params.url, omProtocolSettings);
 		} catch (e) {
 			throw new Error(e as string);
 		}

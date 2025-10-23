@@ -15,6 +15,7 @@ export interface TileRequest {
 	data: Data;
 	dark: boolean;
 	ranges: DimensionRange[];
+	tileSize: number;
 	domain: Domain;
 	variable: Variable;
 	colorScale: ColorScale;
