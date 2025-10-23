@@ -10,15 +10,7 @@ import {
 	type Projection
 } from './utils/projections';
 
-import {
-	tile2lat,
-	tile2lon,
-	lat2tile,
-	lon2tile,
-	rotatePoint,
-	degreesToRadians,
-	getIndexFromLatLong
-} from './utils/math';
+import { tile2lat, tile2lon, rotatePoint, degreesToRadians } from './utils/math';
 
 import { getColor, getInterpolator, getOpacity } from './utils/color-scales';
 
@@ -157,10 +149,7 @@ self.onmessage = async (message) => {
 		const dark = message.data.dark;
 		const values = message.data.data.values;
 		const ranges = message.data.ranges;
-<<<<<<< HEAD
-=======
 		const tileSize = message.data.tileSize;
->>>>>>> main
 		const domain = message.data.domain;
 		const variable = message.data.variable;
 		const colorScale = message.data.colorScale;
