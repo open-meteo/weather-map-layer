@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.0.3](https://github.com/open-meteo/mapbox-layer/compare/v0.0.2...v0.0.3) (2025-10-23)
+
+
+### Features
+
+* Contouring for pressure maps ([1052a1a](https://github.com/open-meteo/mapbox-layer/commit/1052a1a7e2551e278ffa09f584c2514c2b73904b))
+* Typed omProtocol settings object ([7439ee7](https://github.com/open-meteo/mapbox-layer/commit/7439ee7037a3e7d0f6f112b003ad1e7283b6f9c3))
+
+
+### Bug Fixes
+
+* Move getIndexAndFractions outside of worker ([2ec1fd6](https://github.com/open-meteo/mapbox-layer/commit/2ec1fd641b0a008e1840aecf542796d205f7ce3e))
+* release please publish step ([dec7921](https://github.com/open-meteo/mapbox-layer/commit/dec792199a0efcb1af620dedf754bfe4a6019eee))
+* wrap longitude ([1f50d79](https://github.com/open-meteo/mapbox-layer/commit/1f50d79f921f2f30f69cccc1b011f4c3b6d1c462))
+
 ## [0.0.2](https://github.com/open-meteo/mapbox-layer/compare/v0.0.1...v0.0.2) (2025-10-21)
 
 
