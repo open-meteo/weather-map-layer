@@ -28,8 +28,7 @@
 		"build:cjs": "vite build --config vite.config.cjs.ts",
 		"build:umd": "vite build --config vite.config.umd.ts",
 		"build": "npm run build:esm && npm run build:cjs && npm run build:umd",
-		"prepare": "npm run build",
-		"publish": "npm publish --access public"
+		"prepare": "npm run build"
 	},
 	"devDependencies": {
 		"prettier": "^3.6.2",
