@@ -131,7 +131,7 @@ const getTile = async ({ z, x, y }: TileIndex, omUrl: string): Promise<ImageBitm
 		z,
 		key,
 		data,
-		dark: dark,
+		dark,
 		ranges,
 		tileSize: resolutionFactor * tileSize,
 		domain,
@@ -231,23 +231,66 @@ export const initOMFile = (url: string, omProtocolSettings: OmProtocolSettings):
 	});
 };
 
-export type OmProtocolSettings = {
+/**
+ * Parses an OM protocol URL and extracts settings for rendering.
+ * Returns an object with dark mode, partial mode, domain, variable, ranges, and omUrl.
+ */
+export const parseOmUrl = (url: string): OmUrlParseCallbackResult => {
+	const [omUrl, omParams] = url.replace('om://', '').split('?');
+
+	const urlParams = new URLSearchParams(omParams);
+	dark = urlParams.get('dark') === 'true';
+	partial = urlParams.get('partial') === 'true';
+	domain = setDomainOptions.find((dm) => dm.value === omUrl.split('/')[4]) ?? setDomainOptions[0];
+	variable =
+		setVariableOptions.find((v) => urlParams.get('variable') === v.value) ?? setVariableOptions[0];
+	mapBounds = urlParams
+		.get('bounds')
+		?.split(',')
+		.map((b: string): number => Number(b)) as number[];
+
+	if (partial) {
+		mapBoundsIndexes = getIndicesFromBounds(
+			mapBounds[0],
+			mapBounds[1],
+			mapBounds[2],
+			mapBounds[3],
+			domain
+		);
+		ranges = [
+			{ start: mapBoundsIndexes[1], end: mapBoundsIndexes[3] },
+			{ start: mapBoundsIndexes[0], end: mapBoundsIndexes[2] }
+		];
+	} else {
+		ranges = [
+			{ start: 0, end: domain.grid.ny },
+			{ start: 0, end: domain.grid.nx }
+		];
+	}
+	return { dark, partial, domain, variable, ranges, omUrl };
+};
+
+export interface OmUrlParseCallbackResult {
+	dark: boolean;
+	partial: boolean;
+	domain: Domain;
+	variable: Variable;
+	ranges: DimensionRange[];
+	omUrl: string;
+}
+
+export interface OmProtocolSettings {
 	tileSize: number;
 	useSAB: boolean;
 	colorScales: ColorScales;
 	domainOptions: Domain[];
 	variableOptions: Variable[];
 	resolutionFactor: 0.5 | 1 | 2;
-	urlParseCallback: (url: string) => {
-		dark: boolean;
-		partial: boolean;
-		domain: Domain;
-		variable: Variable;
-		ranges: DimensionRange[];
-		omUrl: string;
-	};
-	postReadCallback: (omFileReader: OMapsFileReader, omUrl: string, data: Data) => void;
-};
+	urlParseCallback: (url: string) => OmUrlParseCallbackResult;
+	postReadCallback:
+		| ((omFileReader: OMapsFileReader, omUrl: string, data: Data) => void)
+		| undefined;
+}
 
 export const defaultOmProtocolSettings: OmProtocolSettings = {
 	tileSize: 256,
@@ -256,42 +299,8 @@ export const defaultOmProtocolSettings: OmProtocolSettings = {
 	domainOptions: defaultDomainOptions,
 	variableOptions: defaultVariableOptions,
 	resolutionFactor: 1,
-	urlParseCallback: (url: string) => {
-		const [omUrl, omParams] = url.replace('om://', '').split('?');
-
-		const urlParams = new URLSearchParams(omParams);
-		dark = urlParams.get('dark') === 'true';
-		partial = urlParams.get('partial') === 'true';
-		domain = setDomainOptions.find((dm) => dm.value === omUrl.split('/')[4]) ?? setDomainOptions[0];
-		variable =
-			setVariableOptions.find((v) => urlParams.get('variable') === v.value) ??
-			setVariableOptions[0];
-		mapBounds = urlParams
-			.get('bounds')
-			?.split(',')
-			.map((b: string): number => Number(b)) as number[];
-
-		if (partial) {
-			mapBoundsIndexes = getIndicesFromBounds(
-				mapBounds[0],
-				mapBounds[1],
-				mapBounds[2],
-				mapBounds[3],
-				domain
-			);
-			ranges = [
-				{ start: mapBoundsIndexes[1], end: mapBoundsIndexes[3] },
-				{ start: mapBoundsIndexes[0], end: mapBoundsIndexes[2] }
-			];
-		} else {
-			ranges = [
-				{ start: 0, end: domain.grid.ny },
-				{ start: 0, end: domain.grid.nx }
-			];
-		}
-		return { dark, partial, domain, variable, ranges, omUrl };
-	},
-	postReadCallback: (omFileReader: OMapsFileReader, omUrl: string, data: Data) => {}
+	urlParseCallback: parseOmUrl,
+	postReadCallback: undefined
 };
 
 export const omProtocol = async (
