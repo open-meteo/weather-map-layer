@@ -197,7 +197,7 @@ export const initOMFile = (url: string, omProtocolSettings: OmProtocolSettings):
 		resolutionFactor = omProtocolSettings.resolutionFactor;
 
 		const { dark, partial, domain, variable, ranges, omUrl } =
-			omProtocolSettings.urlParseCallback(url);
+			omProtocolSettings.parseUrlCallback(url);
 
 		if (!omFileReader) {
 			omFileReader = new OMapsFileReader(domain, partial, useSAB);
@@ -226,7 +226,7 @@ export const initOMFile = (url: string, omProtocolSettings: OmProtocolSettings):
  * Parses an OM protocol URL and extracts settings for rendering.
  * Returns an object with dark mode, partial mode, domain, variable, ranges, and omUrl.
  */
-export const parseOmUrl = (url: string): OmUrlParseCallbackResult => {
+export const parseOmUrl = (url: string): OmParseUrlCallbackResult => {
 	const [omUrl, omParams] = url.replace('om://', '').split('?');
 
 	const urlParams = new URLSearchParams(omParams);
@@ -261,7 +261,7 @@ export const parseOmUrl = (url: string): OmUrlParseCallbackResult => {
 	return { dark, partial, domain, variable, ranges, omUrl };
 };
 
-export interface OmUrlParseCallbackResult {
+export interface OmParseUrlCallbackResult {
 	dark: boolean;
 	partial: boolean;
 	domain: Domain;
@@ -277,7 +277,7 @@ export interface OmProtocolSettings {
 	domainOptions: Domain[];
 	variableOptions: Variable[];
 	resolutionFactor: 0.5 | 1 | 2;
-	urlParseCallback: (url: string) => OmUrlParseCallbackResult;
+	parseUrlCallback: (url: string) => OmParseUrlCallbackResult;
 	postReadCallback:
 		| ((omFileReader: OMapsFileReader, omUrl: string, data: Data) => void)
 		| undefined;
@@ -290,7 +290,7 @@ export const defaultOmProtocolSettings: OmProtocolSettings = {
 	domainOptions: defaultDomainOptions,
 	variableOptions: defaultVariableOptions,
 	resolutionFactor: 1,
-	urlParseCallback: parseOmUrl,
+	parseUrlCallback: parseOmUrl,
 	postReadCallback: undefined
 };
 
