@@ -25,12 +25,11 @@ import { MS_TO_KMH } from './utils/constants';
 const OPACITY = 75;
 
 let arrowCanvas: OffscreenCanvasRenderingContext2D | null = null;
-const getArrowCanvas = (tileSize: number) => {
+const getArrowCanvas = (size: number) => {
 	if (arrowCanvas != null) {
 		return arrowCanvas;
 	}
 
-	const size = tileSize / 8;
 	const canvas = new OffscreenCanvas(size, size);
 	const ctx = canvas.getContext('2d');
 	if (ctx == null) {
@@ -62,6 +61,7 @@ const drawArrow = (
 	values: Float32Array,
 	ranges: DimensionRange[],
 	tileSize: number,
+	boxSize: number,
 	domain: Domain,
 	variable: Variable,
 	gaussion: GaussianGrid | undefined,
@@ -70,8 +70,7 @@ const drawArrow = (
 	projectionGrid: ProjectionGrid | null,
 	latLonMinMax: [minLat: number, minLon: number, maxLat: number, maxLon: number]
 ): void => {
-	const boxSize = tileSize / 8;
-	const arrow = getArrowCanvas(tileSize);
+	const arrow = getArrowCanvas(boxSize);
 
 	const iCenter = iBase + Math.floor(boxSize / 2);
 	const jCenter = jBase + Math.floor(boxSize / 2);
@@ -100,7 +99,7 @@ const drawArrow = (
 	}
 
 	arrow.rotate(direction);
-	const arrowPixelData = arrow.getImageData(0, 0, tileSize / 8, tileSize / 8).data;
+	const arrowPixelData = arrow.getImageData(0, 0, boxSize, boxSize).data;
 
 	if (direction) {
 		for (let i = 0; i < boxSize; i++) {
@@ -249,6 +248,7 @@ self.onmessage = async (message) => {
 							values,
 							ranges,
 							tileSize,
+							boxSize,
 							domain,
 							variable,
 							gaussian,

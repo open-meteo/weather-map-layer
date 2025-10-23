@@ -51,6 +51,7 @@ let domain: Domain;
 let variable: Variable;
 let mapBounds: number[];
 let omFileReader: OMapsFileReader;
+let resolutionFactor = 1;
 let mapBoundsIndexes: number[];
 let ranges: DimensionRange[];
 
@@ -125,7 +126,6 @@ const getTile = async ({ z, x, y }: TileIndex, omUrl: string): Promise<ImageBitm
 
 	return await workerPool.requestTile({
 		type: 'GT',
-
 		x,
 		y,
 		z,
@@ -133,7 +133,7 @@ const getTile = async ({ z, x, y }: TileIndex, omUrl: string): Promise<ImageBitm
 		data,
 		dark: dark,
 		ranges,
-		tileSize: tileSize,
+		tileSize: resolutionFactor * tileSize,
 		domain,
 		variable,
 		colorScale:
@@ -203,6 +203,7 @@ export const initOMFile = (url: string, omProtocolSettings: OmProtocolSettings):
 		setColorScales = omProtocolSettings.colorScales;
 		setDomainOptions = omProtocolSettings.domainOptions;
 		setVariableOptions = omProtocolSettings.variableOptions;
+		resolutionFactor = omProtocolSettings.resolutionFactor;
 
 		const { dark, partial, domain, variable, ranges, omUrl } =
 			omProtocolSettings.urlParseCallback(url);
@@ -230,13 +231,13 @@ export const initOMFile = (url: string, omProtocolSettings: OmProtocolSettings):
 	});
 };
 
-export interface OmProtocolSettings {
+export type OmProtocolSettings = {
 	tileSize: number;
 	useSAB: boolean;
 	colorScales: ColorScales;
 	domainOptions: Domain[];
 	variableOptions: Variable[];
-	enhancedResolution: boolean;
+	resolutionFactor: 0.5 | 1 | 2;
 	urlParseCallback: (url: string) => {
 		dark: boolean;
 		partial: boolean;
@@ -246,15 +247,15 @@ export interface OmProtocolSettings {
 		omUrl: string;
 	};
 	postReadCallback: (omFileReader: OMapsFileReader, omUrl: string, data: Data) => void;
-}
+};
 
 export const defaultOmProtocolSettings: OmProtocolSettings = {
-	tileSize: 128,
+	tileSize: 256,
 	useSAB: false,
 	colorScales: defaultColorScales,
 	domainOptions: defaultDomainOptions,
 	variableOptions: defaultVariableOptions,
-	enhancedResolution: false,
+	resolutionFactor: 1,
 	urlParseCallback: (url: string) => {
 		const [omUrl, omParams] = url.replace('om://', '').split('?');
 

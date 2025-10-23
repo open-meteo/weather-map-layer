@@ -19,6 +19,7 @@ export interface TileRequest {
 	variable: Variable;
 	colorScale: ColorScale;
 	mapBounds: number[];
+	// resoultionFactor: 0.5 | 1 | 2;
 }
 
 export type TileResponse = {
