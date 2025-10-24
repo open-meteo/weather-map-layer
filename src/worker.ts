@@ -295,6 +295,9 @@ self.onmessage = async (message) => {
 		}
 
 		const buffer = pbf.finish();
-		postMessage({ type: 'returnArrayBuffer', tile: buffer, key: key }, { transfer: [buffer] });
+		postMessage(
+			{ type: 'returnArrayBuffer', tile: buffer.buffer, key: key },
+			{ transfer: [buffer.buffer] }
+		);
 	}
 };
