@@ -47,3 +47,5 @@ export { VARIABLE_PREFIX, LEVEL_PREFIX, LEVEL_REGEX, LEVEL_UNIT_REGEX } from './
 export { addLeafletProtocolSupport } from './adapters/leaflet';
 export { addMapboxProtocolSupport } from './adapters/mapbox';
 export { addOpenLayersProtocolSupport } from './adapters/openlayers';
+export * from './types';
+export * from './webgl-raster-layer';

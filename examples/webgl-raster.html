@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Mapbox Layer - Temperature Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.css" />
+		<script src="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.js"></script>
+		<!-- Set to latest version -->
+		<script src="../dist/index.js"></script>
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<script>
+			const map = new maplibregl.Map({
+				container: 'map',
+				style: {
+					version: 8,
+					sources: {
+						osm: {
+							type: 'raster',
+							tiles: ['https://a.tile.openstreetmap.org/{z}/{x}/{y}.png'],
+							tileSize: 256,
+							attribution: '&copy; OpenStreetMap Contributors'
+						}
+					},
+					layers: [
+						{
+							id: 'osm',
+							type: 'raster',
+							source: 'osm'
+						}
+					]
+				},
+				hash: true,
+				contextAttributes: {
+					webglVersion: 2
+				}
+			});
+
+			// s3 storage structure: /data_spatial/{domain}/{modelRun /year/month/day/time}Z/{selectedTime year-month-day-time.om}?variable={variable}
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/26/1200Z/2025-10-26T1400.om`;
+			const variableName = 'temperature_2m';
+
+			const domain = OpenMeteoMapboxLayer.domainOptions.find((d) => d.value === 'dwd_icon');
+			console.log(domain);
+			const variable =
+				OpenMeteoMapboxLayer.variableOptions.find((v) => v.value === variableName) ||
+				OpenMeteoMapboxLayer.variableOptions[0];
+			console.log(variable);
+
+			map.on('load', () => {
+				const webglLayer = new OpenMeteoMapboxLayer.WebGLRasterLayer(
+					'omFileLayer',
+					omUrl,
+					domain,
+					variable
+				);
+				map.addLayer(webglLayer);
+			});
+		</script>
+	</body>
+</html>
