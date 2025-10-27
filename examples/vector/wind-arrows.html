@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Mapbox Layer - Pressure Contouring Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.css" />
+		<script src="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.js"></script>
+		<!-- Set to latest version -->
+		<!--<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.3/dist/index.js"></script>-->
+		<!-- Local development -->
+		<script src="../../dist/index.js"></script>
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<script>
+			maplibregl.addProtocol('om', OpenMeteoMapboxLayer.omProtocol);
+
+			const map = new maplibregl.Map({
+				container: 'map',
+				maxZoom: 12,
+				style: {
+					version: 8,
+					sources: {
+						osm: {
+							type: 'raster',
+							tiles: ['https://a.tile.openstreetmap.org/{z}/{x}/{y}.png'],
+							tileSize: 256,
+							attribution: '&copy; OpenStreetMap Contributors'
+						}
+					},
+					layers: [
+						{
+							id: 'osm',
+							type: 'raster',
+							source: 'osm'
+						}
+					],
+					glyphs: 'https://maptiler.servert.nl/fonts/{fontstack}/{range}.pbf'
+				},
+				hash: true
+			});
+
+			// s3 storage structure: /data_spatial/{domain}/{modelRun /year/month/day/time}Z/{selectedTime year-month-day-time.om}?variable={variable}
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/25/1200Z/2025-10-25T1400.om?variable=wind_u_component_10m`;
+
+			map.on('load', () => {
+				map.addSource('omFileRasterSource', {
+					url: 'om://' + omUrl,
+					type: 'raster',
+					tileSize: 256,
+					maxzoom: 12
+				});
+
+				map.addLayer({
+					id: 'omFileRasterLayer',
+					type: 'raster',
+					source: 'omFileRasterSource'
+				});
+
+				map.addSource('omFileVectorSource', {
+					url: 'om://' + omUrl + '&wind=true',
+					type: 'vector'
+				});
+
+				map.addLayer({
+					id: 'omFileVectorLayer',
+					type: 'line',
+					source: 'omFileVectorSource',
+					'source-layer': 'wind-arrows',
+					paint: {
+						'line-color': 'rgba(0,0,0,0.6)',
+						'line-width': 4
+					},
+					layout: {
+						'line-cap: ''					}
+				});
+
+				// map.addLayer({
+				// 	id: 'omFileGridPoints',
+				// 	type: 'circle',
+				// 	source: 'omFileVectorSource',
+				// 	'source-layer': 'wind-arrows',
+				// 	layout: {},
+				// 	paint: {
+				// 		'circle-radius': 2,
+				// 		'circle-color': '#007cbf'
+				// 	}
+				// });
+			});
+		</script>
+	</body>
+</html>

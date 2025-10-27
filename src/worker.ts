@@ -23,6 +23,7 @@ import { generateContours } from './utils/contours';
 import { GaussianGrid } from './utils/gaussian';
 
 import { MS_TO_KMH } from './utils/constants';
+import { generateWindArrows } from './utils/wind-arrows';
 
 const OPACITY = 75;
 
@@ -41,11 +42,10 @@ const getArrowCanvas = (size: number) => {
 	ctx.clearRect(0, 0, size, size);
 	ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
 	ctx.beginPath();
-	ctx.moveTo(size / 2, size * 0.1);
-	ctx.lineTo(size * 0.63, size * 0.32);
+	ctx.moveTo(size * 0.63, size * 0.32);
 	ctx.lineTo(size / 2, size * 0.1);
 	ctx.lineTo(size * 0.37, size * 0.32);
-	ctx.lineTo(size / 2, size * 0.1);
+	ctx.moveTo(size / 2, size * 0.1);
 	ctx.lineTo(size / 2, size * 0.95);
 	ctx.stroke();
 
@@ -240,34 +240,34 @@ self.onmessage = async (message) => {
 			}
 		}
 
-		if (isDirection) {
-			const directions = message.data.data.directions;
+		// if (isDirection) {
+		// 	const directions = message.data.data.directions;
 
-			const boxSize = Math.floor(tileSize / 8);
-			for (let i = 0; i < tileSize; i += boxSize) {
-				for (let j = 0; j < tileSize; j += boxSize) {
-					drawArrow(
-						rgba,
-						i,
-						j,
-						x,
-						y,
-						z,
-						values,
-						ranges,
-						tileSize,
-						boxSize,
-						domain,
-						variable,
-						gaussian,
-						directions,
-						interpolator,
-						projectionGrid,
-						[latMin, lonMin, latMax, lonMax]
-					);
-				}
-			}
-		}
+		// 	const boxSize = Math.floor(tileSize / 8);
+		// 	for (let i = 0; i < tileSize; i += boxSize) {
+		// 		for (let j = 0; j < tileSize; j += boxSize) {
+		// 			drawArrow(
+		// 				rgba,
+		// 				i,
+		// 				j,
+		// 				x,
+		// 				y,
+		// 				z,
+		// 				values,
+		// 				ranges,
+		// 				tileSize,
+		// 				boxSize,
+		// 				domain,
+		// 				variable,
+		// 				gaussian,
+		// 				directions,
+		// 				interpolator,
+		// 				projectionGrid,
+		// 				[latMin, lonMin, latMax, lonMax]
+		// 			);
+		// 		}
+		// 	}
+		// }
 
 		const imageBitmap = await createImageBitmap(new ImageData(rgba, tileSize, tileSize), {
 			premultiplyAlpha: 'premultiply'
@@ -290,6 +290,8 @@ self.onmessage = async (message) => {
 
 		if (key.includes('grid=true')) {
 			generateGrid(pbf, values, directions, domain, x, y, z);
+		} else if (key.includes('wind=true')) {
+			generateWindArrows(pbf, values, directions, domain, x, y, z);
 		} else {
 			generateContours(pbf, values, domain, ranges, x, y, z, interval ? interval : 2);
 		}

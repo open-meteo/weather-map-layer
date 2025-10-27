@@ -2,6 +2,8 @@ import Pbf from 'pbf';
 
 import { getInterpolator } from './color-scales';
 
+import { GaussianGrid } from './gaussian';
+
 import {
 	DynamicProjection,
 	getIndexAndFractions,
@@ -9,107 +11,31 @@ import {
 	ProjectionGrid,
 	ProjectionName
 } from './projections';
-import { ColorScale, DimensionRange, Domain } from '../types';
-import { GaussianGrid } from './gaussian';
+
 import { command, writeLayer, zigzag } from './pbf';
+
 import { tile2lat, tile2lon } from './math';
 
-// prettier-ignore
-export const edgeTable = [
-	 [],			    // 0
-	 [[3, 0]],		 	// 1
-	 [[0, 1]],          // 2
-	 [[3, 1]],          // 3
-	 [[1, 2]],          // 4
-	 [[3, 0], [1, 2]],  // 5
-	 [[0, 1], [1, 2]],  // 6
-	 [[3, 2]],          // 7
-	 [[2, 3]],          // 8
-	 [[0, 2], [2, 3]],  // 9
-	 [[1, 3], [2, 3]],  // 10
-	 [[0, 3]],          // 11
-	 [[1, 3]],          // 12
-	 [[0, 1], [1, 3]],  // 13
-	 [[0, 3], [1, 2]],  // 14
-	 []                 // 15
-];
+import { ColorScale, DimensionRange, Domain } from '../types';
 
 // prettier-ignore
 export const CASES: [number, number][][][] = [
-	[],				// 0
-	[[[1, 2],[0, 1]]],	  // 1
-	[[[2, 1],[1, 2]]],	  // 2
-	[[[2, 1],[0, 1]]],	  // 3
-	[[[1, 0],[2, 1]]],	  // 4
-	[
-		[
-			[1, 2],
-			[0, 1]
-		],
-		[
-			[1, 0],
-			[2, 1]
-		]
-	],
-	[
-		[
-			[1, 0],
-			[1, 2]
-		]
-	],
-	[
-		[
-			[1, 0],
-			[0, 1]
-		]
-	],
-	[
-		[
-			[0, 1],
-			[1, 0]
-		]
-	],
-	[
-		[
-			[1, 2],
-			[1, 0]
-		]
-	],
-	[
-		[
-			[0, 1],
-			[1, 0]
-		],
-		[
-			[2, 1],
-			[1, 2]
-		]
-	],
-	[
-		[
-			[2, 1],
-			[1, 0]
-		]
-	],
-	[
-		[
-			[0, 1],
-			[2, 1]
-		]
-	],
-	[
-		[
-			[1, 2],
-			[2, 1]
-		]
-	],
-	[
-		[
-			[0, 1],
-			[1, 2]
-		]
-	],
-	[]
+	[],					       // 0
+	[[[1, 2],[0, 1]]],			  // 1
+	[[[2, 1],[1, 2]]],			  // 2
+	[[[2, 1],[0, 1]]],			  // 3
+	[[[1, 0],[2, 1]]],			  // 4
+	[[[1, 2],[0, 1]], [[1, 0],[2, 1]]],  // 5
+	[[[1, 0],[1, 2]]],			  // 6
+	[[[1, 0],[0, 1]]],			  // 7
+	[[[0, 1],[1, 0]]],			  // 8
+	[[[1, 2],[1, 0]]],			  // 9
+	[[[0, 1],[1, 0]],[[2, 1],[1, 2]]],   // 10
+	[[[2, 1],[1, 0]]],			  // 11
+	[[[0, 1],[2, 1]]],			  // 12
+	[[[1, 2],[2, 1]]],			  // 13
+	[[[0, 1],[1, 2]]],			  // 14
+	[]					       // 15
 ];
 
 export class Fragment {
@@ -196,8 +122,8 @@ export const generateContours = (
 	y: number,
 	z: number,
 	interval: number = 2,
-	threshold = undefined,
-	extent: number = 4096
+	extent: number = 4096,
+	threshold = undefined
 ) => {
 	const features = [];
 	let cursor: [number, number] = [0, 0];
