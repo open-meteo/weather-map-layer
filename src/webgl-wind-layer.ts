@@ -33,8 +33,6 @@ export class WebGLWindLayer implements CustomLayerInterface {
 	private particleTextureSize = 256; // sqrt(65536) = 256
 	private speedFactor = 0.8;
 	private dropRate = 0.003;
-	private dropRateBump = 0.01;
-	private fadeOpacity = 0.996;
 	private animationTime = 0;
 
 	constructor(id: string, omUrl: string, domain: Domain, variable: string) {
@@ -43,6 +41,16 @@ export class WebGLWindLayer implements CustomLayerInterface {
 		this.variable = variable;
 		this.omUrl = omUrl;
 		this.omFileReader = new WeatherMapLayerFileReader({});
+	}
+
+	private getBounds() {
+		const grid = this.domain.grid as RegularGridData;
+		return {
+			minLat: grid.latMin,
+			maxLat: grid.latMin + grid.ny * grid.dy,
+			minLon: grid.lonMin,
+			maxLon: grid.lonMin + grid.nx * grid.dx
+		};
 	}
 
 	private createBackgroundMesh(resolution: number = 50): {
@@ -88,6 +96,18 @@ export class WebGLWindLayer implements CustomLayerInterface {
 		}
 
 		return new Float32Array(vertices);
+	}
+
+	private getZoomAdjustedParameters() {
+		const zoom = this.map?.getZoom() || 0;
+
+		// Increase drop rate and reduce life at higher zoom levels
+		const zoomFactor = Math.max(1, zoom - 2) / 10;
+
+		return {
+			dropRate: this.dropRate * (1 + zoomFactor * 2),
+			speedFactor: this.speedFactor * (1 + zoomFactor * 0.1)
+		};
 	}
 
 	private initializeParticles(): Float32Array {
@@ -336,15 +356,17 @@ export class WebGLWindLayer implements CustomLayerInterface {
 		gl.uniform1i(gl.getUniformLocation(this.program!, 'u_particles'), 2);
 
 		// Set uniforms
-		const grid = this.domain.grid as RegularGridData;
-		const minLat = grid.latMin;
-		const maxLat = grid.latMin + grid.ny * grid.dy;
-		const minLon = grid.lonMin;
-		const maxLon = grid.lonMin + grid.nx * grid.dx;
-
-		gl.uniform4f(gl.getUniformLocation(this.program!, 'u_bounds'), minLon, minLat, maxLon, maxLat);
-		gl.uniform1f(gl.getUniformLocation(this.program!, 'u_speed_factor'), this.speedFactor);
-		gl.uniform1f(gl.getUniformLocation(this.program!, 'u_drop_rate'), this.dropRate);
+		const bounds = this.getBounds();
+		gl.uniform4f(
+			gl.getUniformLocation(this.program!, 'u_bounds'),
+			bounds.minLon,
+			bounds.minLat,
+			bounds.maxLon,
+			bounds.maxLat
+		);
+		const params = this.getZoomAdjustedParameters();
+		gl.uniform1f(gl.getUniformLocation(this.program!, 'u_drop_rate'), params.dropRate);
+		gl.uniform1f(gl.getUniformLocation(this.program!, 'u_speed_factor'), params.speedFactor);
 		gl.uniform1f(gl.getUniformLocation(this.program!, 'u_time'), this.animationTime);
 
 		// Render full screen quad to update particles
@@ -385,13 +407,14 @@ export class WebGLWindLayer implements CustomLayerInterface {
 		);
 
 		// Set bounds
-		const grid = this.domain.grid as RegularGridData;
-		const minLat = grid.latMin;
-		const maxLat = grid.latMin + grid.ny * grid.dy;
-		const minLon = grid.lonMin;
-		const maxLon = grid.lonMin + grid.nx * grid.dx;
-
-		gl.uniform4f(gl.getUniformLocation(renderProgram, 'u_bounds'), minLon, minLat, maxLon, maxLat);
+		const bounds = this.getBounds();
+		gl.uniform4f(
+			gl.getUniformLocation(renderProgram, 'u_bounds'),
+			bounds.minLon,
+			bounds.minLat,
+			bounds.maxLon,
+			bounds.maxLat
+		);
 
 		// Bind particle state texture
 		gl.activeTexture(gl.TEXTURE0);
@@ -538,66 +561,6 @@ export class WebGLWindLayer implements CustomLayerInterface {
     `;
 	}
 
-	// private getUpdateFragmentShader(): string {
-	// 	return `
-	// 		precision highp float;
-
-	// 		uniform sampler2D u_particles;
-	// 		uniform sampler2D u_wind_u;
-	// 		uniform sampler2D u_wind_v;
-	// 		uniform vec4 u_bounds; // [minLon, minLat, maxLon, maxLat]
-	// 		uniform float u_speed_factor;
-	// 		uniform float u_drop_rate;
-	// 		uniform float u_time;
-
-	// 		varying vec2 v_texCoord;
-
-	// 		// Random function
-	// 		float random(vec2 st) {
-	// 			return fract(sin(dot(st.xy, vec2(12.9898, 78.233))) * 43758.5453123);
-	// 		}
-
-	// 		void main() {
-	// 			vec4 particle = texture2D(u_particles, v_texCoord);
-	// 			vec2 pos = particle.xy;
-	// 			float age = particle.z;
-	// 			float life = particle.w;
-
-	// 			// Convert position to wind texture coordinates
-	// 			vec2 windTexCoord = pos;
-
-	// 			// Sample wind at current position
-	// 			float windU = texture2D(u_wind_u, windTexCoord).r;
-	// 			float windV = texture2D(u_wind_v, windTexCoord).r;
-
-	// 			// Update position based on wind
-	// 			vec2 velocity = vec2(windU, windV) * u_speed_factor * 0.001;
-	// 			pos += velocity;
-
-	// 			// Wrap longitude
-	// 			if (pos.x < 0.0) pos.x += 1.0;
-	// 			if (pos.x > 1.0) pos.x -= 1.0;
-
-	// 			// Bounce off latitude bounds
-	// 			if (pos.y < 0.0 || pos.y > 1.0) {
-	// 				pos.y = clamp(pos.y, 0.0, 1.0);
-	// 			}
-
-	// 			// Age the particle
-	// 			age += 1.0;
-
-	// 			// Reset particle if too old or random drop
-	// 			float reset = step(life, age) + step(random(pos + u_time), u_drop_rate);
-	// 			if (reset > 0.5) {
-	// 				pos = vec2(random(v_texCoord + u_time), random(v_texCoord + u_time + 1.0));
-	// 				age = 0.0;
-	// 			}
-
-	// 			gl_FragColor = vec4(pos, age, life);
-	// 		}
-	// 	`;
-	// }
-
 	private getRenderVertexShader(): string {
 		return `
         attribute vec2 a_texCoord;
@@ -627,35 +590,6 @@ export class WebGLWindLayer implements CustomLayerInterface {
         }
     `;
 	}
-
-	// private getRenderVertexShader(): string {
-	// 	return `
-	// 		attribute vec2 a_texCoord;
-	// 		uniform sampler2D u_particles;
-	// 		uniform mat4 u_matrix;
-	// 		uniform vec4 u_bounds; // [minLon, minLat, maxLon, maxLat]
-
-	// 		varying float v_age;
-
-	// 		void main() {
-	// 			vec4 particle = texture2D(u_particles, a_texCoord);
-	// 			vec2 pos = particle.xy;
-	// 			v_age = particle.z / particle.w;
-
-	// 			// Convert normalized position to lat/lon
-	// 			float lon = mix(u_bounds.x, u_bounds.z, pos.x);
-	// 			float lat = mix(u_bounds.y, u_bounds.w, pos.y);
-
-	// 			// Convert to Mercator coordinates
-	// 			float mercatorX = lon / 360.0 + 0.5;
-	// 			float latRad = lat * 3.14159265359 / 180.0;
-	// 			float mercatorY = 0.5 - log(tan(3.14159265359 / 4.0 + latRad / 2.0)) / (2.0 * 3.14159265359);
-
-	// 			gl_Position = u_matrix * vec4(mercatorX, mercatorY, 0.0, 1.0);
-	// 			gl_PointSize = 100.0;
-	// 		}
-	// 	`;
-	// }
 
 	private getRenderFragmentShader(): string {
 		return `

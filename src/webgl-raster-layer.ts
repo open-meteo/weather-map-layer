@@ -25,8 +25,12 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 	private meshResolution = 50; // Adjustable resolution
 	private indexBuffer: WebGLBuffer | undefined;
 	private vertexCount = 0;
+	private colorScale: {
+		value: number;
+		color: number[];
+	}[];
 
-	private hardcodedColorScale = [
+	public static temperatureColorScale = [
 		{ value: -35, color: [75, 0, 130, 255] }, // Deep Purple
 		{ value: -30, color: [128, 0, 128, 255] }, // Purple
 		{ value: -20, color: [75, 0, 130, 255] }, // Indigo
@@ -48,12 +52,33 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 		{ value: 60, color: [75, 0, 0, 255] } // Very Dark Red
 	];
 
-	constructor(id: string, omUrl: string, domain: Domain, variable: string) {
+	public static windSpeedColorScale = [
+		{ value: 0, color: [0, 0, 255, 255] }, // Blue (calm)
+		{ value: 5, color: [0, 255, 255, 255] }, // Cyan
+		{ value: 10, color: [0, 255, 0, 255] }, // Green
+		{ value: 15, color: [255, 255, 0, 255] }, // Yellow
+		{ value: 20, color: [255, 128, 0, 255] }, // Orange
+		{ value: 25, color: [255, 0, 0, 255] }, // Red
+		{ value: 30, color: [128, 0, 0, 255] } // Dark Red (strong wind)
+	];
+
+	constructor(
+		id: string,
+		omUrl: string,
+		domain: Domain,
+		variable: string,
+		colorScale: {
+			value: number;
+			color: number[];
+		}[] = WebGLRasterLayer.temperatureColorScale
+	) {
 		this.id = id;
 		this.domain = domain;
 		this.variable = variable;
 		this.omUrl = omUrl;
 		this.omFileReader = new WeatherMapLayerFileReader();
+		this.colorScale = colorScale;
+		console.log(colorScale);
 	}
 
 	private createMeshVertices(resolution: number): Float32Array {
@@ -218,6 +243,13 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 		]);
 		if (!this.gl || !data.values) return;
 
+		if (this.variable.includes('wind')) {
+			for (let i = 0; i < data.values.length; i++) {
+				data.values[i] = Math.sqrt(
+					data.values[i] * data.values[i] + data.directions![i] * data.directions![i]
+				);
+			}
+		}
 		const { nx, ny } = this.domain.grid;
 		console.log('Data loaded:', { nx, ny, dataLength: data.values.length });
 		console.log('Data range: ', data.values.slice(0, 10));
@@ -301,8 +333,8 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 		);
 
 		const valueRangeLoc = gl.getUniformLocation(this.program, 'u_value_range');
-		const minVal = this.hardcodedColorScale[0].value;
-		const maxVal = this.hardcodedColorScale[this.hardcodedColorScale.length - 1].value;
+		const minVal = this.colorScale[0].value;
+		const maxVal = this.colorScale[this.colorScale.length - 1].value;
 		gl.uniform2f(valueRangeLoc, minVal, maxVal);
 
 		// Bind textures
@@ -358,7 +390,7 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 
 		const width = 256;
 		const rampData = new Uint8Array(width * 4);
-		const scale = this.hardcodedColorScale;
+		const scale = this.colorScale;
 		const minVal = scale[0].value;
 		const maxVal = scale[scale.length - 1].value;
 

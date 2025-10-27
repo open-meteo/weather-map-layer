@@ -110,6 +110,14 @@
 			let windLayer;
 
 			map.on('load', () => {
+				const rasterLayer = new OpenMeteoMapboxLayer.WebGLRasterLayer(
+					'omFileLayer',
+					omUrl,
+					domain,
+					variable,
+					OpenMeteoMapboxLayer.WebGLRasterLayer.windSpeedColorScale
+				);
+				map.addLayer(rasterLayer);
 				windLayer = new OpenMeteoMapboxLayer.WebGLWindLayer('windLayer', omUrl, domain, variable);
 				map.addLayer(windLayer);
 			});
