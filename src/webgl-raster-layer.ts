@@ -122,7 +122,7 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 		// Create data texture
 		this.dataTexture = gl.createTexture()!;
 		gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
@@ -146,21 +146,34 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 		}
 
 		const grid = this.domain.grid;
-
-		const minLon = grid.lonMin;
-		const maxLon = grid.lonMin + (grid.nx - 1) * grid.dx;
+		// LATITUDES
 		let minLat = grid.latMin;
 		let maxLat = grid.latMin + (grid.ny - 1) * grid.dy;
-
 		// Clamp latitudes to Mercator-safe range
 		const MERCATOR_MAX_LAT = 85.0511;
 		minLat = Math.max(-MERCATOR_MAX_LAT, Math.min(MERCATOR_MAX_LAT, minLat));
 		maxLat = Math.max(-MERCATOR_MAX_LAT, Math.min(MERCATOR_MAX_LAT, maxLat));
 
+		// LONGITUDES
+		const minLon = grid.lonMin;
+		const maxLon = grid.lonMin + (grid.nx - 1) * grid.dx;
+		// Extend longitude with viewport
+		const map = this.map!;
+		const bounds = map.getBounds();
+		const viewportWest = bounds.getWest();
+		const viewportEast = bounds.getEast();
+		const extendedMinLon = Math.min(minLon, viewportWest - 360);
+		const extendedMaxLon = Math.max(maxLon, viewportEast + 360);
+
 		console.log('minLon', minLon, 'maxLon', maxLon, 'minLat', minLat, 'maxLat', maxLat);
 
-		const sw = MercatorCoordinate.fromLngLat([minLon, minLat]);
-		const ne = MercatorCoordinate.fromLngLat([maxLon, maxLat]);
+		const sw = MercatorCoordinate.fromLngLat([extendedMinLon, minLat]);
+		const ne = MercatorCoordinate.fromLngLat([extendedMaxLon, maxLat]);
+
+		// Calculate texture coordinates that will repeat across world boundaries
+		const dataLonRange = maxLon - minLon;
+		const texCoordWest = (extendedMinLon - minLon) / dataLonRange;
+		const texCoordEast = (extendedMaxLon - minLon) / dataLonRange;
 
 		console.log('projected', sw, ne);
 
@@ -169,19 +182,19 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 			// Position (Mercator)    // TexCoord
 			sw.x,
 			sw.y,
-			0,
+			texCoordWest,
 			0, // bottom-left
 			ne.x,
 			sw.y,
-			1,
+			texCoordEast,
 			0, // bottom-right
 			sw.x,
 			ne.y,
-			0,
+			texCoordWest,
 			1, // top-left
 			ne.x,
 			ne.y,
-			1,
+			texCoordEast,
 			1 // top-right
 		]);
 
