@@ -66,13 +66,22 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 		this.vertexCount = indices.length;
 		return new Uint16Array(indices);
 	}
-
 	private hardcodedColorScale = [
-		{ value: -20, color: [0, 0, 255, 255] },
-		{ value: 0, color: [0, 255, 255, 255] },
-		{ value: 20, color: [0, 255, 0, 255] },
-		{ value: 40, color: [255, 255, 0, 255] },
-		{ value: 60, color: [255, 0, 0, 255] }
+		{ value: -35, color: [75, 0, 130, 255] }, // Deep Purple
+		{ value: -30, color: [128, 0, 128, 255] }, // Purple
+		{ value: -20, color: [75, 0, 130, 255] }, // Indigo
+		{ value: -15, color: [0, 0, 255, 255] }, // Blue
+		{ value: -10, color: [0, 128, 255, 255] }, // Light Blue
+		{ value: -5, color: [0, 255, 255, 255] }, // Cyan
+		{ value: 0, color: [0, 255, 128, 255] }, // Aqua-Green
+		{ value: 10, color: [0, 255, 0, 255] }, // Green
+		{ value: 20, color: [128, 255, 0, 255] }, // Yellow-Green
+		{ value: 30, color: [255, 255, 0, 255] }, // Yellow
+		{ value: 40, color: [255, 0, 0, 255] }, // Red
+		{ value: 45, color: [255, 64, 0, 255] }, // Deep Orange
+		{ value: 50, color: [255, 128, 0, 255] }, // Orange-Red
+		{ value: 55, color: [255, 165, 0, 255] }, // Orange
+		{ value: 60, color: [255, 0, 0, 255] } // Red
 	];
 
 	constructor(id: string, omUrl: string, domain: Domain, variable: Variable) {
@@ -135,11 +144,16 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 					precision mediump float;
 					uniform sampler2D u_data_texture;
 					uniform sampler2D u_color_ramp;
+					uniform vec2 u_value_range; // [minValue, maxValue] from color scale
 					varying vec2 v_texCoord;
 
 					void main() {
-  					float normalized = texture2D(u_data_texture, v_texCoord).r;
-            float opacity = 0.5;
+  					// Get the absolute value from the texture
+            float absoluteValue = texture2D(u_data_texture, v_texCoord).r;
+            float opacity = 0.75;
+
+            // Normalize the absolute value to 0-1 range for color lookup
+            float normalized = clamp((absoluteValue - u_value_range.x) / (u_value_range.y - u_value_range.x), 0.0, 1.0);
 
 						// Lookup color from ramp
 						vec4 color = texture2D(u_color_ramp, vec2(normalized, 0.5));
@@ -195,13 +209,7 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 		console.log('Data range: ', data.values.slice(0, 10));
 
 		const gl = this.gl;
-		const minVal = this.hardcodedColorScale[0].value;
-		const maxVal = this.hardcodedColorScale[this.hardcodedColorScale.length - 1].value;
 
-		const normalizedData = new Float32Array(nx * ny);
-		for (let i = 0; i < data.values.length; i++) {
-			normalizedData[i] = Math.max(0, Math.min(1, (data.values[i] - minVal) / (maxVal - minVal)));
-		}
 		// Create data texture
 		this.dataTexture = gl.createTexture()!;
 		gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
@@ -210,7 +218,7 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
-		gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, nx, ny, 0, gl.RED, gl.FLOAT, normalizedData);
+		gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, nx, ny, 0, gl.RED, gl.FLOAT, data.values);
 
 		// Check for GL errors
 		let error = gl.getError();
@@ -277,6 +285,11 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 			false,
 			new Float32Array(options.defaultProjectionData.mainMatrix)
 		);
+
+		const valueRangeLoc = gl.getUniformLocation(this.program, 'u_value_range');
+		const minVal = this.hardcodedColorScale[0].value;
+		const maxVal = this.hardcodedColorScale[this.hardcodedColorScale.length - 1].value;
+		gl.uniform2f(valueRangeLoc, minVal, maxVal);
 
 		// Bind textures
 		gl.activeTexture(gl.TEXTURE0);
