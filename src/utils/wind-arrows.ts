@@ -61,10 +61,6 @@ export const generateWindArrows = (
 			const windSpeed = values[index];
 			const windDirection = directions[index];
 
-			if (!windSpeed || !windDirection) {
-				continue;
-			}
-
 			const properties: { value?: number; direction?: number } = {
 				value: windSpeed,
 				direction: windDirection
