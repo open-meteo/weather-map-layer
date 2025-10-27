@@ -24,7 +24,7 @@ export const generateWindArrows = (
 	y: number,
 	z: number,
 	extent: number = 4096,
-	arrows: number = 25
+	arrows: number = 27
 ) => {
 	const features = [];
 	const size = extent / arrows;
