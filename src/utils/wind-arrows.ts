@@ -63,7 +63,7 @@ export const generateWindArrows = (
 				direction: directions[index]
 			};
 
-			let rotation = degreesToRadians(directions[index]);
+			let rotation = degreesToRadians(directions[index] + 180);
 
 			let [xt0, yt0] = rotatePoint(
 				center[0],
