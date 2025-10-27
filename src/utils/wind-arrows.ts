@@ -43,9 +43,9 @@ export const generateWindArrows = (
 		projectionGrid = new ProjectionGrid(projection, domain.grid, ranges);
 	}
 
-	for (let tileY = 0; tileY < extent + 1; tileY += size) {
+	for (let tileY = 0; tileY < extent; tileY += size) {
 		let lat = tile2lat(y + tileY / extent, z);
-		for (let tileX = 0; tileX < extent + 1; tileX += size) {
+		for (let tileX = 0; tileX < extent; tileX += size) {
 			let lon = tile2lon(x + tileX / extent, z);
 
 			const { index } = getIndexAndFractions(lat, lon, domain, projectionGrid, ranges, [
@@ -61,14 +61,20 @@ export const generateWindArrows = (
 			const windSpeed = values[index];
 			const windDirection = directions[index];
 
+			if (!windSpeed || !windDirection) {
+				continue;
+			}
+
 			const properties: { value?: number; direction?: number } = {
 				value: windSpeed,
 				direction: windDirection
 			};
 
 			let rotation = degreesToRadians(windDirection + 180);
-			let length = 0.9;
-
+			let length = 0.95;
+			if (windSpeed < 30) {
+				length = 0.9;
+			}
 			if (windSpeed < 20) {
 				length = 0.85;
 			}
