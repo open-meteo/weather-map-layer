@@ -24,6 +24,36 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 	private indexBuffer: WebGLBuffer | undefined;
 	private vertexCount = 0;
 
+	private hardcodedColorScale = [
+		{ value: -35, color: [75, 0, 130, 255] }, // Deep Purple
+		{ value: -30, color: [128, 0, 128, 255] }, // Purple
+		{ value: -20, color: [75, 0, 130, 255] }, // Indigo
+		{ value: -15, color: [0, 0, 255, 255] }, // Blue
+		{ value: -10, color: [0, 128, 255, 255] }, // Light Blue
+		{ value: -5, color: [0, 255, 255, 255] }, // Cyan
+		{ value: 0, color: [0, 255, 128, 255] }, // Aqua-Green
+		{ value: 5, color: [64, 255, 128, 255] }, // Greenish Aqua
+		{ value: 10, color: [0, 255, 0, 255] }, // Green
+		{ value: 15, color: [128, 255, 0, 255] }, // Yellow-Green
+		{ value: 20, color: [192, 255, 0, 255] }, // Light Yellow-Green
+		{ value: 25, color: [255, 255, 0, 255] }, // Yellow
+		{ value: 30, color: [255, 192, 0, 255] }, // Orange-Yellow
+		{ value: 35, color: [255, 128, 0, 255] }, // Orange
+		{ value: 40, color: [255, 64, 0, 255] }, // Orange-Red
+		{ value: 45, color: [255, 0, 0, 255] }, // Red
+		{ value: 50, color: [200, 0, 0, 255] }, // Deep Red
+		{ value: 55, color: [128, 0, 0, 255] }, // Dark Red
+		{ value: 60, color: [75, 0, 0, 255] } // Very Dark Red
+	];
+
+	constructor(id: string, omUrl: string, domain: Domain, variable: Variable) {
+		this.id = id;
+		this.domain = domain;
+		this.variable = variable;
+		this.omUrl = omUrl;
+		this.omFileReader = new OMapsFileReader(domain, false, false);
+	}
+
 	private createMeshVertices(resolution: number): Float32Array {
 		const vertices: number[] = [];
 
@@ -66,35 +96,17 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 		this.vertexCount = indices.length;
 		return new Uint16Array(indices);
 	}
-	private hardcodedColorScale = [
-		{ value: -35, color: [75, 0, 130, 255] }, // Deep Purple
-		{ value: -30, color: [128, 0, 128, 255] }, // Purple
-		{ value: -20, color: [75, 0, 130, 255] }, // Indigo
-		{ value: -15, color: [0, 0, 255, 255] }, // Blue
-		{ value: -10, color: [0, 128, 255, 255] }, // Light Blue
-		{ value: -5, color: [0, 255, 255, 255] }, // Cyan
-		{ value: 0, color: [0, 255, 128, 255] }, // Aqua-Green
-		{ value: 10, color: [0, 255, 0, 255] }, // Green
-		{ value: 20, color: [128, 255, 0, 255] }, // Yellow-Green
-		{ value: 30, color: [255, 255, 0, 255] }, // Yellow
-		{ value: 40, color: [255, 0, 0, 255] }, // Red
-		{ value: 45, color: [255, 64, 0, 255] }, // Deep Orange
-		{ value: 50, color: [255, 128, 0, 255] }, // Orange-Red
-		{ value: 55, color: [255, 165, 0, 255] }, // Orange
-		{ value: 60, color: [255, 0, 0, 255] } // Red
-	];
-
-	constructor(id: string, omUrl: string, domain: Domain, variable: Variable) {
-		this.id = id;
-		this.domain = domain;
-		this.variable = variable;
-		this.omUrl = omUrl;
-		this.omFileReader = new OMapsFileReader(domain, false, false);
-	}
 
 	async onAdd(map: Map, gl: WebGL2RenderingContext): Promise<void> {
 		this.gl = gl;
 		this.map = map;
+
+		// Check for float linear extension
+		const floatLinearExt = gl.getExtension('OES_texture_float_linear');
+
+		if (!floatLinearExt) {
+			console.error('Float linear filtering not supported, using manual interpolation');
+		}
 
 		const vertexShader = this.createShader(
 			gl,
@@ -215,8 +227,8 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 		gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
 		gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, nx, ny, 0, gl.RED, gl.FLOAT, data.values);
 
