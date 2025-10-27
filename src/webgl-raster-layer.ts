@@ -8,6 +8,7 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 	type: 'custom' = 'custom';
 	renderingMode: '2d' = '2d';
 
+	private map: Map | undefined;
 	private gl: WebGL2RenderingContext | undefined;
 	private program: WebGLProgram | undefined;
 	private dataTexture: WebGLTexture | undefined;
@@ -38,21 +39,23 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 
 	async onAdd(map: Map, gl: WebGL2RenderingContext): Promise<void> {
 		this.gl = gl;
+		this.map = map;
 
 		// Vertex shader - simple fullscreen quad
 		const vertexShader = this.createShader(
 			gl,
 			gl.VERTEX_SHADER,
 			`
-					attribute vec2 a_position;
-					varying vec2 v_texCoord;
+      attribute vec2 a_position;
+      attribute vec2 a_texCoord;
+      uniform mat4 u_matrix;
+      varying vec2 v_texCoord;
 
-					void main() {
-						gl_Position = vec4(a_position, 0.0, 1.0);
-						// Convert from -1,1 to 0,1 for texture coordinates
-						v_texCoord = a_position * 0.5 + 0.5;
-					}
-				`
+      void main() {
+        gl_Position = u_matrix * vec4(a_position, 0.0, 1.0);
+        v_texCoord = a_texCoord;
+      }
+    `
 		);
 
 		// Fragment shader with color ramp
@@ -66,7 +69,6 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 					varying vec2 v_texCoord;
 
 					void main() {
-  					// Flip Y coordinate because textures are upside down
   					float normalized = texture2D(u_data_texture, v_texCoord).r;
             float opacity = 0.5;
 
@@ -87,22 +89,8 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 			console.error('Program link error:', gl.getProgramInfoLog(this.program));
 		}
 
-		// Create fullscreen quad (from -1 to 1 in clip space)
-		const vertices = new Float32Array([
-			-1,
-			-1, // bottom-left
-			1,
-			-1, // bottom-right
-			-1,
-			1, // top-left
-			1,
-			1 // top-right
-		]);
-
+		// Create buffer - we'll populate it with actual coordinates later
 		this.buffer = gl.createBuffer()!;
-		gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
-		gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
-
 		// Create color ramp texture
 		this.colorRampTexture = this.createColorRampTexture(gl);
 
@@ -118,9 +106,6 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 			{ start: 0, end: this.domain.grid.nx }
 		]);
 		if (!this.gl || !data.values) return;
-
-		const floatExt = this.gl.getExtension('OES_texture_float');
-		console.log('Float extension:', this.gl);
 
 		const { nx, ny } = this.domain.grid;
 		console.log('Data loaded:', { nx, ny, dataLength: data.values.length });
@@ -155,18 +140,73 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 		map.triggerRepaint();
 	}
 
-	render(gl: WebGLRenderingContext, _options: CustomRenderMethodInput): void {
+	render(gl: WebGLRenderingContext, options: CustomRenderMethodInput): void {
 		if (!this.program || !this.dataLoaded || !this.buffer) {
 			return;
 		}
 
+		const grid = this.domain.grid;
+
+		const minLon = grid.lonMin;
+		const maxLon = grid.lonMin + (grid.nx - 1) * grid.dx;
+		let minLat = grid.latMin;
+		let maxLat = grid.latMin + (grid.ny - 1) * grid.dy;
+
+		// Clamp latitudes to Mercator-safe range
+		const MERCATOR_MAX_LAT = 85.0511;
+		minLat = Math.max(-MERCATOR_MAX_LAT, Math.min(MERCATOR_MAX_LAT, minLat));
+		maxLat = Math.max(-MERCATOR_MAX_LAT, Math.min(MERCATOR_MAX_LAT, maxLat));
+
+		console.log('minLon', minLon, 'maxLon', maxLon, 'minLat', minLat, 'maxLat', maxLat);
+
+		const sw = MercatorCoordinate.fromLngLat([minLon, minLat]);
+		const ne = MercatorCoordinate.fromLngLat([maxLon, maxLat]);
+
+		console.log('projected', sw, ne);
+
+		// Create vertices with position and texture coordinates
+		const vertices = new Float32Array([
+			// Position (Mercator)    // TexCoord
+			sw.x,
+			sw.y,
+			0,
+			0, // bottom-left
+			ne.x,
+			sw.y,
+			1,
+			0, // bottom-right
+			sw.x,
+			ne.y,
+			0,
+			1, // top-left
+			ne.x,
+			ne.y,
+			1,
+			1 // top-right
+		]);
+
 		gl.useProgram(this.program);
 
-		// Bind position buffer
+		// Update buffer with new vertices
 		gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+		gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.DYNAMIC_DRAW);
+
+		const matrixLoc = gl.getUniformLocation(this.program, 'u_matrix');
+		gl.uniformMatrix4fv(
+			matrixLoc,
+			false,
+			new Float32Array(options.defaultProjectionData.mainMatrix)
+		);
+
+		// Set up position attribute (2 floats for position)
 		const positionLoc = gl.getAttribLocation(this.program, 'a_position');
 		gl.enableVertexAttribArray(positionLoc);
-		gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0);
+		gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 16, 0); // stride=16, offset=0
+
+		// Set up texture coordinate attribute (2 floats for texcoord)
+		const texCoordLoc = gl.getAttribLocation(this.program, 'a_texCoord');
+		gl.enableVertexAttribArray(texCoordLoc);
+		gl.vertexAttribPointer(texCoordLoc, 2, gl.FLOAT, false, 16, 8); // stride=16, offset=8
 
 		// Bind textures
 		gl.activeTexture(gl.TEXTURE0);
@@ -177,10 +217,14 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 		gl.bindTexture(gl.TEXTURE_2D, this.colorRampTexture!);
 		gl.uniform1i(gl.getUniformLocation(this.program, 'u_color_ramp'), 1);
 
-		// Draw fullscreen quad
+		// Draw
 		gl.enable(gl.BLEND);
 		gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 		gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+		// Clean up
+		gl.disableVertexAttribArray(positionLoc);
+		gl.disableVertexAttribArray(texCoordLoc);
 	}
 
 	onRemove(_map: Map, gl: WebGLRenderingContext): void {
