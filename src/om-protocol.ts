@@ -2,9 +2,7 @@ import { type GetResourceResponse, type RequestParameters } from 'maplibre-gl';
 
 import { setupGlobalCache } from '@openmeteo/file-reader';
 
-import { WorkerPool } from './worker-pool';
-
-import { getIndexFromLatLong } from './utils/math';
+import { TilePromise, WorkerPool } from './worker-pool';
 
 import {
 	getBorderPoints,
@@ -119,7 +117,7 @@ const getTile = async (
 	{ z, x, y }: TileIndex,
 	omUrl: string,
 	type: 'image' | 'arrayBuffer'
-): Promise<ImageBitmap> => {
+): TilePromise => {
 	const key = `${omUrl}/${tileSize}/${z}/${x}/${y}`;
 
 	return await workerPool.requestTile({
@@ -305,7 +303,7 @@ export const omProtocol = async (
 	params: RequestParameters,
 	abortController?: AbortController,
 	omProtocolSettings = defaultOmProtocolSettings
-): Promise<GetResourceResponse<TileJSON | ImageBitmap>> => {
+): Promise<GetResourceResponse<TileJSON | ImageBitmap | ArrayBuffer>> => {
 	if (params.type == 'json') {
 		try {
 			await initOMFile(params.url, omProtocolSettings);
