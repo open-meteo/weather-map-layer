@@ -58,19 +58,45 @@ export const generateWindArrows = (
 			let center = [tileX - size / 2, tileY - size / 2];
 			const geom = [];
 
+			const windSpeed = values[index];
+			const windDirection = directions[index];
+
 			const properties: { value?: number; direction?: number } = {
-				value: values[index],
-				direction: directions[index]
+				value: windSpeed,
+				direction: windDirection
 			};
 
-			let rotation = degreesToRadians(directions[index] + 180);
+			let rotation = degreesToRadians(windDirection + 180);
+			let length = 0.9;
+
+			if (windSpeed < 20) {
+				length = 0.85;
+			}
+			if (windSpeed < 15) {
+				length = 0.8;
+			}
+			if (windSpeed < 13) {
+				length = 0.75;
+			}
+			if (windSpeed < 9) {
+				length = 0.7;
+			}
+			if (windSpeed < 6) {
+				length = 0.6;
+			}
+			if (windSpeed < 4) {
+				length = 0.55;
+			}
+			if (windSpeed < 2) {
+				length = 0.5;
+			}
 
 			let [xt0, yt0] = rotatePoint(
 				center[0],
 				center[1],
 				rotation,
 				center[0] - 0.13 * size,
-				center[1] - size * 0.18
+				center[1] - ((size * length) / 2 - size * 0.22)
 			);
 
 			geom.push(command(1, 1)); // MoveTo
@@ -83,7 +109,7 @@ export const generateWindArrows = (
 				center[1],
 				rotation,
 				center[0],
-				center[1] - size * 0.4
+				center[1] - (size * length) / 2
 			);
 			geom.push(command(2, 1)); // LineTo
 			geom.push(zigzag(xt1 - cursor[0]));
@@ -95,30 +121,36 @@ export const generateWindArrows = (
 				center[1],
 				rotation,
 				center[0] + 0.13 * size,
-				center[1] - size * 0.18
+				center[1] - ((size * length) / 2 - size * 0.22)
 			);
 			geom.push(command(2, 1)); // LineTo
 			geom.push(zigzag(xt1 - cursor[0]));
 			geom.push(zigzag(yt1 - cursor[1]));
 			cursor = [xt1, yt1];
 
-			[xt1, yt1] = rotatePoint(center[0], center[1], rotation, center[0], center[1] - size * 0.4);
+			[xt1, yt1] = rotatePoint(
+				center[0],
+				center[1],
+				rotation,
+				center[0],
+				center[1] - (size * length) / 2
+			);
 			geom.push(command(1, 1)); // MoveTo
 			geom.push(zigzag(xt1 - cursor[0]));
 			geom.push(zigzag(yt1 - cursor[1]));
 			cursor = [xt1, yt1];
 
-			[xt1, yt1] = rotatePoint(center[0], center[1], rotation, center[0], center[1] + size * 0.4);
+			[xt1, yt1] = rotatePoint(
+				center[0],
+				center[1],
+				rotation,
+				center[0],
+				center[1] + (size * length) / 2
+			);
 			geom.push(command(2, 1)); // LineTo
 			geom.push(zigzag(xt1 - cursor[0]));
 			geom.push(zigzag(yt1 - cursor[1]));
 			cursor = [xt1, yt1];
-
-			// ctx.lineTo(size * 0.63, size * 0.32);
-			// ctx.lineTo(size / 2, size * 0.1);
-			// ctx.lineTo(size * 0.37, size * 0.32);
-			// ctx.lineTo(size / 2, size * 0.1);
-			// ctx.lineTo(size / 2, size * 0.95);
 
 			features.push({
 				id: tileX + tileY,
