@@ -214,6 +214,7 @@ export const initOMFile = (url: string, omProtocolSettings: OmProtocolSettings):
 			.then(() => {
 				omFileReader.readVariable(variable, ranges).then((values) => {
 					data = values;
+
 					resolve();
 
 					if (omProtocolSettings.postReadCallback) {

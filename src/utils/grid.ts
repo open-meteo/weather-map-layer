@@ -28,6 +28,7 @@ export const generateGrid = (
 	// if (z > 3) {
 	// 	mod = 1;
 	// }
+	//
 
 	for (let j = 0; j < domain.grid.ny; j++) {
 		const lat = domain.grid.latMin + domain.grid.dy * j;

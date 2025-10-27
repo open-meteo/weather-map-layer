@@ -1,59 +1,114 @@
 import Pbf from 'pbf';
 
-import { Domain } from '../types';
+import { DimensionRange, Domain } from '../types';
 
 import { command, writeLayer, zigzag } from './pbf';
-import { lat2tile, lon2tile, tile2lat } from './math';
+
+import { degreesToRadians, rotatePoint, tile2lat, tile2lon } from './math';
+
+import {
+	DynamicProjection,
+	getIndexAndFractions,
+	Projection,
+	ProjectionGrid,
+	ProjectionName
+} from './projections';
 
 export const generateWindArrows = (
 	pbf: Pbf,
 	values: Float32Array,
 	directions: Float32Array,
 	domain: Domain,
+	ranges: DimensionRange[],
 	x: number,
 	y: number,
 	z: number,
 	extent: number = 4096,
-	margin: number = 0,
-	arrows: number = 32
+	arrows: number = 25
 ) => {
 	const features = [];
 	const size = extent / arrows;
 
 	let cursor = [0, 0];
 
-	for (let tileX = 0; tileX < extent + 1; tileX += size) {
-		for (let tileY = 0; tileY < extent + 1; tileY += size) {
+	const lonMin = domain.grid.lonMin + domain.grid.dx * ranges[1]['start'];
+	const latMin = domain.grid.latMin + domain.grid.dy * ranges[0]['start'];
+	const lonMax = domain.grid.lonMin + domain.grid.dx * ranges[1]['end'];
+	const latMax = domain.grid.latMin + domain.grid.dy * ranges[0]['end'];
+
+	let projectionGrid = null;
+	if (domain.grid.projection) {
+		const projectionName = domain.grid.projection.name as ProjectionName;
+		const projection = new DynamicProjection(projectionName, domain.grid.projection) as Projection;
+		projectionGrid = new ProjectionGrid(projection, domain.grid, ranges);
+	}
+
+	for (let tileY = 0; tileY < extent + 1; tileY += size) {
+		let lat = tile2lat(y + tileY / extent, z);
+		for (let tileX = 0; tileX < extent + 1; tileX += size) {
+			let lon = tile2lon(x + tileX / extent, z);
+
+			const { index } = getIndexAndFractions(lat, lon, domain, projectionGrid, ranges, [
+				latMin,
+				lonMin,
+				latMax,
+				lonMax
+			]);
+
 			let center = [tileX - size / 2, tileY - size / 2];
 			const geom = [];
 
-			const properties: { value?: number; direction?: number } = {};
+			const properties: { value?: number; direction?: number } = {
+				value: values[index],
+				direction: directions[index]
+			};
 
-			let [xt0, yt0] = [center[0] - 0.13 * size, center[1] - size * 0.18];
+			let rotation = degreesToRadians(directions[index]);
+
+			let [xt0, yt0] = rotatePoint(
+				center[0],
+				center[1],
+				rotation,
+				center[0] - 0.13 * size,
+				center[1] - size * 0.18
+			);
+
 			geom.push(command(1, 1)); // MoveTo
 			geom.push(zigzag(xt0));
 			geom.push(zigzag(yt0));
 			cursor = [xt0, yt0];
 
-			let [xt1, yt1] = [center[0], center[1] - size * 0.4];
+			let [xt1, yt1] = rotatePoint(
+				center[0],
+				center[1],
+				rotation,
+				center[0],
+				center[1] - size * 0.4
+			);
 			geom.push(command(2, 1)); // LineTo
 			geom.push(zigzag(xt1 - cursor[0]));
 			geom.push(zigzag(yt1 - cursor[1]));
 			cursor = [xt1, yt1];
 
-			[xt1, yt1] = [center[0] + 0.13 * size, center[1] - size * 0.18];
+			[xt1, yt1] = rotatePoint(
+				center[0],
+				center[1],
+				rotation,
+				center[0] + 0.13 * size,
+				center[1] - size * 0.18
+			);
 			geom.push(command(2, 1)); // LineTo
 			geom.push(zigzag(xt1 - cursor[0]));
 			geom.push(zigzag(yt1 - cursor[1]));
 			cursor = [xt1, yt1];
 
-			[xt1, yt1] = [center[0], center[1] - size * 0.4];
+			[xt1, yt1] = rotatePoint(center[0], center[1], rotation, center[0], center[1] - size * 0.4);
 			geom.push(command(1, 1)); // MoveTo
-			geom.push(zigzag(xt0));
-			geom.push(zigzag(yt0));
+			geom.push(zigzag(xt1 - cursor[0]));
+			geom.push(zigzag(yt1 - cursor[1]));
 			cursor = [xt1, yt1];
 
-			[xt1, yt1] = [center[0], center[1] + size * 0.4];
+			[xt1, yt1] = rotatePoint(center[0], center[1], rotation, center[0], center[1] + size * 0.4);
 			geom.push(command(2, 1)); // LineTo
 			geom.push(zigzag(xt1 - cursor[0]));
 			geom.push(zigzag(yt1 - cursor[1]));
