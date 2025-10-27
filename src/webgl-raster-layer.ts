@@ -1,7 +1,9 @@
-import { Map, CustomRenderMethodInput, CustomLayerInterface } from 'maplibre-gl';
-import { OMapsFileReader } from './om-file-reader';
-import { Domain, Variable } from './types';
+import { CustomLayerInterface, CustomRenderMethodInput, Map } from 'maplibre-gl';
 import { MercatorCoordinate } from 'maplibre-gl';
+
+import { WeatherMapLayerFileReader } from './om-file-reader';
+
+import { Domain, RegularGridData } from './types';
 
 export class WebGLRasterLayer implements CustomLayerInterface {
 	id: string;
@@ -16,9 +18,9 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 	private buffer: WebGLBuffer | undefined;
 
 	private omUrl: string;
-	private omFileReader: OMapsFileReader;
+	private omFileReader: WeatherMapLayerFileReader;
 	private domain: Domain;
-	private variable: Variable;
+	private variable: string;
 	private dataLoaded = false;
 	private meshResolution = 50; // Adjustable resolution
 	private indexBuffer: WebGLBuffer | undefined;
@@ -46,12 +48,12 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 		{ value: 60, color: [75, 0, 0, 255] } // Very Dark Red
 	];
 
-	constructor(id: string, omUrl: string, domain: Domain, variable: Variable) {
+	constructor(id: string, omUrl: string, domain: Domain, variable: string) {
 		this.id = id;
 		this.domain = domain;
 		this.variable = variable;
 		this.omUrl = omUrl;
-		this.omFileReader = new OMapsFileReader(domain, false, false);
+		this.omFileReader = new WeatherMapLayerFileReader();
 	}
 
 	private createMeshVertices(resolution: number): Float32Array {
@@ -204,7 +206,7 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 		this.colorRampTexture = this.createColorRampTexture(gl);
 
 		// Load data asynchronously
-		await this.omFileReader.init(this.omUrl);
+		await this.omFileReader.setToOmFile(this.omUrl);
 		await this.loadData(map);
 	}
 
@@ -248,7 +250,7 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 			return;
 		}
 
-		const grid = this.domain.grid;
+		const grid = this.domain.grid as RegularGridData;
 
 		const minLat = grid.latMin;
 		const maxLat = grid.latMin + grid.ny * grid.dy;

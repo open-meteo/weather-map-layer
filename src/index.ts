@@ -49,3 +49,4 @@ export { addMapboxProtocolSupport } from './adapters/mapbox';
 export { addOpenLayersProtocolSupport } from './adapters/openlayers';
 export * from './types';
 export * from './webgl-raster-layer';
+export * from './webgl-wind-layer';

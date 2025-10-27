@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Mapbox Layer - Wind Animation Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.css" />
+		<script src="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.js"></script>
+		<!-- Set to latest version -->
+		<script src="../dist/index.js"></script>
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+				background: #222;
+			}
+
+			#controls {
+				position: absolute;
+				top: 10px;
+				left: 10px;
+				background: rgba(0, 0, 0, 0.8);
+				color: white;
+				padding: 10px;
+				border-radius: 5px;
+				font-family: Arial, sans-serif;
+				font-size: 12px;
+				z-index: 1000;
+			}
+
+			#controls label {
+				display: block;
+				margin: 5px 0;
+			}
+
+			#controls input[type='range'] {
+				width: 150px;
+				margin-left: 10px;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="controls">
+			<label>
+				Speed: <input type="range" id="speedControl" min="0.1" max="3.0" step="0.1" value="0.8" />
+				<span id="speedValue">0.8</span>
+			</label>
+			<label>
+				Particle Count:
+				<input
+					type="range"
+					id="particleControl"
+					min="1000"
+					max="100000"
+					step="1000"
+					value="65536"
+				/>
+				<span id="particleValue">65536</span>
+			</label>
+			<label>
+				Drop Rate:
+				<input type="range" id="dropControl" min="0.001" max="0.01" step="0.001" value="0.003" />
+				<span id="dropValue">0.003</span>
+			</label>
+		</div>
+		<div id="map"></div>
+		<script>
+			const map = new maplibregl.Map({
+				container: 'map',
+				style: {
+					version: 8,
+					sources: {
+						osm: {
+							type: 'raster',
+							tiles: ['https://a.tile.openstreetmap.org/{z}/{x}/{y}.png'],
+							tileSize: 256,
+							attribution: '&copy; OpenStreetMap Contributors'
+						}
+					},
+					layers: [
+						{
+							id: 'osm',
+							type: 'raster',
+							source: 'osm'
+						}
+					]
+				},
+				hash: true,
+				contextAttributes: {
+					webglVersion: 2
+				}
+			});
+
+			// Wind data URLs - U and V components
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/26/1200Z/2025-10-26T1400.om`;
+			const variableName = 'wind_u_component_10m';
+
+			const domain = OpenMeteoMapboxLayer.domainOptions.find((d) => d.value === 'dwd_icon');
+			console.log('Domain:', domain);
+
+			// Wind variables
+			const variable =
+				OpenMeteoMapboxLayer.variableOptions.find((v) => v.value === variableName) ||
+				OpenMeteoMapboxLayer.variableOptions[0];
+			console.log(variable);
+
+			let windLayer;
+
+			map.on('load', () => {
+				windLayer = new OpenMeteoMapboxLayer.WebGLWindLayer('windLayer', omUrl, domain, variable);
+				map.addLayer(windLayer);
+			});
+
+			// Controls
+			const speedControl = document.getElementById('speedControl');
+			const speedValue = document.getElementById('speedValue');
+			const particleControl = document.getElementById('particleControl');
+			const particleValue = document.getElementById('particleValue');
+			const dropControl = document.getElementById('dropControl');
+			const dropValue = document.getElementById('dropValue');
+
+			speedControl.addEventListener('input', (e) => {
+				const value = parseFloat(e.target.value);
+				speedValue.textContent = value;
+				if (windLayer) {
+					windLayer.speedFactor = value;
+				}
+			});
+
+			particleControl.addEventListener('input', (e) => {
+				const value = parseInt(e.target.value);
+				particleValue.textContent = value;
+				// Note: Changing particle count requires recreating the layer
+				// This would need additional implementation
+			});
+
+			dropControl.addEventListener('input', (e) => {
+				const value = parseFloat(e.target.value);
+				dropValue.textContent = value;
+				if (windLayer) {
+					windLayer.dropRate = value;
+				}
+			});
+
+			// Add some keyboard controls
+			document.addEventListener('keydown', (e) => {
+				if (!windLayer) return;
+
+				switch (e.key) {
+					case 'ArrowUp':
+						windLayer.speedFactor = Math.min(3.0, windLayer.speedFactor + 0.1);
+						speedControl.value = windLayer.speedFactor;
+						speedValue.textContent = windLayer.speedFactor.toFixed(1);
+						break;
+					case 'ArrowDown':
+						windLayer.speedFactor = Math.max(0.1, windLayer.speedFactor - 0.1);
+						speedControl.value = windLayer.speedFactor;
+						speedValue.textContent = windLayer.speedFactor.toFixed(1);
+						break;
+					case ' ':
+						e.preventDefault();
+						// Toggle animation (would need additional implementation)
+						break;
+				}
+			});
+		</script>
+	</body>
+</html>
