@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.0.4](https://github.com/open-meteo/mapbox-layer/compare/v0.0.3...v0.0.4) (2025-10-28)
+
+
+### Features
+
+* simplify omaps reader interface ([48d81c7](https://github.com/open-meteo/mapbox-layer/commit/48d81c7750bf2e054849feb9362a13e0be08bb7b))
+* Transfer buffer after worker process ([d222d54](https://github.com/open-meteo/mapbox-layer/commit/d222d543c3a6ac8ae5e07bc0673962a3fddf54ce))
+
+
+### Bug Fixes
+
+* bump the openmeteo group with 2 updates ([bab5e70](https://github.com/open-meteo/mapbox-layer/commit/bab5e70eda3c1627f6545290a8c23d0537c9d5f5))
+* bump the openmeteo group with 2 updates ([312896d](https://github.com/open-meteo/mapbox-layer/commit/312896dd74efac24b9d956348ff00d08ae523791))
+* detached buffer during contouring in worker ([64224f6](https://github.com/open-meteo/mapbox-layer/commit/64224f67b37f18a5ed0de30841948dd549221ba9))
+* detached buffer during contouring in worker ([b2d2eaf](https://github.com/open-meteo/mapbox-layer/commit/b2d2eafd4158614a30829c9cf15b67e5ff9500c0))
+* inconsistent colorscales between chrome and firefox ([3eac2e2](https://github.com/open-meteo/mapbox-layer/commit/3eac2e2c08c943f91a4cb50d488fb1365993f8ff))
+* inconsistent colorscales between chrome and firefox ([c847469](https://github.com/open-meteo/mapbox-layer/commit/c847469be7a5e1693cf68ad8dec4ae930e7da1bd))
+* Temporary fix for the dates in examples ([10a2671](https://github.com/open-meteo/mapbox-layer/commit/10a2671f73147b43c75d8595f2494842b45d4e1d))
+
 ## [0.0.3](https://github.com/open-meteo/mapbox-layer/compare/v0.0.2...v0.0.3) (2025-10-23)
 
 ### Features
