@@ -26,11 +26,11 @@ npm install @openmeteo/mapbox-layer
 ```
 
 ```ts
-...
+// ...
 import { omProtocol } from '@openmeteo/mapbox-layer';
 
-// standard mapbox / maplibre setup
-...
+// Standard Mapbox / MapLibre GL JS setup
+// ...
 
 maplibregl.addProtocol('om', omProtocol);
 
@@ -67,7 +67,7 @@ For a standalone example, see `examples/temperature.html`.
 
 	maplibregl.addProtocol('om', omProtocol);
 
-	const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/15/1200Z/2025-10-15T1400.om?variable=temperature_2m`;
+	const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m`;
 
 	map.on('load', () => {
 		map.addSource('omFileSource', {
@@ -127,4 +127,4 @@ For the contouring there is the `examples/vector` directory with ready‑to‑ru
 
 - `examples/vector/contouring-pressure.html` – shows how to use contouring with a pressure map
 - `examples/vector/grid-points.html` – displays all grid points for a model, with value data on each point.
-- `examples/vector/temperature_labels.html` – displays all grid points for a model, using value data to show temperature labels.
+- `examples/vector/temperature-labels.html` – displays all grid points for a model, using value data to show temperature labels.
