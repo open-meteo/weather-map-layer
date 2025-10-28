@@ -58,14 +58,14 @@ For a standalone example, see `examples/temperature.html`.
 
 ```ts
 ...
-<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.3/dist/index.js"></script>
+<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.4/dist/index.js"></script>
 ...
 
 <script>
 	// Standard Mapbox / MapLibre GL JS setup
 	// ...
 
-	maplibregl.addProtocol('om', omProtocol);
+	maplibregl.addProtocol('om', OpenMeteoMapboxLayer.omProtocol);
 
 	const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m`;
 
