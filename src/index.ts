@@ -10,7 +10,7 @@ export * from './utils/math';
 export * from './utils/pbf';
 export * from './utils/projections';
 export * from './utils/variables';
-export * from './utils/wind-arrows';
+export * from './utils/arrows';
 
 export * from './om-file-reader';
 export * from './om-protocol';

@@ -23,7 +23,7 @@ import { generateContours } from './utils/contours';
 import { GaussianGrid } from './utils/gaussian';
 
 import { MS_TO_KMH } from './utils/constants';
-import { generateWindArrows } from './utils/wind-arrows';
+import { generateArrows, generateWindArrows } from './utils/arrows';
 
 const OPACITY = 75;
 
@@ -291,8 +291,8 @@ self.onmessage = async (message) => {
 
 		if (key.includes('grid=true')) {
 			generateGrid(pbf, values, directions, domain, x, y, z);
-		} else if (key.includes('wind=true')) {
-			generateWindArrows(pbf, values, directions, domain, ranges, x, y, z, colorScale);
+		} else if (key.includes('arrows=true')) {
+			generateArrows(pbf, values, directions, domain, ranges, x, y, z, colorScale);
 		} else {
 			generateContours(pbf, values, domain, ranges, x, y, z, interval ? interval : 2);
 		}

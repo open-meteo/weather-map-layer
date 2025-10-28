@@ -18,7 +18,7 @@ import { GaussianGrid } from './gaussian';
 
 import { getInterpolator } from './color-scales';
 
-export const generateWindArrows = (
+export const generateArrows = (
 	pbf: Pbf,
 	values: Float32Array,
 	directions: Float32Array,
@@ -72,48 +72,48 @@ export const generateWindArrows = (
 			let center = [tileX - size / 2, tileY - size / 2];
 			const geom = [];
 
-			let windSpeed, windDirection;
+			let speed, direction;
 			if (gaussian) {
-				windSpeed = gaussian.getLinearInterpolatedValue(values, lat, lon);
-				windDirection = degreesToRadians(
+				speed = gaussian.getLinearInterpolatedValue(values, lat, lon);
+				direction = degreesToRadians(
 					gaussian.getLinearInterpolatedValue(directions, lat, lon) + 180
 				);
 			} else {
-				windSpeed = interpolator(values, index, xFraction, yFraction, ranges);
-				windDirection = degreesToRadians(
+				speed = interpolator(values, index, xFraction, yFraction, ranges);
+				direction = degreesToRadians(
 					interpolator(directions, index, xFraction, yFraction, ranges) + 180
 				);
 			}
 
 			const properties: { value?: number; direction?: number } = {
-				value: windSpeed,
-				direction: windDirection
+				value: speed,
+				direction: direction
 			};
 
-			let rotation = windDirection;
+			let rotation = direction;
 			let length = 0.95;
-			if (windSpeed < 30) {
+			if (speed < 30) {
 				length = 0.9;
 			}
-			if (windSpeed < 20) {
+			if (speed < 20) {
 				length = 0.85;
 			}
-			if (windSpeed < 15) {
+			if (speed < 15) {
 				length = 0.8;
 			}
-			if (windSpeed < 13) {
+			if (speed < 13) {
 				length = 0.75;
 			}
-			if (windSpeed < 9) {
+			if (speed < 9) {
 				length = 0.7;
 			}
-			if (windSpeed < 6) {
+			if (speed < 6) {
 				length = 0.6;
 			}
-			if (windSpeed < 4) {
+			if (speed < 4) {
 				length = 0.55;
 			}
-			if (windSpeed < 2) {
+			if (speed < 2) {
 				length = 0.5;
 			}
 

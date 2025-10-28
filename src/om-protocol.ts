@@ -193,7 +193,10 @@ const getTilejson = async (fullUrl: string): Promise<TileJSON> => {
 let setColorScales: ColorScales;
 let setDomainOptions: Domain[];
 let setVariableOptions: Variable[];
-export const initOMFile = (url: string, omProtocolSettings: OmProtocolSettings): Promise<void> => {
+export const initProtocol = (
+	url: string,
+	omProtocolSettings: OmProtocolSettings
+): Promise<void> => {
 	return new Promise((resolve, reject) => {
 		const { useSAB } = omProtocolSettings;
 		tileSize = omProtocolSettings.tileSize;
@@ -300,17 +303,23 @@ export const defaultOmProtocolSettings: OmProtocolSettings = {
 	postReadCallback: undefined
 };
 
+let protocolPromise: Promise<void>;
 export const omProtocol = async (
 	params: RequestParameters,
 	abortController?: AbortController,
 	omProtocolSettings = defaultOmProtocolSettings
 ): Promise<GetResourceResponse<TileJSON | ImageBitmap | ArrayBuffer>> => {
+	console.log(params);
 	if (params.type == 'json') {
 		try {
-			await initOMFile(params.url, omProtocolSettings);
+			if (!protocolPromise) {
+				protocolPromise = initProtocol(params.url, omProtocolSettings);
+			}
+			await protocolPromise;
 		} catch (e) {
 			throw new Error(e as string);
 		}
+
 		return {
 			data: await getTilejson(params.url)
 		};
