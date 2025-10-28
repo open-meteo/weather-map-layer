@@ -13,7 +13,7 @@ interface FileReaderConfig {
 	/** Whether to use SharedArrayBuffer for data reading. @default false */
 	useSAB?: boolean;
 	/** Maximum number of cached HTTP backends. @default 50 */
-	maxCacheSize?: number;
+	maxCachedFiles?: number;
 	/** Number of retry attempts for failed requests. @default 2 */
 	retries?: number;
 	/** Whether to validate ETags for cache coherency. @default false */
@@ -36,7 +36,7 @@ export class OMapsFileReader {
 	constructor(config: FileReaderConfig = {}) {
 		this.config = {
 			useSAB: false,
-			maxCacheSize: 50,
+			maxCachedFiles: 50,
 			retries: 2,
 			eTagValidation: false,
 			...config
@@ -60,7 +60,7 @@ export class OMapsFileReader {
 
 	private setCachedBackend(url: string, backend: OmHttpBackend): void {
 		// Implement LRU-like cache management
-		if (OMapsFileReader.s3BackendCache.size >= this.config.maxCacheSize) {
+		if (OMapsFileReader.s3BackendCache.size >= this.config.maxCachedFiles) {
 			const firstKey = OMapsFileReader.s3BackendCache.keys().next().value;
 			if (firstKey) {
 				OMapsFileReader.s3BackendCache.delete(firstKey);
