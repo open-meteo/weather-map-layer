@@ -1,4 +1,3 @@
-import type { Domain } from '../types';
 import { getCenterFromBounds, getCenterFromGrid } from './math';
 import { getBorderPoints, getBoundsFromBorderPoints } from './projections';
 import {
@@ -7,6 +6,8 @@ import {
 	ProjectionGrid,
 	type ProjectionName
 } from './projections';
+
+import type { Domain } from '../types';
 
 export const domainGroups = [
 	//'bom',

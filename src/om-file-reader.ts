@@ -9,8 +9,9 @@ import {
 } from './utils/projections';
 
 import type { Data } from './om-protocol';
-import type { DimensionRange, Domain, Variable } from './types';
 import { pad } from './utils';
+
+import type { DimensionRange, Domain, Variable } from './types';
 
 export class OMapsFileReader {
 	static s3BackendCache: Map<string, OmHttpBackend> = new Map();

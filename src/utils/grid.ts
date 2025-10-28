@@ -1,8 +1,9 @@
 import Pbf from 'pbf';
 
-import { Domain } from '../types';
 import { lat2tile, lon2tile } from './math';
 import { command, writeLayer, zigzag } from './pbf';
+
+import { Domain } from '../types';
 
 export const generateGrid = (
 	pbf: Pbf,
