@@ -1,6 +1,6 @@
 import Pbf from 'pbf';
 
-import { DimensionRange, Domain } from '../types';
+import { ColorScale, DimensionRange, Domain } from '../types';
 
 import { command, writeLayer, zigzag } from './pbf';
 
@@ -14,6 +14,10 @@ import {
 	ProjectionName
 } from './projections';
 
+import { GaussianGrid } from './gaussian';
+
+import { getInterpolator } from './color-scales';
+
 export const generateWindArrows = (
 	pbf: Pbf,
 	values: Float32Array,
@@ -23,6 +27,7 @@ export const generateWindArrows = (
 	x: number,
 	y: number,
 	z: number,
+	colorScale: ColorScale,
 	extent: number = 4096,
 	arrows: number = 27
 ) => {
@@ -43,30 +48,49 @@ export const generateWindArrows = (
 		projectionGrid = new ProjectionGrid(projection, domain.grid, ranges);
 	}
 
+	const interpolator = getInterpolator(colorScale);
+
+	let gaussian;
+	if (domain.grid.gaussianGridLatitudeLines) {
+		gaussian = new GaussianGrid(domain.grid.gaussianGridLatitudeLines);
+	}
+
 	for (let tileY = 0; tileY < extent; tileY += size) {
 		let lat = tile2lat(y + tileY / extent, z);
 		for (let tileX = 0; tileX < extent; tileX += size) {
 			let lon = tile2lon(x + tileX / extent, z);
 
-			const { index } = getIndexAndFractions(lat, lon, domain, projectionGrid, ranges, [
-				latMin,
-				lonMin,
-				latMax,
-				lonMax
-			]);
+			const { index, xFraction, yFraction } = getIndexAndFractions(
+				lat,
+				lon,
+				domain,
+				projectionGrid,
+				ranges,
+				[latMin, lonMin, latMax, lonMax]
+			);
 
 			let center = [tileX - size / 2, tileY - size / 2];
 			const geom = [];
 
-			const windSpeed = values[index];
-			const windDirection = directions[index];
+			let windSpeed, windDirection;
+			if (gaussian) {
+				windSpeed = gaussian.getLinearInterpolatedValue(values, lat, lon);
+				windDirection = degreesToRadians(
+					gaussian.getLinearInterpolatedValue(directions, lat, lon) + 180
+				);
+			} else {
+				windSpeed = interpolator(values, index, xFraction, yFraction, ranges);
+				windDirection = degreesToRadians(
+					interpolator(directions, index, xFraction, yFraction, ranges) + 180
+				);
+			}
 
 			const properties: { value?: number; direction?: number } = {
 				value: windSpeed,
 				direction: windDirection
 			};
 
-			let rotation = degreesToRadians(windDirection + 180);
+			let rotation = windDirection;
 			let length = 0.95;
 			if (windSpeed < 30) {
 				length = 0.9;
@@ -93,6 +117,7 @@ export const generateWindArrows = (
 				length = 0.5;
 			}
 
+			// left arrow head
 			let [xt0, yt0] = rotatePoint(
 				center[0],
 				center[1],
@@ -100,12 +125,12 @@ export const generateWindArrows = (
 				center[0] - 0.13 * size,
 				center[1] - ((size * length) / 2 - size * 0.22)
 			);
-
 			geom.push(command(1, 1)); // MoveTo
 			geom.push(zigzag(xt0));
 			geom.push(zigzag(yt0));
 			cursor = [xt0, yt0];
 
+			// arrow head middle
 			let [xt1, yt1] = rotatePoint(
 				center[0],
 				center[1],
@@ -118,6 +143,7 @@ export const generateWindArrows = (
 			geom.push(zigzag(yt1 - cursor[1]));
 			cursor = [xt1, yt1];
 
+			// right arrow head
 			[xt1, yt1] = rotatePoint(
 				center[0],
 				center[1],
@@ -130,6 +156,7 @@ export const generateWindArrows = (
 			geom.push(zigzag(yt1 - cursor[1]));
 			cursor = [xt1, yt1];
 
+			// arrow head middle
 			[xt1, yt1] = rotatePoint(
 				center[0],
 				center[1],
@@ -142,6 +169,7 @@ export const generateWindArrows = (
 			geom.push(zigzag(yt1 - cursor[1]));
 			cursor = [xt1, yt1];
 
+			// arrow bottom middle
 			[xt1, yt1] = rotatePoint(
 				center[0],
 				center[1],

@@ -4,8 +4,8 @@
 		<title>Open-Meteo Mapbox Layer - Pressure Contouring Example</title>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.css" />
-		<script src="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.js"></script>
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.10.0/dist/maplibre-gl.css" />
+		<script src="https://unpkg.com/maplibre-gl@5.10.0/dist/maplibre-gl.js"></script>
 		<!-- Set to latest version -->
 		<!--<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.3/dist/index.js"></script>-->
 		<!-- Local development -->
@@ -51,7 +51,7 @@
 			});
 
 			// s3 storage structure: /data_spatial/{domain}/{modelRun /year/month/day/time}Z/{selectedTime year-month-day-time.om}?variable={variable}
-			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/25/1200Z/2025-10-25T1400.om?variable=wind_u_component_10m`;
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/ecmwf_ifs/2025/10/27/1200Z/2025-10-27T1200.om?variable=wind_u_component_10m`;
 
 			map.on('load', () => {
 				map.addSource('omFileRasterSource', {

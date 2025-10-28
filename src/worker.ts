@@ -285,13 +285,14 @@ self.onmessage = async (message) => {
 		const domain = message.data.domain;
 		const interval = message.data.interval;
 		const directions = message.data.data.directions;
+		const colorScale = message.data.colorScale;
 
 		const pbf = new Pbf();
 
 		if (key.includes('grid=true')) {
 			generateGrid(pbf, values, directions, domain, x, y, z);
 		} else if (key.includes('wind=true')) {
-			generateWindArrows(pbf, values, directions, domain, ranges, x, y, z);
+			generateWindArrows(pbf, values, directions, domain, ranges, x, y, z, colorScale);
 		} else {
 			generateContours(pbf, values, domain, ranges, x, y, z, interval ? interval : 2);
 		}
