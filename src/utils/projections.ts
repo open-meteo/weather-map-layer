@@ -1,3 +1,4 @@
+import type { Bounds, DimensionRange, Domain, IndexAndFractions } from '../types';
 import {
 	degreesToRadians,
 	getIndexFromLatLong,
@@ -7,9 +8,6 @@ import {
 	tile2lat,
 	tile2lon
 } from './math';
-
-import type { Bounds, Domain, IndexAndFractions } from '../types';
-import type { DimensionRange } from '../types';
 
 export interface Projection {
 	forward(latitude: number, longitude: number): [x: number, y: number];

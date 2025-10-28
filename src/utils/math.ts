@@ -1,4 +1,4 @@
-import type { Domain, Bounds, Center, IndexAndFractions } from '../types';
+import type { Bounds, Center, Domain, IndexAndFractions } from '../types';
 
 const PI = Math.PI;
 

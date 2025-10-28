@@ -1,51 +1,42 @@
+import { setupGlobalCache } from '@openmeteo/file-reader';
 import { type GetResourceResponse, type RequestParameters } from 'maplibre-gl';
 
-import { setupGlobalCache } from '@openmeteo/file-reader';
-
-import { TilePromise, WorkerPool } from './worker-pool';
-
+import {
+	colorScales as defaultColorScales,
+	getColorScale,
+	getInterpolator
+} from './utils/color-scales';
+import { MS_TO_KMH } from './utils/constants';
+import { domainOptions as defaultDomainOptions } from './utils/domains';
+import { GaussianGrid } from './utils/gaussian';
 import {
 	getBorderPoints,
-	getBoundsFromGrid,
-	getIndicesFromBounds,
 	getBoundsFromBorderPoints,
-	getIndexAndFractions
+	getBoundsFromGrid,
+	getIndexAndFractions,
+	getIndicesFromBounds
 } from './utils/projections';
-
-import {
-	getInterpolator,
-	colorScales as defaultColorScales,
-	getColorScale
-} from './utils/color-scales';
-
-import { domainOptions as defaultDomainOptions } from './utils/domains';
-import { variableOptions as defaultVariableOptions } from './utils/variables';
-
 import {
 	DynamicProjection,
-	ProjectionGrid,
 	type Projection,
+	ProjectionGrid,
 	type ProjectionName
 } from './utils/projections';
+import { variableOptions as defaultVariableOptions } from './utils/variables';
 
 import { OMapsFileReader } from './om-file-reader';
-
-import { GaussianGrid } from './utils/gaussian';
-
-import { MS_TO_KMH } from './utils/constants';
-
 import type {
 	Bounds,
-	Domain,
-	Variable,
-	TileJSON,
-	TileIndex,
 	ColorScale,
+	ColorScales,
 	DimensionRange,
-	ColorScales
+	Domain,
+	TileIndex,
+	TileJSON,
+	Variable
 } from './types';
-
 import { capitalize } from './utils';
+import { TilePromise, WorkerPool } from './worker-pool';
 
 let dark = false;
 let partial = false;

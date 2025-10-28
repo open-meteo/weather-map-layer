@@ -1,18 +1,17 @@
 import Pbf from 'pbf';
 
+import { ColorScale, DimensionRange, Domain } from '../types';
 import { getInterpolator } from './color-scales';
-
+import { GaussianGrid } from './gaussian';
+import { tile2lat, tile2lon } from './math';
+import { command, writeLayer, zigzag } from './pbf';
 import {
 	DynamicProjection,
-	getIndexAndFractions,
 	Projection,
 	ProjectionGrid,
-	ProjectionName
+	ProjectionName,
+	getIndexAndFractions
 } from './projections';
-import { ColorScale, DimensionRange, Domain } from '../types';
-import { GaussianGrid } from './gaussian';
-import { command, writeLayer, zigzag } from './pbf';
-import { tile2lat, tile2lon } from './math';
 
 // prettier-ignore
 export const edgeTable = [

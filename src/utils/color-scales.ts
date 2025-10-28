@@ -1,8 +1,6 @@
 // import { interpolateHsl, color } from 'd3';
-
 import type { ColorScale, ColorScales, Interpolator, Variable } from '../types';
-
-import { noInterpolation, interpolateLinear, interpolate2DHermite } from './interpolations';
+import { interpolate2DHermite, interpolateLinear, noInterpolation } from './interpolations';
 
 const OPACITY = 75;
 

@@ -1,6 +1,6 @@
 import * as maplibregl from 'maplibre-gl';
 
-import type { Domain, Variable, DomainMetaData } from '../types';
+import type { Domain, DomainMetaData, Variable } from '../types';
 
 const now = new Date();
 now.setHours(now.getHours() + 1, 0, 0, 0);

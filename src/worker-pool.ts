@@ -1,9 +1,7 @@
+import type { Data } from './om-protocol';
+import type { ColorScale, DimensionRange, Domain, Variable } from './types';
 // @ts-ignore
 import TileWorker from './worker?worker&inline';
-
-import type { Data } from './om-protocol';
-
-import type { Domain, Variable, ColorScale, DimensionRange } from './types';
 
 export interface TileRequest {
 	type: 'getArrayBuffer' | 'getImage';
