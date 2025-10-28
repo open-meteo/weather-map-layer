@@ -3,6 +3,9 @@ export default {
 	singleQuote: true,
 	trailingComma: 'none',
 	printWidth: 100,
+	importOrder: ['<THIRD_PARTY_MODULES>', '^./utils/(.*)$', '^[./]'],
+	importOrderSeparation: true,
+	importOrderSortSpecifiers: true,
 	overrides: [
 		{
 			files: ['*.ts', '*.css']

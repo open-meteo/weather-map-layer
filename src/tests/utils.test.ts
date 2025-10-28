@@ -1,10 +1,7 @@
-import { expect, test } from 'vitest';
-
 import { domainOptions } from '../utils/domains';
-
-import { RotatedLatLonProjection, LambertConformalConicProjection } from '../utils/projections';
-
 import { fastAtan2 } from '../utils/math';
+import { LambertConformalConicProjection, RotatedLatLonProjection } from '../utils/projections';
+import { expect, test } from 'vitest';
 
 const dmiDomain = domainOptions.find((d) => d.value === 'dmi_harmonie_arome_europe');
 const knmiDomain = domainOptions.find((d) => d.value === 'knmi_harmonie_arome_europe');

@@ -1,29 +1,21 @@
 import Pbf from 'pbf';
 
-import { hideZero, drawOnTiles } from './utils/variables';
-
+import { getColor, getInterpolator, getOpacity } from './utils/color-scales';
+import { MS_TO_KMH } from './utils/constants';
+import { generateContours } from './utils/contours';
+import { GaussianGrid } from './utils/gaussian';
+import { generateGrid } from './utils/grid';
+import { degreesToRadians, rotatePoint, tile2lat, tile2lon } from './utils/math';
 import {
 	DynamicProjection,
-	getIndexAndFractions,
+	type Projection,
 	ProjectionGrid,
 	ProjectionName,
-	type Projection
+	getIndexAndFractions
 } from './utils/projections';
+import { drawOnTiles, hideZero } from './utils/variables';
 
-import { tile2lat, tile2lon, rotatePoint, degreesToRadians } from './utils/math';
-
-import { getColor, getInterpolator, getOpacity } from './utils/color-scales';
-
-import type { Domain, Variable, Interpolator, DimensionRange, IndexAndFractions } from './types';
-
-import { generateGrid } from './utils/grid';
-
-import { generateContours } from './utils/contours';
-
-import { GaussianGrid } from './utils/gaussian';
-
-import { MS_TO_KMH } from './utils/constants';
-import { generateArrows, generateWindArrows } from './utils/arrows';
+import type { DimensionRange, Domain, IndexAndFractions, Interpolator, Variable } from './types';
 
 const OPACITY = 75;
 

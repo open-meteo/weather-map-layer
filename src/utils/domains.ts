@@ -1,15 +1,13 @@
 import { getCenterFromBounds, getCenterFromGrid } from './math';
-
 import { getBorderPoints, getBoundsFromBorderPoints } from './projections';
-
-import type { Domain } from '../types';
-
 import {
 	DynamicProjection,
-	ProjectionGrid,
 	type Projection,
+	ProjectionGrid,
 	type ProjectionName
 } from './projections';
+
+import type { Domain } from '../types';
 
 export const domainGroups = [
 	//'bom',

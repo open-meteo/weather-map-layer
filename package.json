@@ -1,6 +1,6 @@
 {
 	"name": "@openmeteo/mapbox-layer",
-	"version": "0.0.3",
+	"version": "0.0.4",
 	"type": "module",
 	"main": "dist/index.cjs",
 	"types": "dist/index.d.ts",
@@ -32,12 +32,13 @@
 	},
 	"devDependencies": {
 		"@mapbox/vector-tile": "^2.0.4",
+		"@trivago/prettier-plugin-sort-imports": "^5.2.2",
 		"pbf": "^4.0.1",
 		"prettier": "^3.6.2",
 		"typescript": "5.9.3",
-		"vitest": "^3.2.4",
 		"vite": "^7.1.11",
-		"vite-plugin-dts": "^4.5.4"
+		"vite-plugin-dts": "^4.5.4",
+		"vitest": "^4.0.4"
 	},
 	"dependencies": {
 		"@openmeteo/file-reader": "^0.0.12",
