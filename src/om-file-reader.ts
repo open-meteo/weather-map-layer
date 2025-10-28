@@ -3,8 +3,9 @@ import { OmDataType, type OmFileReader, OmHttpBackend } from '@openmeteo/file-re
 import { fastAtan2, radiansToDegrees } from './utils/math';
 
 import type { Data } from './om-protocol';
-import type { DimensionRange } from './types';
 import { pad } from './utils';
+
+import type { DimensionRange } from './types';
 
 /**
  * Configuration options for the OMapsFileReader.

@@ -25,6 +25,9 @@ import {
 import { variableOptions as defaultVariableOptions } from './utils/variables';
 
 import { OMapsFileReader } from './om-file-reader';
+import { capitalize } from './utils';
+import { TilePromise, WorkerPool } from './worker-pool';
+
 import type {
 	Bounds,
 	ColorScale,
@@ -35,8 +38,6 @@ import type {
 	TileJSON,
 	Variable
 } from './types';
-import { capitalize } from './utils';
-import { TilePromise, WorkerPool } from './worker-pool';
 
 let dark = false;
 let partial = false;

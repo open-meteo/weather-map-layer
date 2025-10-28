@@ -1,6 +1,5 @@
 import Pbf from 'pbf';
 
-import { ColorScale, DimensionRange, Domain } from '../types';
 import { getInterpolator } from './color-scales';
 import { GaussianGrid } from './gaussian';
 import { tile2lat, tile2lon } from './math';
@@ -12,6 +11,8 @@ import {
 	ProjectionName,
 	getIndexAndFractions
 } from './projections';
+
+import { ColorScale, DimensionRange, Domain } from '../types';
 
 // prettier-ignore
 export const edgeTable = [
