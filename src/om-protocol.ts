@@ -205,7 +205,7 @@ export const initProtocol = (
 		omFileReader
 			.setToOmFile(omUrl)
 			.then(() => {
-				omFileReader.readVariable(variable.value, ranges).then((values) => {
+				omFileReader.readVariable(variable.value, null).then((values) => {
 					data = values;
 
 					resolve();
@@ -258,12 +258,10 @@ export const parseOmUrl = (url: string): OmParseUrlCallbackResult => {
 			{ start: 0, end: domain.grid.nx }
 		];
 	}
-	return { partial, domain, variable, ranges, omUrl };
+	return { variable, ranges, omUrl };
 };
 
 export interface OmParseUrlCallbackResult {
-	partial: boolean;
-	domain: Domain;
 	variable: Variable;
 	ranges: DimensionRange[];
 	omUrl: string;
@@ -293,23 +291,18 @@ export const defaultOmProtocolSettings: OmProtocolSettings = {
 	postReadCallback: undefined
 };
 
-let protocolPromise: Promise<void>;
+// let protocolPromise: Promise<void>;
 export const omProtocol = async (
 	params: RequestParameters,
 	abortController?: AbortController,
 	omProtocolSettings = defaultOmProtocolSettings
 ): Promise<GetResourceResponse<TileJSON | ImageBitmap | ArrayBuffer>> => {
-	console.log(params);
 	if (params.type == 'json') {
 		try {
-			if (!protocolPromise) {
-				protocolPromise = initProtocol(params.url, omProtocolSettings);
-			}
-			await protocolPromise;
+			await initProtocol(params.url, omProtocolSettings);
 		} catch (e) {
 			throw new Error(e as string);
 		}
-
 		return {
 			data: await getTilejson(params.url)
 		};

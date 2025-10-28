@@ -51,8 +51,8 @@
 			});
 
 			// s3 storage structure: /data_spatial/{domain}/{modelRun /year/month/day/time}Z/{selectedTime year-month-day-time.om}?variable={variable}
-			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/ecmwf_ifs/2025/10/27/1200Z/2025-10-27T1200.om?variable=wind_u_component_10m`;
-			const omUrl2 = `https://map-tiles.open-meteo.com/data_spatial/ecmwf_ifs/2025/10/25/1200Z/2025-10-25T1200.om?variable=wind_u_component_10m`;
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=wind_u_component_10m`;
+			//const omUrl2 = `https://map-tiles.open-meteo.com/data_spatial/ecmwf_ifs/2025/10/25/1200Z/2025-10-25T1200.om?variable=wind_u_component_10m`;
 
 			map.on('load', () => {
 				map.addSource('omFileRasterSource', {
@@ -69,7 +69,7 @@
 				});
 
 				map.addSource('omFileVectorSource', {
-					url: 'om://' + omUrl2 + '&arrows=true',
+					url: 'om://' + omUrl + '&arrows=true',
 					type: 'vector'
 				});
 

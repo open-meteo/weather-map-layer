@@ -1,5 +1,6 @@
 import Pbf from 'pbf';
 
+import { generateArrows } from './utils/arrows';
 import { getColor, getInterpolator, getOpacity } from './utils/color-scales';
 import { MS_TO_KMH } from './utils/constants';
 import { generateContours } from './utils/contours';
@@ -15,7 +16,7 @@ import {
 } from './utils/projections';
 import { drawOnTiles, hideZero } from './utils/variables';
 
-import type { DimensionRange, Domain, IndexAndFractions, Interpolator, Variable } from './types';
+import type { DimensionRange, Domain, Interpolator, Variable } from './types';
 
 const OPACITY = 75;
 

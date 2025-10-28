@@ -1,22 +1,18 @@
 import Pbf from 'pbf';
 
-import { ColorScale, DimensionRange, Domain } from '../types';
-
-import { command, writeLayer, zigzag } from './pbf';
-
+import { getInterpolator } from './color-scales';
+import { GaussianGrid } from './gaussian';
 import { degreesToRadians, rotatePoint, tile2lat, tile2lon } from './math';
-
+import { command, writeLayer, zigzag } from './pbf';
 import {
 	DynamicProjection,
-	getIndexAndFractions,
 	Projection,
 	ProjectionGrid,
-	ProjectionName
+	ProjectionName,
+	getIndexAndFractions
 } from './projections';
 
-import { GaussianGrid } from './gaussian';
-
-import { getInterpolator } from './color-scales';
+import { ColorScale, DimensionRange, Domain } from '../types';
 
 export const generateArrows = (
 	pbf: Pbf,
@@ -31,6 +27,13 @@ export const generateArrows = (
 	extent: number = 4096,
 	arrows: number = 27
 ) => {
+	if (z === 0) {
+		arrows = 50;
+	}
+	if (z === 1) {
+		arrows = 40;
+	}
+
 	const features = [];
 	const size = extent / arrows;
 
@@ -55,9 +58,9 @@ export const generateArrows = (
 		gaussian = new GaussianGrid(domain.grid.gaussianGridLatitudeLines);
 	}
 
-	for (let tileY = 0; tileY < extent; tileY += size) {
+	for (let tileY = 0; tileY < extent + 1; tileY += size) {
 		let lat = tile2lat(y + tileY / extent, z);
-		for (let tileX = 0; tileX < extent; tileX += size) {
+		for (let tileX = 0; tileX < extent + 1; tileX += size) {
 			let lon = tile2lon(x + tileX / extent, z);
 
 			const { index, xFraction, yFraction } = getIndexAndFractions(
