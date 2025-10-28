@@ -29,8 +29,6 @@ export class OMapsFileReader {
 	private static readonly s3BackendCache = new Map<string, OmHttpBackend>();
 
 	private reader?: OmFileReader;
-	private ranges: DimensionRange[] = [];
-
 	private readonly config: Required<FileReaderConfig>;
 
 	constructor(config: FileReaderConfig = {}) {
@@ -70,11 +68,11 @@ export class OMapsFileReader {
 		OMapsFileReader.s3BackendCache.set(url, backend);
 	}
 
-	setRanges(ranges: DimensionRange[] | null, dimensions: number[]): void {
+	private getRanges(ranges: DimensionRange[] | null, dimensions: number[]): DimensionRange[] {
 		if (ranges) {
-			this.ranges = ranges;
+			return ranges;
 		} else {
-			this.ranges = [
+			return [
 				{ start: 0, end: dimensions[0] },
 				{ start: 0, end: dimensions[1] }
 			];
@@ -107,16 +105,16 @@ export class OMapsFileReader {
 			}
 
 			const dimensions = variableReaderU.getDimensions();
-			this.setRanges(ranges, dimensions);
+			const readRanges = this.getRanges(ranges, dimensions);
 
 			const valuesUPromise = variableReaderU.read({
 				type: OmDataType.FloatArray,
-				ranges: this.ranges,
+				ranges: readRanges,
 				intoSAB: this.config.useSAB
 			});
 			const valuesVPromise = variableReaderV.read({
 				type: OmDataType.FloatArray,
-				ranges: this.ranges,
+				ranges: readRanges,
 				intoSAB: this.config.useSAB
 			});
 
@@ -143,11 +141,11 @@ export class OMapsFileReader {
 			}
 
 			const dimensions = variableReader.getDimensions();
-			this.setRanges(ranges, dimensions);
+			const readRanges = this.getRanges(ranges, dimensions);
 
 			values = await variableReader?.read({
 				type: OmDataType.FloatArray,
-				ranges: this.ranges,
+				ranges: readRanges,
 				intoSAB: this.config.useSAB
 			});
 		}
@@ -161,10 +159,12 @@ export class OMapsFileReader {
 			if (!variableReader) {
 				throw new Error(`Variable ${variable.replace('_speed_', '_direction_')} not found`);
 			}
+			const dimensions = variableReader.getDimensions();
+			const readRanges = this.getRanges(ranges, dimensions);
 
 			directions = await variableReader.read({
 				type: OmDataType.FloatArray,
-				ranges: this.ranges,
+				ranges: readRanges,
 				intoSAB: this.config.useSAB
 			});
 		}
@@ -177,10 +177,12 @@ export class OMapsFileReader {
 			if (!variableReader) {
 				throw new Error(`Variable ${variable.replace('wave_height', 'wave_direction')} not found`);
 			}
+			const dimensions = variableReader.getDimensions();
+			const readRanges = this.getRanges(ranges, dimensions);
 
 			directions = await variableReader.read({
 				type: OmDataType.FloatArray,
-				ranges: this.ranges,
+				ranges: readRanges,
 				intoSAB: this.config.useSAB
 			});
 		}
