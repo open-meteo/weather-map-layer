@@ -1,66 +1,78 @@
 import { OmDataType, type OmFileReader, OmHttpBackend } from '@openmeteo/file-reader';
 
 import { fastAtan2, radiansToDegrees } from './utils/math';
-import {
-	DynamicProjection,
-	type Projection,
-	ProjectionGrid,
-	type ProjectionName
-} from './utils/projections';
 
 import type { Data } from './om-protocol';
-import type { DimensionRange, Domain, Variable } from './types';
+import type { DimensionRange } from './types';
 import { pad } from './utils';
 
+/**
+ * Configuration options for the OMapsFileReader.
+ */
+interface FileReaderConfig {
+	/** Whether to use SharedArrayBuffer for data reading. @default false */
+	useSAB?: boolean;
+	/** Maximum number of cached HTTP backends. @default 50 */
+	maxCacheSize?: number;
+	/** Number of retry attempts for failed requests. @default 2 */
+	retries?: number;
+	/** Whether to validate ETags for cache coherency. @default false */
+	eTagValidation?: boolean;
+}
+
+/**
+ * Convenience class for reading from OM-files implementing some utility conversions during reading.
+ *
+ * Caches the backend of recently accessed files.
+ */
 export class OMapsFileReader {
-	static s3BackendCache: Map<string, OmHttpBackend> = new Map();
+	private static readonly s3BackendCache = new Map<string, OmHttpBackend>();
 
-	child?: OmFileReader;
-	reader?: OmFileReader;
+	private reader?: OmFileReader;
+	private ranges: DimensionRange[] = [];
 
-	partial!: boolean;
-	ranges!: DimensionRange[];
+	private readonly config: Required<FileReaderConfig>;
 
-	useSAB!: boolean;
-	domain!: Domain;
-	projection!: Projection;
-	projectionGrid!: ProjectionGrid;
-
-	constructor(domain: Domain, partial: boolean, useSAB: boolean) {
-		this.setReaderData(domain, partial);
-		this.useSAB = useSAB;
+	constructor(config: FileReaderConfig = {}) {
+		this.config = {
+			useSAB: false,
+			maxCacheSize: 50,
+			retries: 2,
+			eTagValidation: false,
+			...config
+		};
 	}
 
-	async init(omUrl: string) {
+	async setToOmFile(omUrl: string): Promise<void> {
 		this.dispose();
-		let s3_backend = OMapsFileReader.s3BackendCache.get(omUrl);
-		if (!s3_backend) {
-			s3_backend = new OmHttpBackend({
+
+		let s3Backend = OMapsFileReader.s3BackendCache.get(omUrl);
+		if (!s3Backend) {
+			s3Backend = new OmHttpBackend({
 				url: omUrl,
-				eTagValidation: false,
-				retries: 2
+				eTagValidation: this.config.eTagValidation,
+				retries: this.config.retries
 			});
-			OMapsFileReader.s3BackendCache.set(omUrl, s3_backend);
+			this.setCachedBackend(omUrl, s3Backend);
 		}
-		this.reader = await s3_backend.asCachedReader();
+		this.reader = await s3Backend.asCachedReader();
 	}
 
-	setReaderData(domain: Domain, partial: boolean) {
-		this.partial = partial;
-		this.domain = domain;
-		if (domain.grid.projection) {
-			const projectionName = domain.grid.projection.name;
-			this.projection = new DynamicProjection(
-				projectionName as ProjectionName,
-				domain.grid.projection
-			) as Projection;
-			this.projectionGrid = new ProjectionGrid(this.projection, domain.grid);
+	private setCachedBackend(url: string, backend: OmHttpBackend): void {
+		// Implement LRU-like cache management
+		if (OMapsFileReader.s3BackendCache.size >= this.config.maxCacheSize) {
+			const firstKey = OMapsFileReader.s3BackendCache.keys().next().value;
+			if (firstKey) {
+				OMapsFileReader.s3BackendCache.delete(firstKey);
+			}
 		}
+
+		OMapsFileReader.s3BackendCache.set(url, backend);
 	}
 
-	setRanges(ranges: DimensionRange[] | null, dimensions: number[] | undefined) {
-		if (this.partial || !dimensions) {
-			this.ranges = ranges ?? this.ranges;
+	setRanges(ranges: DimensionRange[] | null, dimensions: number[]): void {
+		if (ranges) {
+			this.ranges = ranges;
 		} else {
 			this.ranges = [
 				{ start: 0, end: dimensions[0] },
@@ -69,27 +81,43 @@ export class OMapsFileReader {
 		}
 	}
 
-	async readVariable(variable: Variable, ranges: DimensionRange[] | null = null): Promise<Data> {
-		let values, directions: Float32Array | undefined;
-		if (variable.value.includes('_u_component')) {
-			// combine uv components, and calculate directions
-			const variableReaderU = await this.reader?.getChildByName(variable.value);
-			const variableReaderV = await this.reader?.getChildByName(
-				variable.value.replace('_u_component', '_v_component')
-			);
-			const dimensions = variableReaderU?.getDimensions();
+	/**
+	 * Read a specific variable from the file. Implements on the fly conversion for
+	 * some variables, e.g. uv components are converted to speed and direction.
+	 *
+	 * @param variable The variable to read.
+	 * @param ranges The ranges to read. If null, all dimensions are read.
+	 * @returns Promise resolving to data object containing values and optional directions
+	 */
+	async readVariable(variable: string, ranges: DimensionRange[] | null = null): Promise<Data> {
+		if (!this.reader) {
+			throw new Error('Reader not initialized. Call init() first.');
+		}
 
+		let values, directions: Float32Array | undefined;
+		if (variable.includes('_u_component')) {
+			// combine uv components, and calculate directions
+			const variableReaderU = await this.reader.getChildByName(variable);
+			const variableReaderV = await this.reader.getChildByName(
+				variable.replace('_u_component', '_v_component')
+			);
+
+			if (!variableReaderU || !variableReaderV) {
+				throw new Error(`Variable ${variable} not found`);
+			}
+
+			const dimensions = variableReaderU.getDimensions();
 			this.setRanges(ranges, dimensions);
 
-			const valuesUPromise = variableReaderU?.read({
+			const valuesUPromise = variableReaderU.read({
 				type: OmDataType.FloatArray,
 				ranges: this.ranges,
-				intoSAB: this.useSAB
+				intoSAB: this.config.useSAB
 			});
-			const valuesVPromise = variableReaderV?.read({
+			const valuesVPromise = variableReaderV.read({
 				type: OmDataType.FloatArray,
 				ranges: this.ranges,
-				intoSAB: this.useSAB
+				intoSAB: this.config.useSAB
 			});
 
 			const [valuesU, valuesV]: [Float32Array, Float32Array] = (await Promise.all([
@@ -108,40 +136,52 @@ export class OMapsFileReader {
 				directions[i] = (radiansToDegrees(fastAtan2(u, v)) + 180) % 360;
 			}
 		} else {
-			const variableReader = await this.reader?.getChildByName(variable.value);
-			const dimensions = variableReader?.getDimensions();
+			const variableReader = await this.reader.getChildByName(variable);
 
+			if (!variableReader) {
+				throw new Error(`Variable ${variable} not found`);
+			}
+
+			const dimensions = variableReader.getDimensions();
 			this.setRanges(ranges, dimensions);
 
 			values = await variableReader?.read({
 				type: OmDataType.FloatArray,
 				ranges: this.ranges,
-				intoSAB: this.useSAB
+				intoSAB: this.config.useSAB
 			});
 		}
 
-		if (variable.value.includes('_speed_')) {
+		if (variable.includes('_speed_')) {
 			// also get the direction for speed values
-			const variableReader = await this.reader?.getChildByName(
-				variable.value.replace('_speed_', '_direction_')
+			const variableReader = await this.reader.getChildByName(
+				variable.replace('_speed_', '_direction_')
 			);
 
-			directions = await variableReader?.read({
+			if (!variableReader) {
+				throw new Error(`Variable ${variable.replace('_speed_', '_direction_')} not found`);
+			}
+
+			directions = await variableReader.read({
 				type: OmDataType.FloatArray,
 				ranges: this.ranges,
-				intoSAB: this.useSAB
+				intoSAB: this.config.useSAB
 			});
 		}
-		if (variable.value === 'wave_height') {
+		if (variable === 'wave_height') {
 			// also get the direction for speed values
-			const variableReader = await this.reader?.getChildByName(
-				variable.value.replace('wave_height', 'wave_direction')
+			const variableReader = await this.reader.getChildByName(
+				variable.replace('wave_height', 'wave_direction')
 			);
 
-			directions = await variableReader?.read({
+			if (!variableReader) {
+				throw new Error(`Variable ${variable.replace('wave_height', 'wave_direction')} not found`);
+			}
+
+			directions = await variableReader.read({
 				type: OmDataType.FloatArray,
 				ranges: this.ranges,
-				intoSAB: this.useSAB
+				intoSAB: this.config.useSAB
 			});
 		}
 
@@ -151,7 +191,7 @@ export class OMapsFileReader {
 		};
 	}
 
-	getNextUrls(omUrl: string) {
+	private getNextUrls(omUrl: string) {
 		const re = new RegExp(/([0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}00)/);
 		const matches = omUrl.match(re);
 		let nextUrl, prevUrl;
@@ -177,7 +217,12 @@ export class OMapsFileReader {
 		}
 	}
 
-	prefetch(omUrl: string) {
+	/**
+	 * Prefetches small parts from adjacent files in the time sequence. This is particularly useful
+	 * if files are re-distributed via a CDN, with an upstream S3 bucket configured and will essentially
+	 * trigger the CDN to cache the file.
+	 */
+	_prefetch(omUrl: string) {
 		const nextOmUrls = this.getNextUrls(omUrl);
 		if (nextOmUrls) {
 			for (const nextOmUrl of nextOmUrls) {
@@ -204,14 +249,10 @@ export class OMapsFileReader {
 	}
 
 	dispose() {
-		if (this.child) {
-			this.child.dispose();
-		}
 		if (this.reader) {
 			this.reader.dispose();
 		}
 
-		delete this.child;
 		delete this.reader;
 	}
 }
