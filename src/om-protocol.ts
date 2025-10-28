@@ -197,14 +197,12 @@ export const initOMFile = (url: string, omProtocolSettings: OmProtocolSettings):
 		const { partial, domain, variable, ranges, omUrl } = omProtocolSettings.parseUrlCallback(url);
 
 		if (!omFileReader) {
-			omFileReader = new OMapsFileReader(domain, partial, useSAB);
+			omFileReader = new OMapsFileReader({ useSAB: useSAB });
 		}
-
-		omFileReader.setReaderData(domain, partial);
 		omFileReader
-			.init(omUrl)
+			.setToOmFile(omUrl)
 			.then(() => {
-				omFileReader.readVariable(variable, ranges).then((values) => {
+				omFileReader.readVariable(variable.value, ranges).then((values) => {
 					data = values;
 					resolve();
 
