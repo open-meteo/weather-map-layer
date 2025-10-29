@@ -1,5 +1,3 @@
-import type { Bounds, Center, Domain, IndexAndFractions } from '../types';
-
 const PI = Math.PI;
 
 export const degreesToRadians = (degree: number) => {
@@ -43,20 +41,6 @@ export const secondDerivative = (fm1: number, f0: number, fp1: number): number =
 
 export const modPositive = (n: number, m: number): number => {
 	return ((n % m) + m) % m;
-};
-
-export const getCenterFromBounds = (bounds: Bounds): Center => {
-	return {
-		lng: (bounds[2] - bounds[0]) / 2 + bounds[0],
-		lat: (bounds[3] - bounds[1]) / 2 + bounds[1]
-	};
-};
-
-export const getCenterFromGrid = (grid: Domain['grid']): Center => {
-	return {
-		lng: grid.lonMin + grid.dx * (grid.nx * 0.5),
-		lat: grid.latMin + grid.dy * (grid.ny * 0.5)
-	};
 };
 
 export const rotatePoint = (cx: number, cy: number, theta: number, x: number, y: number) => {
@@ -107,31 +91,4 @@ export const hermite = (t: number, p0: number, p1: number, m0: number, m1: numbe
 	const h11 = t3 - t2;
 
 	return h00 * p0 + h10 * m0 + h01 * p1 + h11 * m1;
-};
-
-export const getIndexFromLatLong = (
-	lat: number,
-	lon: number,
-	dx: number,
-	dy: number,
-	nx: number,
-	latLonMinMax: [minLat: number, minLon: number, maxLat: number, maxLon: number]
-): IndexAndFractions => {
-	if (
-		lat < latLonMinMax[0] ||
-		lat >= latLonMinMax[2] ||
-		lon < latLonMinMax[1] ||
-		lon >= latLonMinMax[3]
-	) {
-		return { index: NaN, xFraction: 0, yFraction: 0 };
-	} else {
-		const x = Math.floor((lon - latLonMinMax[1]) / dx);
-		const y = Math.floor((lat - latLonMinMax[0]) / dy);
-
-		const xFraction = ((lon - latLonMinMax[1]) % dx) / dx;
-		const yFraction = ((lat - latLonMinMax[0]) % dy) / dy;
-
-		const index = y * nx + x;
-		return { index, xFraction, yFraction };
-	}
 };

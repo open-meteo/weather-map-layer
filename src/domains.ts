@@ -1,13 +1,4 @@
-import { getCenterFromBounds, getCenterFromGrid } from './math';
-import { getBorderPoints, getBoundsFromBorderPoints } from './projections';
-import {
-	DynamicProjection,
-	type Projection,
-	ProjectionGrid,
-	type ProjectionName
-} from './projections';
-
-import type { Domain } from '../types';
+import type { Domain } from './types';
 
 export const domainGroups = [
 	//'bom',
@@ -26,34 +17,13 @@ export const domainGroups = [
 	{ value: 'ukmo', label: 'UKMO' }
 ];
 
-const getCenterPoint = (grid: Domain['grid']) => {
-	let center;
-	if (grid.projection) {
-		const projection = new DynamicProjection(
-			grid.projection.name as ProjectionName,
-			grid.projection
-		) as Projection;
-		const projectionGrid = new ProjectionGrid(projection, grid);
-		const borderPoints = getBorderPoints(projectionGrid);
-		const bounds = getBoundsFromBorderPoints(borderPoints, projection);
-		center = getCenterFromBounds(bounds);
-	} else {
-		center = getCenterFromGrid(grid);
-	}
-
-	if (center.lng < 0.2 && center.lat < 0.2) {
-		return { lng: 0, lat: 0 };
-	} else {
-		return center;
-	}
-};
-
 export const domainOptions: Array<Domain> = [
 	// BOM
 	// {
 	// 	value: 'bom_access_global',
 	// 	label: 'BOM Global',
 	// 	grid: {
+	//    type: 'regular',
 	// 		nx: 2048,
 	// 		ny: 1536,
 	// 		latMin: -89.941406,
@@ -61,10 +31,6 @@ export const domainOptions: Array<Domain> = [
 	// 		dx: 360 / 2048,
 	// 		dy: 180 / 1536,
 	// 		zoom: 1,
-	// 		center: function () {
-	// 			this.center = getCenterPoint(this);
-	// 			return this;
-	// 		}
 	// 	},
 	// 	time_interval: 1,
 	// 	windUVComponents: false
@@ -75,6 +41,7 @@ export const domainOptions: Array<Domain> = [
 		value: 'dmi_harmonie_arome_europe',
 		label: 'DMI Harmonie Arome Europe',
 		grid: {
+			type: 'projected',
 			nx: 1906,
 			ny: 1606,
 			latMin: 39.671,
@@ -91,10 +58,6 @@ export const domainOptions: Array<Domain> = [
 				longitude: -25.421997,
 				radius: 6371229,
 				name: 'LambertConformalConicProjection'
-			},
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
 			}
 		},
 		time_interval: 1,
@@ -107,17 +70,14 @@ export const domainOptions: Array<Domain> = [
 		value: 'dwd_icon',
 		label: 'DWD ICON',
 		grid: {
+			type: 'regular',
 			nx: 2879,
 			ny: 1441,
 			latMin: -90,
 			lonMin: -180,
 			dx: 0.125,
 			dy: 0.125,
-			zoom: 1,
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
-			}
+			zoom: 1
 		},
 		time_interval: 1,
 		model_interval: 6,
@@ -127,17 +87,14 @@ export const domainOptions: Array<Domain> = [
 		value: 'dwd_icon_eu',
 		label: 'DWD ICON EU',
 		grid: {
+			type: 'regular',
 			nx: 1377,
 			ny: 657,
 			latMin: 29.5,
 			lonMin: -23.5,
 			dx: 0.0625,
 			dy: 0.0625,
-			zoom: 3.2,
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
-			}
+			zoom: 3.2
 		},
 		time_interval: 1,
 		model_interval: 3,
@@ -147,17 +104,14 @@ export const domainOptions: Array<Domain> = [
 		value: 'dwd_icon_d2',
 		label: 'DWD ICON D2',
 		grid: {
+			type: 'regular',
 			nx: 1215,
 			ny: 746,
 			latMin: 43.18,
 			lonMin: -3.94,
 			dx: 0.02,
 			dy: 0.02,
-			zoom: 5.2,
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
-			}
+			zoom: 5.2
 		},
 		time_interval: 1,
 		model_interval: 3,
@@ -167,17 +121,14 @@ export const domainOptions: Array<Domain> = [
 		value: 'dwd_gwam',
 		label: 'DWD GWAM',
 		grid: {
+			type: 'regular',
 			nx: 1440,
 			ny: 699,
 			latMin: -85.25,
 			lonMin: -180,
 			dx: 0.25,
 			dy: 0.25,
-			zoom: 1,
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
-			}
+			zoom: 1
 		},
 		time_interval: 3,
 		model_interval: 12,
@@ -187,17 +138,14 @@ export const domainOptions: Array<Domain> = [
 		value: 'dwd_ewam',
 		label: 'DWD EWAM',
 		grid: {
+			type: 'regular',
 			nx: 526,
 			ny: 721,
 			latMin: 30,
 			lonMin: -10.5,
 			dx: 0.1,
 			dy: 0.05,
-			zoom: 3.2,
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
-			}
+			zoom: 3.2
 		},
 		time_interval: 1,
 		model_interval: 12,
@@ -209,17 +157,14 @@ export const domainOptions: Array<Domain> = [
 		value: 'ncep_gfs025',
 		label: 'GFS Global 0.25°',
 		grid: {
+			type: 'regular',
 			nx: 1440,
 			ny: 721,
 			latMin: -90,
 			lonMin: -180,
 			dx: 0.25,
 			dy: 0.25,
-			zoom: 1,
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
-			}
+			zoom: 1
 		},
 		time_interval: 1,
 		model_interval: 6,
@@ -229,17 +174,14 @@ export const domainOptions: Array<Domain> = [
 		value: 'ncep_gfs013',
 		label: 'GFS Global 0.13°',
 		grid: {
+			type: 'regular',
 			nx: 3072,
 			ny: 1536,
 			latMin: (-0.11714935 * (1536 - 1)) / 2,
 			lonMin: -180,
 			dx: 360 / 3072,
 			dy: 0.11714935,
-			zoom: 1,
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
-			}
+			zoom: 1
 		},
 		time_interval: 1,
 		model_interval: 6,
@@ -249,6 +191,7 @@ export const domainOptions: Array<Domain> = [
 		value: 'ncep_hrrr_conus',
 		label: 'GFS HRRR Conus',
 		grid: {
+			type: 'projected',
 			nx: 1799,
 			ny: 1059,
 			latMin: 21.138,
@@ -264,10 +207,6 @@ export const domainOptions: Array<Domain> = [
 				latitude: [21.138, 47.8424],
 				longitude: [-122.72, -60.918],
 				name: 'LambertConformalConicProjection'
-			},
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
 			}
 		},
 		time_interval: 1,
@@ -278,6 +217,7 @@ export const domainOptions: Array<Domain> = [
 		value: 'ncep_nbm_conus',
 		label: 'GFS NBM Conus',
 		grid: {
+			type: 'projected',
 			nx: 2345,
 			ny: 1597,
 			latMin: 19.229,
@@ -294,10 +234,6 @@ export const domainOptions: Array<Domain> = [
 				latitude: 19.229,
 				longitude: 233.723 - 360,
 				name: 'LambertConformalConicProjection'
-			},
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
 			}
 		},
 		time_interval: 1,
@@ -308,6 +244,7 @@ export const domainOptions: Array<Domain> = [
 		value: 'ncep_nam_conus',
 		label: 'GFS NAM Conus',
 		grid: {
+			type: 'projected',
 			nx: 1799,
 			ny: 1059,
 			latMin: 21.138,
@@ -323,10 +260,6 @@ export const domainOptions: Array<Domain> = [
 				latitude: [21.138, 47.8424],
 				longitude: [-122.72, -60.918],
 				name: 'LambertConformalConicProjection'
-			},
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
 			}
 		},
 		time_interval: 1,
@@ -339,17 +272,14 @@ export const domainOptions: Array<Domain> = [
 		value: 'ecmwf_ifs025',
 		label: 'ECMWF IFS 0.25°',
 		grid: {
+			type: 'regular',
 			nx: 1440,
 			ny: 721,
 			latMin: -90,
 			lonMin: -180,
 			dx: 360 / 1440,
 			dy: 180 / (721 - 1),
-			zoom: 1,
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
-			}
+			zoom: 1
 		},
 		time_interval: 3,
 		model_interval: 6,
@@ -359,17 +289,14 @@ export const domainOptions: Array<Domain> = [
 		value: 'ecmwf_aifs025_single',
 		label: 'ECMWF AIFS 0.25° Single ',
 		grid: {
+			type: 'regular',
 			nx: 1440,
 			ny: 721,
 			latMin: -90,
 			lonMin: -180,
 			dx: 360 / 1440,
 			dy: 180 / (721 - 1),
-			zoom: 1,
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
-			}
+			zoom: 1
 		},
 		time_interval: 6,
 		model_interval: 6,
@@ -379,18 +306,11 @@ export const domainOptions: Array<Domain> = [
 		value: 'ecmwf_ifs',
 		label: 'ECMWF IFS HRES',
 		grid: {
-			nx: 1440, // 6599680
-			ny: 721,
-			latMin: -90,
-			lonMin: -180,
-			dx: 360 / 1440,
-			dy: 180 / (721 - 1),
+			type: 'gaussian',
+			nx: 6599680,
+			ny: 1,
 			zoom: 3.2,
-			gaussianGridLatitudeLines: 1280,
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
-			}
+			gaussianGridLatitudeLines: 1280
 		},
 		time_interval: 1,
 		model_interval: 3,
@@ -402,17 +322,14 @@ export const domainOptions: Array<Domain> = [
 		value: 'cmc_gem_gdps',
 		label: 'GEM Global',
 		grid: {
+			type: 'regular',
 			nx: 2400,
 			ny: 1201,
 			latMin: -90,
 			lonMin: -180,
 			dx: 0.15,
 			dy: 0.15,
-			zoom: 1,
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
-			}
+			zoom: 1
 		},
 		time_interval: 3,
 		model_interval: 12,
@@ -422,6 +339,7 @@ export const domainOptions: Array<Domain> = [
 	// 	value: 'cmc_gem_geps',
 	// 	label: 'GEM Global GEPS',
 	// 	grid: {
+	//    type: 'regular',
 	// 		nx: 2400,
 	// 		ny: 1201,
 	// 		latMin: -90,
@@ -429,10 +347,6 @@ export const domainOptions: Array<Domain> = [
 	// 		dx: 0.15,
 	// 		dy: 0.15,
 	// 		zoom: 1,
-	// 		center: function () {
-	// 			this.center = getCenterPoint(this);
-	// 			return this;
-	// 		}
 	// 	},
 	// 	time_interval: 3,
 	// 	model_interval: 12,
@@ -442,6 +356,7 @@ export const domainOptions: Array<Domain> = [
 		value: 'cmc_gem_hrdps',
 		label: 'GEM HRDPS Continental',
 		grid: {
+			type: 'projected',
 			nx: 2540,
 			ny: 1290,
 			latMin: 39.626034,
@@ -454,10 +369,6 @@ export const domainOptions: Array<Domain> = [
 				latitude: [39.626034, 47.876457],
 				longitude: [-133.62952, -40.708557],
 				name: 'RotatedLatLonProjection'
-			},
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
 			}
 		},
 		time_interval: 1,
@@ -468,6 +379,7 @@ export const domainOptions: Array<Domain> = [
 		value: 'cmc_gem_rdps',
 		label: 'GEM Regional',
 		grid: {
+			type: 'projected',
 			nx: 935,
 			ny: 824,
 			latMin: 18.14503,
@@ -479,10 +391,6 @@ export const domainOptions: Array<Domain> = [
 				latitude: 90,
 				longitude: 249,
 				name: 'StereograpicProjection'
-			},
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
 			}
 		},
 		time_interval: 1,
@@ -495,17 +403,14 @@ export const domainOptions: Array<Domain> = [
 		value: 'italia_meteo_arpae_icon_2i',
 		label: 'IM ARPAE ICON 2i',
 		grid: {
+			type: 'regular',
 			nx: 761,
 			ny: 761,
 			latMin: 33.7,
 			lonMin: 3,
 			dx: 0.025,
 			dy: 0.02,
-			zoom: 5.2,
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
-			}
+			zoom: 5.2
 		},
 		time_interval: 1,
 		model_interval: 3,
@@ -517,17 +422,14 @@ export const domainOptions: Array<Domain> = [
 		value: 'jma_gsm',
 		label: 'JMA GSM',
 		grid: {
+			type: 'regular',
 			nx: 720,
 			ny: 361,
 			latMin: -90,
 			lonMin: -180,
 			dx: 0.5,
 			dy: 0.5,
-			zoom: 1,
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
-			}
+			zoom: 1
 		},
 		time_interval: 6,
 		model_interval: 6,
@@ -537,17 +439,14 @@ export const domainOptions: Array<Domain> = [
 		value: 'jma_msm',
 		label: 'JMA MSM',
 		grid: {
+			type: 'regular',
 			nx: 481,
 			ny: 505,
 			latMin: 22.4,
 			lonMin: 120,
 			dx: 0.0625,
 			dy: 0.05,
-			zoom: 1,
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
-			}
+			zoom: 1
 		},
 		time_interval: 1,
 		model_interval: 3,
@@ -559,17 +458,14 @@ export const domainOptions: Array<Domain> = [
 		value: 'meteofrance_arpege_world025',
 		label: 'MF ARPEGE World',
 		grid: {
+			type: 'regular',
 			nx: 1440,
 			ny: 721,
 			latMin: -90,
 			lonMin: -180,
 			dx: 0.25,
 			dy: 0.25,
-			zoom: 1,
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
-			}
+			zoom: 1
 		},
 		time_interval: 1,
 		model_interval: 3,
@@ -579,17 +475,14 @@ export const domainOptions: Array<Domain> = [
 		value: 'meteofrance_arpege_europe',
 		label: 'MF ARPEGE Europe',
 		grid: {
+			type: 'regular',
 			nx: 741,
 			ny: 521,
 			latMin: 20,
 			lonMin: -32,
 			dx: 0.1,
 			dy: 0.1,
-			zoom: 3.5,
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
-			}
+			zoom: 3.5
 		},
 		time_interval: 1,
 		model_interval: 3,
@@ -599,17 +492,14 @@ export const domainOptions: Array<Domain> = [
 		value: 'meteofrance_arome_france0025',
 		label: 'MF AROME France',
 		grid: {
+			type: 'regular',
 			nx: 1121,
 			ny: 717,
 			latMin: 37.5,
 			lonMin: -12,
 			dx: 0.025,
 			dy: 0.025,
-			zoom: 5.2,
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
-			}
+			zoom: 5.2
 		},
 		time_interval: 1,
 		model_interval: 3,
@@ -620,17 +510,14 @@ export const domainOptions: Array<Domain> = [
 		value: 'meteofrance_arome_france_hd',
 		label: 'MF AROME France HD',
 		grid: {
+			type: 'regular',
 			nx: 2801,
 			ny: 1791,
 			latMin: 37.5,
 			lonMin: -12,
 			dx: 0.01,
 			dy: 0.01,
-			zoom: 5.2,
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
-			}
+			zoom: 5.2
 		},
 		time_interval: 1,
 		model_interval: 3,
@@ -640,17 +527,14 @@ export const domainOptions: Array<Domain> = [
 		value: 'meteofrance_wave',
 		label: 'MF Wave',
 		grid: {
+			type: 'regular',
 			nx: 4320,
 			ny: 2041,
 			latMin: -80 + 1 / 24,
 			lonMin: -180 + 1 / 24,
 			dx: 1 / 12,
 			dy: 1 / 12,
-			zoom: 1,
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
-			}
+			zoom: 1
 		},
 		time_interval: 1,
 		model_interval: 3,
@@ -662,6 +546,7 @@ export const domainOptions: Array<Domain> = [
 		value: 'metno_nordic_pp',
 		label: 'MET Norway Nordic',
 		grid: {
+			type: 'projected',
 			nx: 1796,
 			ny: 2321,
 			latMin: 52.30272,
@@ -677,10 +562,6 @@ export const domainOptions: Array<Domain> = [
 				latitude: [52.30272, 72.18527],
 				longitude: [1.9184653, 41.764282],
 				name: 'LambertConformalConicProjection'
-			},
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
 			}
 		},
 		time_interval: 1,
@@ -693,17 +574,14 @@ export const domainOptions: Array<Domain> = [
 		value: 'kma_gdps',
 		label: 'KMA GDPS 12km',
 		grid: {
+			type: 'regular',
 			nx: 2560,
 			ny: 1920,
 			latMin: -90 + 180 / 1920 / 2,
 			lonMin: -180 + 360 / 2560 / 2,
 			dx: 360 / 2560,
 			dy: 180 / 1920,
-			zoom: 2,
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
-			}
+			zoom: 2
 		},
 		time_interval: 1,
 		model_interval: 3,
@@ -713,6 +591,7 @@ export const domainOptions: Array<Domain> = [
 		value: 'kma_ldps',
 		label: 'KMA LDPS 1.5km',
 		grid: {
+			type: 'projected',
 			nx: 602,
 			ny: 781,
 			latMin: 32.2569,
@@ -729,10 +608,6 @@ export const domainOptions: Array<Domain> = [
 				latitude: 32.2569,
 				longitude: 121.834,
 				name: 'LambertConformalConicProjection'
-			},
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
 			}
 		},
 		time_interval: 1,
@@ -745,6 +620,7 @@ export const domainOptions: Array<Domain> = [
 		value: 'knmi_harmonie_arome_europe',
 		label: 'KNMI Harmonie Arome Europe',
 		grid: {
+			type: 'projected',
 			nx: 676,
 			ny: 564,
 			latMin: 39.740627,
@@ -757,10 +633,6 @@ export const domainOptions: Array<Domain> = [
 				latitude: [39.740627, 62.619324],
 				longitude: [-25.162262, 38.75702],
 				name: 'RotatedLatLonProjection'
-			},
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
 			}
 		},
 		time_interval: 1,
@@ -771,17 +643,14 @@ export const domainOptions: Array<Domain> = [
 		value: 'knmi_harmonie_arome_netherlands',
 		label: 'KNMI Harmonie Arome Netherlands',
 		grid: {
+			type: 'regular',
 			nx: 390,
 			ny: 390,
 			latMin: 49,
 			lonMin: 0,
 			dx: 0.029,
 			dy: 0.018,
-			zoom: 6,
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
-			}
+			zoom: 6
 		},
 		time_interval: 1,
 		model_interval: 3,
@@ -793,6 +662,7 @@ export const domainOptions: Array<Domain> = [
 		value: 'meteoswiss_icon_ch1',
 		label: 'MeteoSwiss ICON CH1',
 		grid: {
+			type: 'projected',
 			nx: 1089,
 			ny: 705,
 			latMin: 43.18,
@@ -806,10 +676,6 @@ export const domainOptions: Array<Domain> = [
 				longitude: -4.06,
 				name: 'RotatedLatLonProjection',
 				projectOrigin: false
-			},
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
 			}
 		},
 		time_interval: 1,
@@ -820,6 +686,7 @@ export const domainOptions: Array<Domain> = [
 		value: 'meteoswiss_icon_ch2',
 		label: 'MeteoSwiss ICON CH2',
 		grid: {
+			type: 'projected',
 			nx: 545,
 			ny: 353,
 			latMin: 43.18,
@@ -833,10 +700,6 @@ export const domainOptions: Array<Domain> = [
 				longitude: -4.06,
 				name: 'RotatedLatLonProjection',
 				projectOrigin: false
-			},
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
 			}
 		},
 		time_interval: 1,
@@ -849,17 +712,14 @@ export const domainOptions: Array<Domain> = [
 		value: 'ukmo_global_deterministic_10km',
 		label: 'UK Met Office 10km',
 		grid: {
+			type: 'regular',
 			nx: 2560,
 			ny: 1920,
 			latMin: -90,
 			lonMin: -180,
 			dx: 360 / 2560,
 			dy: 180 / 1920,
-			zoom: 1,
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
-			}
+			zoom: 1
 		},
 		time_interval: 1,
 		model_interval: 3,
@@ -869,6 +729,7 @@ export const domainOptions: Array<Domain> = [
 		value: 'ukmo_uk_deterministic_2km',
 		label: 'UK Met Office 2km',
 		grid: {
+			type: 'projected',
 			nx: 1042,
 			ny: 970,
 			latMin: 0, //-1036000
@@ -884,10 +745,6 @@ export const domainOptions: Array<Domain> = [
 				radius: 6371229,
 				name: 'LambertAzimuthalEqualAreaProjection',
 				projectOrigin: false
-			},
-			center: function () {
-				this.center = getCenterPoint(this);
-				return this;
 			}
 		},
 		time_interval: 1,
@@ -895,9 +752,3 @@ export const domainOptions: Array<Domain> = [
 		windUVComponents: false
 	}
 ];
-
-for (const domain of domainOptions) {
-	if (domain.grid.center && typeof domain.grid.center == 'function') {
-		domain.grid.center();
-	}
-}

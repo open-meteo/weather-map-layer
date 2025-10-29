@@ -1,22 +1,19 @@
 import Pbf from 'pbf';
 
 import { generateArrows } from './utils/arrows';
-import { getColor, getInterpolator, getOpacity } from './utils/color-scales';
+import { getColor, getOpacity } from './utils/color-scales';
 import { MS_TO_KMH } from './utils/constants';
 import { generateContours } from './utils/contours';
-import { GaussianGrid } from './utils/gaussian';
-import { generateGrid } from './utils/grid';
+import { generateGridPoints } from './utils/grid-points';
 import { tile2lat, tile2lon } from './utils/math';
-import {
-	DynamicProjection,
-	type Projection,
-	ProjectionGrid,
-	ProjectionName,
-	getIndexAndFractions
-} from './utils/projections';
 import { hideZero } from './utils/variables';
 
-self.onmessage = async (message) => {
+import { GridFactory } from './grids/index';
+import { TileRequest } from './worker-pool';
+
+const OPACITY = 75;
+
+self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 	if (message.data.type == 'getImage') {
 		const key = message.data.key;
 
@@ -35,27 +32,12 @@ self.onmessage = async (message) => {
 		const pixels = tileSize * tileSize;
 		const rgba = new Uint8ClampedArray(pixels * 4);
 
-		let projectionGrid = null;
-		if (domain.grid.projection) {
-			const projectionName = domain.grid.projection.name as ProjectionName;
-			const projection = new DynamicProjection(
-				projectionName,
-				domain.grid.projection
-			) as Projection;
-			projectionGrid = new ProjectionGrid(projection, domain.grid, ranges);
+		if (!values) {
+			throw new Error('No values provided');
 		}
 
-		const interpolator = getInterpolator(colorScale);
-
-		const lonMin = domain.grid.lonMin + domain.grid.dx * ranges[1]['start'];
-		const latMin = domain.grid.latMin + domain.grid.dy * ranges[0]['start'];
-		const lonMax = domain.grid.lonMin + domain.grid.dx * ranges[1]['end'];
-		const latMax = domain.grid.latMin + domain.grid.dy * ranges[0]['end'];
-
-		let gaussian;
-		if (domain.grid.gaussianGridLatitudeLines) {
-			gaussian = new GaussianGrid(domain.grid.gaussianGridLatitudeLines);
-		}
+		// const interpolationMethod = getInterpolationMethod(colorScale);
+		const grid = GridFactory.create(domain.grid, ranges);
 
 		const isWind = variable.value.includes('wind');
 		const isHideZero = hideZero.includes(variable.value);
@@ -66,22 +48,7 @@ self.onmessage = async (message) => {
 			for (let j = 0; j < tileSize; j++) {
 				const ind = j + i * tileSize;
 				const lon = tile2lon(x + j / tileSize, z);
-
-				let px = NaN;
-				if (gaussian && domain.grid.gaussianGridLatitudeLines) {
-					px = gaussian.getLinearInterpolatedValue(values, lat, lon);
-				} else {
-					const { index, xFraction, yFraction } = getIndexAndFractions(
-						lat,
-						lon,
-						domain,
-						projectionGrid,
-						ranges,
-						[latMin, lonMin, latMax, lonMax]
-					);
-
-					px = interpolator(values as Float32Array, index, xFraction, yFraction, ranges);
-				}
+				let px = grid.getLinearInterpolatedValue(values, lat, lon);
 
 				if (isHideZero) {
 					if (px < 0.25) {
@@ -129,16 +96,24 @@ self.onmessage = async (message) => {
 		const directions = message.data.data.directions;
 		const colorScale = message.data.colorScale;
 
+		if (!values) {
+			throw new Error('No values provided');
+		}
+
 		const pbf = new Pbf();
 
 		if (key.includes('grid=true')) {
-			generateGrid(pbf, values, directions, domain, x, y, z);
+			if (domain.grid.type === 'gaussian') {
+				throw new Error('Gaussian grid type is not supported');
+			}
+			generateGridPoints(pbf, values, directions, domain.grid, x, y, z);
 		}
 		if (key.includes('arrows=true') && directions) {
 			generateArrows(pbf, values, directions, domain, ranges, x, y, z, colorScale);
 		}
 		if (key.includes('contours=true')) {
-			generateContours(pbf, values, domain, ranges, x, y, z, interval ? interval : 2);
+			const grid = GridFactory.create(domain.grid, ranges);
+			generateContours(pbf, values, grid, x, y, z, interval ? interval : 2);
 		}
 
 		const arrayBuffer = pbf.finish();

@@ -53,7 +53,7 @@ export type ColorScale = {
 	max: number;
 	unit: string;
 	steps: number;
-	colors: number[][];
+	colors: [number, number, number][];
 	opacity?: number;
 	scalefactor: number;
 	interpolationMethod: InterpolationMethod;
@@ -73,38 +73,53 @@ export type Interpolator = (
 	ranges: DimensionRange[]
 ) => number;
 
+interface BaseGridData {
+	nx: number;
+	ny: number;
+	zoom?: number;
+}
+
+export interface RegularGridData extends BaseGridData {
+	type: 'regular';
+	lonMin: number;
+	latMin: number;
+	dx: number;
+	dy: number;
+}
+
+export interface ProjectedGridData extends BaseGridData {
+	type: 'projected';
+	lonMin: number;
+	latMin: number;
+	dx: number;
+	dy: number;
+	projection: {
+		name: string;
+		λ0?: number;
+		ϕ0?: number;
+		ϕ1?: number;
+		ϕ2?: number;
+		rotation?: number[];
+		radius?: number;
+		latitude?: number[] | number;
+		longitude?: number[] | number;
+		bounds?: number[];
+		projectOrigin?: boolean;
+	};
+}
+
+export interface GaussianGridData extends BaseGridData {
+	type: 'gaussian';
+	gaussianGridLatitudeLines: number;
+}
+
+// Union type for all grid types
+export type GridData = RegularGridData | ProjectedGridData | GaussianGridData;
+
 export interface Domain {
 	value: string;
 	label?: string;
-	grid: {
-		nx: number;
-		ny: number;
-		lonMin: number;
-		latMin: number;
-		dx: number;
-		dy: number;
-		zoom?: number;
-		projection?: {
-			name: string;
-			λ0?: number;
-			ϕ0?: number;
-			ϕ1?: number;
-			ϕ2?: number;
-			rotation?: number[];
-			radius?: number;
-			latitude?: number[] | number;
-			longitude?: number[] | number;
-			bounds?: number[];
-			projectOrigin?: boolean;
-		};
-		center?:
-			| {
-					lng: number;
-					lat: number;
-			  }
-			| Function;
-		gaussianGridLatitudeLines?: number;
-	};
+	grid: GridData;
 	time_interval: number;
 	model_interval: number;
 	windUVComponents: boolean;
@@ -124,12 +139,6 @@ export type Bounds = [
 export interface Center {
 	lng: number;
 	lat: number;
-}
-
-export interface IndexAndFractions {
-	index: number;
-	xFraction: number;
-	yFraction: number;
 }
 
 export interface DimensionRange {

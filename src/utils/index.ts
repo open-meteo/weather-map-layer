@@ -14,7 +14,7 @@ export function capitalize(s: string) {
 }
 
 export const closestDomainInterval = (time: Date, domain: Domain) => {
-	let newTime = new Date(time.getTime());
+	const newTime = new Date(time.getTime());
 	if (domain.time_interval > 1) {
 		if (time.getUTCHours() % domain.time_interval > 0) {
 			const closestUTCHour = time.getUTCHours() - (time.getUTCHours() % domain.time_interval);

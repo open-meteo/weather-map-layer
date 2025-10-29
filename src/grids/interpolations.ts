@@ -9,10 +9,8 @@ export const interpolateLinear = (
 	index: number,
 	xFraction: number,
 	yFraction: number,
-	ranges: DimensionRange[]
+	nx: number
 ): number => {
-	const nx = ranges[1]['end'] - ranges[1]['start'];
-
 	const p0 = Number(values[index]);
 	let p1 = Number(values[index + 1]);
 	const p2 = Number(values[index + nx]);

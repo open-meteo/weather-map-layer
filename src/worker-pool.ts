@@ -1,5 +1,5 @@
 import type { Data } from './om-protocol';
-// @ts-ignore
+// @ts-expect-error worker import
 import TileWorker from './worker?worker&inline';
 
 import type { ColorScale, DimensionRange, Domain, Variable } from './types';
@@ -13,7 +13,7 @@ export interface TileRequest {
 	key: string;
 	data: Data;
 	dark: boolean;
-	ranges: DimensionRange[];
+	ranges: DimensionRange[] | null;
 	tileSize: number;
 	interval: number;
 	domain: Domain;
