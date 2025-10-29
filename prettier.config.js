@@ -6,6 +6,7 @@ export default {
 	importOrder: ['<THIRD_PARTY_MODULES>', '^./utils/(.*)$', '^./(?!types)', '/types'],
 	importOrderSeparation: true,
 	importOrderSortSpecifiers: true,
+	plugins: ['@trivago/prettier-plugin-sort-imports'],
 	overrides: [
 		{
 			files: ['*.ts', '*.css']
