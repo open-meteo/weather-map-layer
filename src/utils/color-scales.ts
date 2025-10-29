@@ -1,3 +1,4 @@
+// import { color, interpolateHsl } from 'd3';
 import type { ColorScale, ColorScales, Variable } from '../types';
 
 const OPACITY = 75;
@@ -89,18 +90,20 @@ export const getInterpolationMethod = (colorScale: ColorScale): 'nearest' | 'lin
 // 	return rgbArray;
 // }
 
-// const precipScale: ColorScale = {
-// 	min: 0,
-// 	max: 20,
-// 	scalefactor: 1,
+// const tempScale: ColorScale = {
+// 	min: -5,
+// 	max: 5,
+// 	steps: 20,
+// 	scalefactor: 2,
 // 	colors: [
-// 		...interpolateColorScaleHSL(['blue', 'green'], 5), // 0 to 5mm
-// 		...interpolateColorScaleHSL(['green', 'orange'], 5), // 5 to 10mm
-// 		...interpolateColorScaleHSL(['orange', 'red'], 10) // 10 to 20mm
+// 		...interpolateColorScaleHSL(['blue', 'white'], 10), // 0 to 5mm
+// 		...interpolateColorScaleHSL(['white', 'red'], 10) // 5 to 10mm
 // 	],
 // 	interpolationMethod: 'linear',
-// 	unit: 'mm'
+// 	unit: 'K'
 // };
+
+console.log(tempScale);
 
 // const convectiveCloudScale: ColorScale = {
 // 	min: 0,
@@ -1265,6 +1268,36 @@ export const colorScales: ColorScales = {
 		],
 		interpolationMethod: 'linear',
 		unit: 'C°'
+	},
+	temperature_2m_anomaly: {
+		min: -5,
+		max: 5,
+		steps: 20,
+		scalefactor: 2,
+		colors: [
+			[0, 0, 255],
+			[28, 28, 255],
+			[57, 57, 255],
+			[85, 85, 255],
+			[113, 113, 255],
+			[142, 142, 255],
+			[170, 170, 255],
+			[198, 198, 255],
+			[227, 227, 255],
+			[255, 255, 255],
+			[255, 255, 255],
+			[255, 227, 227],
+			[255, 198, 198],
+			[255, 170, 170],
+			[255, 142, 142],
+			[255, 113, 113],
+			[255, 85, 85],
+			[255, 57, 57],
+			[255, 28, 28],
+			[255, 0, 0]
+		],
+		interpolationMethod: 'linear',
+		unit: 'K'
 	},
 	thunderstorm: {
 		min: 0,
