@@ -134,7 +134,7 @@ self.onmessage = async (message) => {
 		if (key.includes('grid=true')) {
 			generateGrid(pbf, values, directions, domain, x, y, z);
 		}
-		if (key.includes('arrows=true')) {
+		if (key.includes('arrows=true') && directions) {
 			generateArrows(pbf, values, directions, domain, ranges, x, y, z, colorScale);
 		}
 		if (key.includes('contours=true')) {
