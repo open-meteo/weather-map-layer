@@ -1,43 +1,17 @@
 import { setupGlobalCache } from '@openmeteo/file-reader';
 import { type GetResourceResponse, type RequestParameters } from 'maplibre-gl';
 
-import {
-	colorScales as defaultColorScales,
-	getColorScale,
-	getInterpolator
-} from './utils/color-scales';
+import { colorScales as defaultColorScales, getColorScale } from './utils/color-scales';
 import { MS_TO_KMH } from './utils/constants';
-import { domainOptions as defaultDomainOptions } from './utils/domains';
-import { GaussianGrid } from './utils/gaussian';
-import {
-	getBorderPoints,
-	getBoundsFromBorderPoints,
-	getBoundsFromGrid,
-	getIndexAndFractions,
-	getIndicesFromBounds
-} from './utils/projections';
-import {
-	DynamicProjection,
-	type Projection,
-	ProjectionGrid,
-	type ProjectionName
-} from './utils/projections';
 import { variableOptions as defaultVariableOptions } from './utils/variables';
 
+import { domainOptions as defaultDomainOptions } from './domains';
+import { GridFactory } from './grids/index';
 import { OMapsFileReader } from './om-file-reader';
 import { capitalize } from './utils';
 import { TilePromise, WorkerPool } from './worker-pool';
 
-import type {
-	Bounds,
-	ColorScale,
-	ColorScales,
-	DimensionRange,
-	Domain,
-	TileIndex,
-	TileJSON,
-	Variable
-} from './types';
+import type { ColorScales, DimensionRange, Domain, TileIndex, TileJSON, Variable } from './types';
 
 let dark = false;
 let partial = false;
@@ -48,11 +22,7 @@ let variable: Variable;
 let mapBounds: number[];
 let omFileReader: OMapsFileReader;
 let resolutionFactor = 1;
-let mapBoundsIndexes: number[];
-let ranges: DimensionRange[];
-
-let projection: Projection;
-let projectionGrid: ProjectionGrid;
+let ranges: DimensionRange[] | null;
 
 setupGlobalCache();
 
@@ -68,41 +38,19 @@ const workerPool = new WorkerPool();
 export const getValueFromLatLong = (
 	lat: number,
 	lon: number,
-	variable: Variable,
-	colorScale: ColorScale
+	variable: Variable
 ): { value: number; direction?: number } => {
 	if (!data?.values) {
 		return { value: NaN };
 	}
 
 	const values = data.values;
-	const lonMin = domain.grid.lonMin + domain.grid.dx * ranges[1]['start'];
-	const latMin = domain.grid.latMin + domain.grid.dy * ranges[0]['start'];
-	const lonMax = domain.grid.lonMin + domain.grid.dx * ranges[1]['end'];
-	const latMax = domain.grid.latMin + domain.grid.dy * ranges[0]['end'];
-
-	if (domain.grid.gaussianGridLatitudeLines) {
-		const gaussian = new GaussianGrid(domain.grid.gaussianGridLatitudeLines);
-		const value = gaussian.getLinearInterpolatedValue(values, lat, lon);
-		return { value: value };
-	} else {
-		const { index, xFraction, yFraction } = getIndexAndFractions(
-			lat,
-			((((lon + 180) % 360) + 360) % 360) - 180,
-			domain,
-			projectionGrid,
-			ranges,
-			[latMin, lonMin, latMax, lonMax]
-		);
-
-		const interpolator = getInterpolator(colorScale);
-		let px = interpolator(values, index, xFraction, yFraction, ranges);
-		if (variable.value.includes('wind')) {
-			px = px * MS_TO_KMH;
-		}
-
-		return { value: px };
+	const grid = GridFactory.create(domain.grid, ranges);
+	let px = grid.getLinearInterpolatedValue(values, lat, lon);
+	if (variable.value.includes('wind')) {
+		px = px * MS_TO_KMH;
 	}
+	return { value: px };
 };
 
 const getTile = async (
@@ -150,27 +98,9 @@ const renderTile = async (url: string, type: 'image' | 'arrayBuffer') => {
 };
 
 const getTilejson = async (fullUrl: string): Promise<TileJSON> => {
-	let bounds: Bounds;
-	if (domain.grid.projection) {
-		const projectionName = domain.grid.projection.name;
-		projection = new DynamicProjection(
-			projectionName as ProjectionName,
-			domain.grid.projection
-		) as Projection;
-		projectionGrid = new ProjectionGrid(projection, domain.grid);
-
-		const borderPoints = getBorderPoints(projectionGrid);
-		bounds = getBoundsFromBorderPoints(borderPoints, projection);
-	} else {
-		bounds = getBoundsFromGrid(
-			domain.grid.lonMin,
-			domain.grid.latMin,
-			domain.grid.dx,
-			domain.grid.dy,
-			domain.grid.nx,
-			domain.grid.ny
-		);
-	}
+	// We initialize the grid with the ranges set to null, because we want to find out the maximum bounds of this grid
+	const grid = GridFactory.create(domain.grid, null);
+	const bounds = grid.getBounds();
 
 	return {
 		tilejson: '2.2.0',
@@ -236,24 +166,18 @@ export const parseOmUrl = (url: string): OmParseUrlCallbackResult => {
 		?.split(',')
 		.map((b: string): number => Number(b)) as number[];
 
+	// We initialize the grid with the ranges set to null
+	// This will return the entire grid, and allows us to parse the ranges which cover the map bounds
+	const gridGetter = GridFactory.create(domain.grid, null);
 	if (partial) {
-		mapBoundsIndexes = getIndicesFromBounds(
-			mapBounds[0],
-			mapBounds[1],
-			mapBounds[2],
-			mapBounds[3],
-			domain
-		);
-		ranges = [
-			{ start: mapBoundsIndexes[1], end: mapBoundsIndexes[3] },
-			{ start: mapBoundsIndexes[0], end: mapBoundsIndexes[2] }
-		];
+		ranges = gridGetter.getCoveringRanges(mapBounds[0], mapBounds[1], mapBounds[2], mapBounds[3]);
 	} else {
 		ranges = [
 			{ start: 0, end: domain.grid.ny },
 			{ start: 0, end: domain.grid.nx }
 		];
 	}
+
 	return { partial, domain, variable, ranges, omUrl };
 };
 
@@ -261,7 +185,7 @@ export interface OmParseUrlCallbackResult {
 	partial: boolean;
 	domain: Domain;
 	variable: Variable;
-	ranges: DimensionRange[];
+	ranges: DimensionRange[] | null;
 	omUrl: string;
 }
 

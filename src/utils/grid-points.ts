@@ -3,13 +3,13 @@ import Pbf from 'pbf';
 import { lat2tile, lon2tile } from './math';
 import { command, writeLayer, zigzag } from './pbf';
 
-import { Domain } from '../types';
+import { ProjectedGridData, RegularGridData } from '../types';
 
-export const generateGrid = (
+export const generateGridPoints = (
 	pbf: Pbf,
 	values: Float32Array,
-	directions: Float32Array,
-	domain: Domain,
+	directions: Float32Array | undefined,
+	grid: RegularGridData | ProjectedGridData,
 	x: number,
 	y: number,
 	z: number,
@@ -29,19 +29,19 @@ export const generateGrid = (
 	// 	mod = 1;
 	// }
 
-	for (let j = 0; j < domain.grid.ny; j++) {
-		const lat = domain.grid.latMin + domain.grid.dy * j;
+	for (let j = 0; j < grid.ny; j++) {
+		const lat = grid.latMin + grid.dy * j;
 		// if (lat > minLatTile && lat < maxLatTile) {
 		const worldPy = Math.floor(lat2tile(lat, z) * extent);
 		const py = worldPy - y * extent;
 		if (py > -margin && py <= extent + margin) {
-			for (let i = 0; i < domain.grid.nx; i++) {
-				const lon = domain.grid.lonMin + domain.grid.dx * i;
+			for (let i = 0; i < grid.nx; i++) {
+				const lon = grid.lonMin + grid.dx * i;
 				// if (lon > minLonTile && lon < maxLonTile) {
 				const worldPx = Math.floor(lon2tile(lon, z) * extent);
 				const px = worldPx - x * extent;
 				if (px > -margin && px <= extent + margin) {
-					const index = j * domain.grid.nx + i;
+					const index = j * grid.nx + i;
 					const value = values[index];
 
 					const properties: { value?: number; direction?: number } = {};

@@ -1,18 +1,8 @@
+import { GridInterface } from '../grids/index';
 import Pbf from 'pbf';
 
-import { getInterpolator } from './color-scales';
-import { GaussianGrid } from './gaussian';
 import { tile2lat, tile2lon } from './math';
 import { command, writeLayer, zigzag } from './pbf';
-import {
-	DynamicProjection,
-	Projection,
-	ProjectionGrid,
-	ProjectionName,
-	getIndexAndFractions
-} from './projections';
-
-import { ColorScale, DimensionRange, Domain } from '../types';
 
 // prettier-ignore
 export const edgeTable = [
@@ -190,13 +180,12 @@ export const ratio = (a: number, b: number, c: number) => {
 export const generateContours = (
 	pbf: Pbf,
 	values: Float32Array,
-	domain: Domain,
-	ranges: DimensionRange[],
+	grid: GridInterface,
 	x: number,
 	y: number,
 	z: number,
 	interval: number = 2,
-	threshold = undefined,
+	_threshold = undefined,
 	extent: number = 4096
 ) => {
 	const features = [];
@@ -207,27 +196,8 @@ export const generateContours = (
 	const width = 128;
 	const height = width;
 
-	let projectionGrid = null;
-	if (domain.grid.projection) {
-		const projectionName = domain.grid.projection.name as ProjectionName;
-		const projection = new DynamicProjection(projectionName, domain.grid.projection) as Projection;
-		projectionGrid = new ProjectionGrid(projection, domain.grid, ranges);
-	}
-
-	const interpolator = getInterpolator({ interpolationMethod: 'linear' } as ColorScale);
-
-	const lonMin = domain.grid.lonMin + domain.grid.dx * ranges[1]['start'];
-	const latMin = domain.grid.latMin + domain.grid.dy * ranges[0]['start'];
-	const lonMax = domain.grid.lonMin + domain.grid.dx * ranges[1]['end'];
-	const latMax = domain.grid.latMin + domain.grid.dy * ranges[0]['end'];
-
-	let gaussian;
-	if (domain.grid.gaussianGridLatitudeLines) {
-		gaussian = new GaussianGrid(domain.grid.gaussianGridLatitudeLines);
-	}
-
 	const multiplier = extent / width;
-	let tld: number, trd: number, bld: number, brd: number;
+	let tld: number, bld: number;
 	let i: number, j: number;
 	const segments: { [ele: number]: number[][] } = {};
 	const fragmentByStartByLevel: Map<number, Map<number, Fragment>> = new Map();
@@ -238,34 +208,8 @@ export const generateContours = (
 		const latBottom = tile2lat(y + (i - 1) / height, z);
 		const lon = tile2lon(x + 0 / height, z);
 
-		// TODO: replace with nice grid.getLinearInterpolatedValue function
-		let trd = NaN;
-		let brd = NaN;
-		if (gaussian && domain.grid.gaussianGridLatitudeLines) {
-			trd = gaussian.getLinearInterpolatedValue(values, latBottom, lon);
-			brd = gaussian.getLinearInterpolatedValue(values, latTop, lon);
-		} else {
-			const idx = getIndexAndFractions(latBottom, lon, domain, projectionGrid, ranges, [
-				latMin,
-				lonMin,
-				latMax,
-				lonMax
-			]);
-			const idx2 = getIndexAndFractions(latTop, lon, domain, projectionGrid, ranges, [
-				latMin,
-				lonMin,
-				latMax,
-				lonMax
-			]);
-			trd = interpolator(values as Float32Array, idx.index, idx.xFraction, idx.yFraction, ranges);
-			brd = interpolator(
-				values as Float32Array,
-				idx2.index,
-				idx2.xFraction,
-				idx2.yFraction,
-				ranges
-			);
-		}
+		let trd = grid.getLinearInterpolatedValue(values, latBottom, lon);
+		let brd = grid.getLinearInterpolatedValue(values, latTop, lon);
 
 		let minR = Math.min(trd, brd);
 		let maxR = Math.max(trd, brd);
@@ -276,32 +220,8 @@ export const generateContours = (
 			tld = trd;
 			bld = brd;
 
-			// TODO: replace with nice grid.getLinearInterpolatedValue function
-			if (gaussian && domain.grid.gaussianGridLatitudeLines) {
-				trd = gaussian.getLinearInterpolatedValue(values, latBottom, lon);
-				brd = gaussian.getLinearInterpolatedValue(values, latTop, lon);
-			} else {
-				const idx = getIndexAndFractions(latBottom, lon, domain, projectionGrid, ranges, [
-					latMin,
-					lonMin,
-					latMax,
-					lonMax
-				]);
-				const idx2 = getIndexAndFractions(latTop, lon, domain, projectionGrid, ranges, [
-					latMin,
-					lonMin,
-					latMax,
-					lonMax
-				]);
-				trd = interpolator(values as Float32Array, idx.index, idx.xFraction, idx.yFraction, ranges);
-				brd = interpolator(
-					values as Float32Array,
-					idx2.index,
-					idx2.xFraction,
-					idx2.yFraction,
-					ranges
-				);
-			}
+			trd = grid.getLinearInterpolatedValue(values, latBottom, lon);
+			brd = grid.getLinearInterpolatedValue(values, latTop, lon);
 
 			// trd = tile.get(j, i - 1);
 			// brd = tile.get(j, i);
@@ -390,13 +310,13 @@ export const generateContours = (
 
 	const levels = segments;
 
-	for (let [level, segments] of Object.entries(levels)) {
-		for (let line of segments) {
+	for (const [level, segments] of Object.entries(levels)) {
+		for (const line of segments) {
 			const geom: number[] = [];
 			// move to first point in segments
-			let xt0, yt0, xt1, yt1;
+			let xt1, yt1;
 			geom.push(command(1, 1)); // MoveTo
-			[xt0, yt0] = [line[0], line[1]];
+			const [xt0, yt0] = [line[0], line[1]];
 			geom.push(zigzag(xt0));
 			geom.push(zigzag(yt0));
 			cursor = [xt0, yt0];

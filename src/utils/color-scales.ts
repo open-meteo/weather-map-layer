@@ -1,11 +1,8 @@
-// import { interpolateHsl, color } from 'd3';
-import { interpolate2DHermite, interpolateLinear, noInterpolation } from './interpolations';
-
-import type { ColorScale, ColorScales, Interpolator, Variable } from '../types';
+import type { ColorScale, ColorScales, Variable } from '../types';
 
 const OPACITY = 75;
 
-export const getColor = (colorScale: ColorScale, px: number): number[] => {
+export const getColor = (colorScale: ColorScale, px: number): [number, number, number] => {
 	return colorScale.colors[
 		Math.min(
 			colorScale.colors.length - 1,
@@ -53,16 +50,15 @@ export const getColorScale = (variable: Variable['value']) => {
 	);
 };
 
-export const getInterpolator = (colorScale: ColorScale): Interpolator => {
+// TODO: Interpolation should be set per variable not per ColorScale
+export const getInterpolationMethod = (colorScale: ColorScale): 'nearest' | 'linear' => {
 	if (!colorScale.interpolationMethod || colorScale.interpolationMethod === 'none') {
-		return noInterpolation;
+		return 'nearest';
 	} else if (colorScale.interpolationMethod === 'linear') {
-		return interpolateLinear;
-	} else if (colorScale.interpolationMethod === 'hermite2d') {
-		return interpolate2DHermite;
+		return 'linear';
 	} else {
 		// default is linear
-		return interpolateLinear;
+		return 'linear';
 	}
 };
 

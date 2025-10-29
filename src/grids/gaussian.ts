@@ -1,14 +1,44 @@
-import { modPositive } from './math';
+import { modPositive } from '../utils/math';
+
+import { GridInterface } from './interface';
+
+import { Bounds, DimensionRange, GaussianGridData } from '../types';
 
 /**
  * Implementation of a Gaussian grid projection for mapping, specifically the O1280 version used by ECMWF IFS
  */
-export class GaussianGrid {
+export class GaussianGrid implements GridInterface {
+	private data: GaussianGridData;
 	private readonly latitudeLines: number;
 
 	/// 1280 for O1280
-	constructor(latitudeLines: number) {
-		this.latitudeLines = latitudeLines;
+	constructor(data: GaussianGridData, _ranges: DimensionRange[] | null = null) {
+		this.data = data;
+		this.latitudeLines = data.gaussianGridLatitudeLines;
+	}
+
+	getBounds(): Bounds {
+		// FIXME: global for now
+		return [-180, -90, 180, 90];
+	}
+
+	getCenter(): { lng: number; lat: number } {
+		// FIXME: Center hardcoded for now
+		return { lng: 0, lat: 0 };
+	}
+
+	getCoveringRanges(
+		_south: number,
+		_west: number,
+		_north: number,
+		_east: number
+	): DimensionRange[] {
+		const ranges = [
+			{ start: 0, end: this.data.ny },
+			{ start: 0, end: this.data.nx }
+		];
+
+		return ranges;
 	}
 
 	/**
