@@ -5,7 +5,7 @@ export default defineConfig({
 		exclude: ['@openmeteo/file-reader', '@openmeteo/file-format-wasm']
 	},
 	build: {
-		emptyOutDir: false, // so it doesn't wipe your main build
+		emptyOutDir: false, // so it doesn't wipe the main build
 		chunkSizeWarningLimit: 1200,
 		rollupOptions: {
 			external: ['@openmeteo/file-reader', '@openmeteo/file-format-wasm'],

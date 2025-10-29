@@ -24,6 +24,7 @@
 		"dev": "vite build --watch",
 		"dev:umd": "vite build --config vite.config.umd.ts --watch",
 		"test": "vitest",
+		"lint": "prettier --check . && eslint .",
 		"build:esm": "vite build",
 		"build:cjs": "vite build --config vite.config.cjs.ts",
 		"build:umd": "vite build --config vite.config.umd.ts",
@@ -31,17 +32,25 @@
 		"prepare": "npm run build"
 	},
 	"devDependencies": {
-		"@mapbox/vector-tile": "^2.0.4",
+		"@eslint/compat": "^1.4.0",
+		"@eslint/js": "^9.38.0",
 		"@trivago/prettier-plugin-sort-imports": "^5.2.2",
-		"pbf": "^4.0.1",
+		"@typescript-eslint/eslint-plugin": "^8.46.2",
+		"@typescript-eslint/parser": "^8.46.2",
+		"eslint": "^9.38.0",
+		"eslint-config-prettier": "^10.1.8",
+		"globals": "^16.4.0",
 		"prettier": "^3.6.2",
 		"typescript": "5.9.3",
+		"typescript-eslint": "^8.46.2",
 		"vite": "^7.1.11",
 		"vite-plugin-dts": "^4.5.4",
 		"vitest": "^4.0.4"
 	},
 	"dependencies": {
 		"@openmeteo/file-reader": "^0.0.12",
-		"maplibre-gl": "^5.9.0"
+		"@mapbox/vector-tile": "^2.0.4",
+		"maplibre-gl": "^5.9.0",
+		"pbf": "^4.0.1"
 	}
 }

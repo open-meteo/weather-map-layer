@@ -1,6 +1,6 @@
 {
 	"compilerOptions": {
-		"target": "ES2015",
+		"target": "ES2022",
 		"module": "ESNext",
 		"allowJs": true,
 		"checkJs": true,
@@ -13,5 +13,6 @@
 		"moduleResolution": "bundler",
 		"lib": ["ESNext", "DOM"]
 	},
-	"include": ["./src/**/*"]
+	"include": ["src/**/*"],
+	"exclude": ["node_modules", "dist"]
 }
