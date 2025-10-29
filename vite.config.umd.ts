@@ -7,7 +7,7 @@ export default defineConfig({
 			entry: 'src/index.ts', // or your main entry
 			name: 'OpenMeteoMapboxLayer', // global variable name for UMD
 			formats: ['umd'],
-			fileName: (format) => `index.js`
+			fileName: 'index.js'
 		},
 		rollupOptions: {
 			output: {
