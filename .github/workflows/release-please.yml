@@ -6,6 +6,7 @@ on:
       - main
 
 permissions:
+  id-token: write # Required for OIDC
   contents: write # to create release commit (googleapis/release-please-action)
   pull-requests: write # to create release PR (googleapis/release-please-action)
   issues: write # to create labels (googleapis/release-please-action)
@@ -29,7 +30,7 @@ jobs:
         uses: actions/setup-node@v6
         if: ${{ steps.release.outputs.release_created }}
         with:
-          node-version: 22
+          node-version: 24
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
@@ -42,6 +43,4 @@ jobs:
 
       - name: Publish to npm
         if: ${{ steps.release.outputs.release_created }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish
