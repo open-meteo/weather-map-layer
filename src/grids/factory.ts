@@ -3,18 +3,23 @@ import { GridInterface } from './interface';
 import { ProjectionGrid } from './projected';
 import { RegularGrid } from './regular';
 
-import { DimensionRange, Domain } from '../types';
+import { DimensionRange, GridData } from '../types';
 
 export class GridFactory {
-	static create(data: Domain['grid'], ranges: DimensionRange[] | null = null): GridInterface {
-		if (data.type === 'gaussian') {
-			return new GaussianGrid(data, ranges);
-		} else if (data.type === 'projected') {
-			return new ProjectionGrid(data, ranges);
-		} else if (data.type === 'regular') {
-			return new RegularGrid(data, ranges);
-		} else {
-			throw new Error('Unsupported grid type');
+	static create(data: GridData, ranges: DimensionRange[] | null = null): GridInterface {
+		switch (data.type) {
+			case 'gaussian':
+				return new GaussianGrid(data, ranges);
+			case 'projectedFromBounds':
+			case 'projectedFromProjectedOrigin':
+			case 'projectedFromGeographicOrigin':
+				return new ProjectionGrid(data, ranges);
+			case 'regular':
+				return new RegularGrid(data, ranges);
+			default:
+				// This ensures exhaustiveness checking
+				const _exhaustive: never = data;
+				throw new Error(`Unknown grid type: ${_exhaustive}`);
 		}
 	}
 }

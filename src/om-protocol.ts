@@ -46,7 +46,7 @@ export const getValueFromLatLong = (
 
 	const values = data.values;
 	const grid = GridFactory.create(domain.grid, ranges);
-	let px = grid.getLinearInterpolatedValue(values, lat, lon);
+	let px = grid.getLinearInterpolatedValue(values, lat, ((lon + 180) % 360) - 180);
 	if (variable.value.includes('wind')) {
 		px = px * MS_TO_KMH;
 	}
