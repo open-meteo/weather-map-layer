@@ -48,7 +48,7 @@
 		"vitest": "^4.0.4"
 	},
 	"dependencies": {
-		"@openmeteo/file-reader": "^0.0.12",
+		"@openmeteo/file-reader": "^0.0.13",
 		"@mapbox/vector-tile": "^2.0.4",
 		"maplibre-gl": "^5.9.0",
 		"pbf": "^4.0.1"
