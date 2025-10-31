@@ -214,8 +214,8 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 		const pbf = new Pbf();
 
 		if (key.includes('grid=true')) {
-			if (domain.grid.type === 'gaussian') {
-				throw new Error('Gaussian grid type is not supported');
+			if (domain.grid.type !== 'regular') {
+				throw new Error('Only regular grid types supported');
 			}
 			generateGridPoints(pbf, values, directions, domain.grid, x, y, z);
 		} else {

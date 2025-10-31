@@ -5,24 +5,51 @@ import { Bounds, DimensionRange, RegularGridData } from '../types';
 
 // Regular grid implementation
 export class RegularGrid implements GridInterface {
-	private data: RegularGridData;
+	private nx: number;
+	private ny: number;
+	private dx: number;
+	private dy: number;
+
 	private bounds: Bounds;
-	private ranges: DimensionRange[];
 	private center?: { lng: number; lat: number };
 
 	constructor(data: RegularGridData, ranges: DimensionRange[] | null = null) {
-		this.data = data;
+		this.dx = data.dx;
+		this.dy = data.dy;
+
 		if (!ranges) {
+			// if ranges are not provided, use the full grid dimensions
 			ranges = [
 				{ start: 0, end: data.ny },
 				{ start: 0, end: data.nx }
 			];
+		} else {
+			// check that we don't exceed the grid dimensions
+			if (
+				ranges[0].start < 0 ||
+				ranges[0].start > data.ny ||
+				ranges[0].end < 0 ||
+				ranges[0].end > data.ny
+			) {
+				throw new Error('Invalid y range');
+			}
+			if (
+				ranges[1].start < 0 ||
+				ranges[1].start > data.nx ||
+				ranges[1].end < 0 ||
+				ranges[1].end > data.nx
+			) {
+				throw new Error('Invalid x range');
+			}
 		}
-		this.ranges = ranges;
-		const lonMin = data.lonMin + data.dx * ranges[1]['start'];
-		const latMin = data.latMin + data.dy * ranges[0]['start'];
-		const lonMax = data.lonMin + data.dx * ranges[1]['end'];
-		const latMax = data.latMin + data.dy * ranges[0]['end'];
+
+		this.nx = ranges[1].end - ranges[1].start;
+		this.ny = ranges[0].end - ranges[0].start;
+
+		const lonMin = data.lonMin + this.dx * ranges[1].start;
+		const latMin = data.latMin + this.dy * ranges[0].start;
+		const lonMax = data.lonMin + this.dx * ranges[1].end;
+		const latMax = data.latMin + this.dy * ranges[0].end;
 		this.bounds = [lonMin, latMin, lonMax, latMax];
 	}
 
@@ -35,20 +62,14 @@ export class RegularGrid implements GridInterface {
 		) {
 			return NaN;
 		}
-		const x = Math.floor((lon - this.bounds[0]) / this.data.dx);
-		const y = Math.floor((lat - this.bounds[1]) / this.data.dy);
+		const x = Math.floor((lon - this.bounds[0]) / this.dx);
+		const y = Math.floor((lat - this.bounds[1]) / this.dy);
 
-		const xFraction = ((lon - this.bounds[0]) % this.data.dx) / this.data.dx;
-		const yFraction = ((lat - this.bounds[1]) % this.data.dy) / this.data.dy;
+		const xFraction = ((lon - this.bounds[0]) % this.dx) / this.dx;
+		const yFraction = ((lat - this.bounds[1]) % this.dy) / this.dy;
 
-		const index = y * this.data.nx + x;
-		return interpolateLinear(
-			values,
-			index,
-			xFraction,
-			yFraction,
-			this.ranges[1].end - this.ranges[1].start
-		);
+		const index = y * this.nx + x;
+		return interpolateLinear(values, index, xFraction, yFraction, this.nx);
 	}
 
 	getBounds(): Bounds {
@@ -58,18 +79,18 @@ export class RegularGrid implements GridInterface {
 	getCenter(): { lng: number; lat: number } {
 		if (!this.center) {
 			this.center = {
-				lng: this.data.lonMin + this.data.dx * (this.data.nx * 0.5),
-				lat: this.data.latMin + this.data.dy * (this.data.ny * 0.5)
+				lng: this.bounds[0] + this.dx * (this.nx * 0.5),
+				lat: this.bounds[1] + this.dy * (this.ny * 0.5)
 			};
 		}
 		return this.center;
 	}
 
 	getCoveringRanges(south: number, west: number, north: number, east: number): DimensionRange[] {
-		const dx = this.data.dx;
-		const dy = this.data.dy;
-		const nx = this.data.nx;
-		const ny = this.data.ny;
+		const dx = this.dx;
+		const dy = this.dy;
+		const nx = this.nx;
+		const ny = this.ny;
 
 		let xPrecision, yPrecision;
 		if (String(dx).split('.')[1]) {
@@ -80,8 +101,8 @@ export class RegularGrid implements GridInterface {
 			yPrecision = 2;
 		}
 
-		const originX = this.data.lonMin;
-		const originY = this.data.latMin;
+		const originX = this.bounds[0];
+		const originY = this.bounds[1];
 
 		const s = Number((south - (south % dy)).toFixed(yPrecision));
 		const w = Number((west - (west % dx)).toFixed(xPrecision));

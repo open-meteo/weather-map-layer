@@ -1,17 +1,25 @@
 import { domainOptions } from '../domains';
+import { ProjectionGrid } from '../grids/projected';
 import { LambertConformalConicProjection, RotatedLatLonProjection } from '../grids/projections';
 import { RegularGrid } from '../grids/regular';
 import { describe, expect, test } from 'vitest';
 
-import type { RegularGridData } from '../types';
-import { ProjectedGridData } from '../types';
+import type {
+	AnyProjectionGridData,
+	DimensionRange,
+	LCCProjectionData,
+	ProjectionGridFromGeographicOrigin,
+	RegularGridData,
+	RotatedLatLonProjectionData
+} from '../types';
 
 const dmiDomain = domainOptions.find((d) => d.value === 'dmi_harmonie_arome_europe');
 const knmiDomain = domainOptions.find((d) => d.value === 'knmi_harmonie_arome_europe');
 
 test('Test LambertConformalConicProjection for DMI', () => {
-	const grid = dmiDomain?.grid as ProjectedGridData;
-	const proj = new LambertConformalConicProjection(grid.projection);
+	const projectedGrid = dmiDomain?.grid as AnyProjectionGridData;
+	const lccProjectionData = projectedGrid.projection as LCCProjectionData;
+	const proj = new LambertConformalConicProjection(lccProjectionData);
 	expect(proj.ρ0).toBe(0.6872809586016131);
 	expect(proj.F).toBe(1.801897704650192);
 	expect(proj.n).toBe(0.8241261886220157);
@@ -26,8 +34,9 @@ test('Test LambertConformalConicProjection for DMI', () => {
 });
 
 test('Test RotatedLatLon for KNMI', () => {
-	const grid = knmiDomain?.grid as ProjectedGridData;
-	const proj = new RotatedLatLonProjection(grid.projection);
+	const projectedGrid = knmiDomain?.grid as AnyProjectionGridData;
+	const rotatedLatLonProjectionData = projectedGrid.projection as RotatedLatLonProjectionData;
+	const proj = new RotatedLatLonProjection(rotatedLatLonProjectionData);
 	expect(proj.θ).toBe(0.9599310885968813);
 	expect(proj.ϕ).toBe(-0.13962634015954636);
 
@@ -38,7 +47,7 @@ test('Test RotatedLatLon for KNMI', () => {
 // Example grid data
 const gridData: RegularGridData = {
 	type: 'regular',
-	nx: 4,
+	nx: 10,
 	ny: 3,
 	lonMin: 10,
 	latMin: 50,
@@ -46,14 +55,52 @@ const gridData: RegularGridData = {
 	dy: 2
 };
 
+const projectedGridData: ProjectionGridFromGeographicOrigin = {
+	type: 'projectedFromGeographicOrigin',
+	nx: 10,
+	ny: 10,
+	latitude: 50,
+	longitude: 10,
+	dx: 10000,
+	dy: 10000,
+	projection: {
+		λ0: 10,
+		ϕ0: 50,
+		ϕ1: 50,
+		ϕ2: 50,
+		radius: 6371229,
+		name: 'LambertConformalConicProjection'
+	}
+};
+
 describe('RegularGrid', () => {
 	test('constructs and computes bounds', () => {
 		const grid = new RegularGrid(gridData);
+		expect(grid.getBounds()).toEqual([10, 50, 20, 56]);
+	});
+
+	test('construct a new partial grid', () => {
+		const ranges: DimensionRange[] = [
+			{ start: 0, end: 3 },
+			{ start: 0, end: 4 }
+		];
+		const grid = new RegularGrid(gridData, ranges);
 		expect(grid.getBounds()).toEqual([10, 50, 14, 56]);
 	});
 
 	test('computes center', () => {
 		const grid = new RegularGrid(gridData);
+		const center = grid.getCenter();
+		expect(center.lng).toBe(15);
+		expect(center.lat).toBe(53);
+	});
+
+	test('computes center on partial grid', () => {
+		const ranges: DimensionRange[] = [
+			{ start: 0, end: 3 },
+			{ start: 0, end: 4 }
+		];
+		const grid = new RegularGrid(gridData, ranges);
 		const center = grid.getCenter();
 		expect(center.lng).toBe(12);
 		expect(center.lat).toBe(53);
@@ -61,37 +108,22 @@ describe('RegularGrid', () => {
 
 	test('linear interpolation at grid point', () => {
 		const grid = new RegularGrid(gridData);
-		// Fill values with 0, 1, 2, ... for easy checking
-		const values = new Float32Array([
-			0,
-			1,
-			2,
-			3, // row 0 (lat=50)
-			4,
-			5,
-			6,
-			7, // row 1 (lat=52)
-			8,
-			9,
-			10,
-			11 // row 2 (lat=54)
-		]);
-		// At (lat=52, lon=11), should be row 1, col 1 => index 5, value 5
-		expect(grid.getLinearInterpolatedValue(values, 52, 11)).toBe(5);
+		const values = new Float32Array(Array.from({ length: 30 }, (_, index) => index));
+		// At (lat=52, lon=11), should be row 1, col 1 => index 11, value 11
+		expect(grid.getLinearInterpolatedValue(values, 52, 11)).toBe(11);
 	});
 
 	test('linear interpolation between grid points', () => {
 		const grid = new RegularGrid(gridData);
-		const values = new Float32Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
-		// Between (52, 11) and (52, 12): should interpolate between index 5 and 6
+		const values = new Float32Array(Array.from({ length: 30 }, (_, index) => index));
+		// Between (52, 11) and (52, 12): should interpolate between index 11 and 12
 		const interpolated = grid.getLinearInterpolatedValue(values, 52, 11.5);
-		// Should be halfway between 5 and 6
-		expect(interpolated).toBeCloseTo(5.5);
+		expect(interpolated).toBeCloseTo(11.5);
 	});
 
 	test('returns NaN for out-of-bounds', () => {
 		const grid = new RegularGrid(gridData);
-		const values = new Float32Array(12);
+		const values = new Float32Array(Array.from({ length: 30 }, (_, index) => index));
 		expect(grid.getLinearInterpolatedValue(values, 100, 100)).toBeNaN();
 	});
 
@@ -102,6 +134,90 @@ describe('RegularGrid', () => {
 		expect(ranges[0].start).toBe(0);
 		expect(ranges[0].end).toBe(gridData.ny);
 		expect(ranges[1].start).toBe(1);
-		expect(ranges[1].end).toBe(gridData.nx);
+		expect(ranges[1].end).toBe(4);
+	});
+});
+
+describe('ProjectionGrid', () => {
+	test('construction, bounds and center', () => {
+		const grid = new ProjectionGrid(projectedGridData);
+		const bounds = grid.getBounds();
+		expect(bounds).toHaveLength(4);
+		expect(bounds[0]).toBeCloseTo(10, 3);
+		expect(bounds[1]).toBeCloseTo(49.992, 3); // latMin is a bit smaller than the specified latMin, because it is matched the next available value on the projection grid ???
+		expect(bounds[2]).toBeCloseTo(11.426, 3); // approximate longitude max
+		expect(bounds[3]).toBeCloseTo(50.899, 3); // approximate latitude max
+
+		const center = grid.getCenter();
+		expect(center.lng).toBeCloseTo(10.71, 2);
+		expect(center.lat).toBeCloseTo(50.45, 2);
+	});
+
+	test('construction, bounds and center for partial grid', () => {
+		const ranges: DimensionRange[] = [
+			{ start: 0, end: 5 },
+			{ start: 0, end: 5 }
+		];
+		const grid = new ProjectionGrid(projectedGridData, ranges);
+		const bounds = grid.getBounds();
+		// bounds should be smaller than the full grid
+		expect(bounds).toHaveLength(4);
+		expect(bounds[0]).toBeCloseTo(10, 3);
+		expect(bounds[1]).toBeCloseTo(49.998, 3); // FIXME: Why is this not the same as above?
+		expect(bounds[2]).toBeCloseTo(10.706, 3); // approximate longitude max
+		expect(bounds[3]).toBeCloseTo(50.45, 3); // approximate latitude max
+
+		const center = grid.getCenter();
+		expect(center.lng).toBeCloseTo(10.35, 2);
+		expect(center.lat).toBeCloseTo(50.22, 2);
+	});
+
+	test('linear interpolation', () => {
+		const grid = new ProjectionGrid(projectedGridData);
+		const values = new Float32Array(Array.from({ length: 100 }, (_, index) => index));
+
+		// Test a point that should be within the grid
+		const result = grid.getLinearInterpolatedValue(values, 50.001, 10.001);
+		expect(result).toBeCloseTo(0.118, 3);
+	});
+
+	test('linear interpolation for partial grid', () => {
+		const ranges: DimensionRange[] = [
+			{ start: 0, end: 5 },
+			{ start: 0, end: 5 }
+		];
+		const grid = new ProjectionGrid(projectedGridData, ranges);
+		const values = new Float32Array([
+			...Array.from({ length: 5 }, (_, index) => index),
+			...Array.from({ length: 5 }, (_, index) => index + 10),
+			...Array.from({ length: 5 }, (_, index) => index + 20),
+			...Array.from({ length: 5 }, (_, index) => index + 30),
+			...Array.from({ length: 5 }, (_, index) => index + 40)
+		]);
+
+		// Test a point that should be within the grid
+		const result = grid.getLinearInterpolatedValue(values, 50.001, 10.001);
+		expect(result).toBeCloseTo(0.118, 3);
+	});
+
+	test('returns NaN for out-of-bounds in projected grid', () => {
+		const grid = new ProjectionGrid(projectedGridData);
+		const values = new Float32Array(Array.from({ length: 100 }, (_, index) => index));
+
+		// Test points outside the grid
+		expect(grid.getLinearInterpolatedValue(values, 48, 10)).toBeNaN();
+	});
+
+	test('getCoveringRanges returns valid ranges', () => {
+		const grid = new ProjectionGrid(projectedGridData);
+		const ranges = grid.getCoveringRanges(49.9, 9.9, 50.1, 10.1);
+
+		expect(ranges).toHaveLength(2);
+		expect(ranges[0].start).toBeGreaterThanOrEqual(0);
+		expect(ranges[0].end).toBeLessThanOrEqual(projectedGridData.ny);
+		expect(ranges[1].start).toBeGreaterThanOrEqual(0);
+		expect(ranges[1].end).toBeLessThanOrEqual(projectedGridData.nx);
+		expect(ranges[0].start).toBeLessThanOrEqual(ranges[0].end);
+		expect(ranges[1].start).toBeLessThanOrEqual(ranges[1].end);
 	});
 });

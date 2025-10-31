@@ -8,13 +8,28 @@ import { Bounds, DimensionRange, GaussianGridData } from '../types';
  * Implementation of a Gaussian grid projection for mapping, specifically the O1280 version used by ECMWF IFS
  */
 export class GaussianGrid implements GridInterface {
-	private data: GaussianGridData;
+	// should always be 1 for gaussian grids!
+	private readonly ny: number;
+	// nx contains all grid points in a single dimension
+	private readonly nx: number;
+	// nxStart can be used to read partial data
+	// it basically shifts the indices when accessing the data
+	private readonly nxStart: number;
+
 	private readonly latitudeLines: number;
 
-	/// 1280 for O1280
-	constructor(data: GaussianGridData, _ranges: DimensionRange[] | null = null) {
-		this.data = data;
+	constructor(data: GaussianGridData, ranges: DimensionRange[] | null = null) {
 		this.latitudeLines = data.gaussianGridLatitudeLines;
+
+		if (!ranges) {
+			ranges = [
+				{ start: 0, end: data.ny },
+				{ start: 0, end: data.nx }
+			];
+		}
+		this.nx = data.nx;
+		this.nxStart = ranges[1].start;
+		this.ny = data.ny;
 	}
 
 	getBounds(): Bounds {
@@ -27,18 +42,31 @@ export class GaussianGrid implements GridInterface {
 		return { lng: 0, lat: 0 };
 	}
 
-	getCoveringRanges(
-		_south: number,
-		_west: number,
-		_north: number,
-		_east: number
-	): DimensionRange[] {
-		const ranges = [
-			{ start: 0, end: this.data.ny },
-			{ start: 0, end: this.data.nx }
-		];
+	getCoveringRanges(south: number, _west: number, north: number, _east: number): DimensionRange[] {
+		const northY = this.yLower(north);
+		const southY = this.yLower(south) + 2; // This makes sure we cover at least two latitude rows, which is needed for very high zoom levels
 
-		return ranges;
+		// We need to treat border points specially, because the yLower function is not well behaved at the poles
+		let southX: number;
+		const southIntegral = this.integral(southY);
+		if (southY > this.latitudeLines * 2 || southIntegral >= this.nx) {
+			southX = this.nx;
+		} else {
+			southX = this.integral(southY) % this.nx;
+		}
+
+		let northX: number;
+		const moduloNorth = (this.latitudeLines * 2) % northY;
+		if (moduloNorth < 2) {
+			northX = 0;
+		} else {
+			northX = this.integral(northY) % this.nx;
+		}
+
+		return [
+			{ start: 0, end: this.ny },
+			{ start: northX, end: southX }
+		];
 	}
 
 	/**
@@ -58,10 +86,11 @@ export class GaussianGrid implements GridInterface {
 
 	private integral(y: number): number {
 		return y < this.latitudeLines
-			? 2 * y * y + 18 * y
+			? 2 * y * y + 18 * y - this.nxStart
 			: this.count -
 					(2 * (2 * this.latitudeLines - y) * (2 * this.latitudeLines - y) +
-						18 * (2 * this.latitudeLines - y));
+						18 * (2 * this.latitudeLines - y)) -
+					this.nxStart;
 	}
 
 	/**
@@ -156,5 +185,12 @@ export class GaussianGrid implements GridInterface {
 		const integral = this.integral(y);
 		const index = integral + x;
 		return values[index];
+	}
+
+	// FIXME: This function might not behave well at the poles!
+	private yLower(lat: number) {
+		const latitudeLines = this.latitudeLines;
+		const dy = 180 / (2 * latitudeLines + 0.5);
+		return modPositive(Math.floor(latitudeLines - 1 - (lat - dy / 2) / dy), 2 * latitudeLines);
 	}
 }
