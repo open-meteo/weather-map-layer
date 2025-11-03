@@ -15,7 +15,7 @@ The `.om` files are hosted on an S3 bucket and can be accessed directly via the 
 
 The actual weather API implementation lives in the [open‑meteo/open‑meteo](https://github.com/open-meteo/open-meteo) repository.
 
-An interactive demo is available at [maps.open‑meteo.com](https://maps.open‑meteo.com/).
+An interactive demo is available at [maps.open‑meteo.com](https://maps.open-meteo.com/).
 
 ## Installation
 
