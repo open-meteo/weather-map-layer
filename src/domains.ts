@@ -41,11 +41,11 @@ export const domainOptions: Array<Domain> = [
 		value: 'dmi_harmonie_arome_europe',
 		label: 'DMI Harmonie Arome Europe',
 		grid: {
-			type: 'projected',
+			type: 'projectedFromGeographicOrigin',
 			nx: 1906,
 			ny: 1606,
-			latMin: 39.671,
-			lonMin: -25.421997,
+			latitude: 39.671,
+			longitude: -25.421997,
 			dx: 2000,
 			dy: 2000,
 			zoom: 4,
@@ -54,8 +54,6 @@ export const domainOptions: Array<Domain> = [
 				ϕ0: 55.5,
 				ϕ1: 55.5,
 				ϕ2: 55.5,
-				latitude: 39.671,
-				longitude: -25.421997,
 				radius: 6371229,
 				name: 'LambertConformalConicProjection'
 			}
@@ -191,21 +189,17 @@ export const domainOptions: Array<Domain> = [
 		value: 'ncep_hrrr_conus',
 		label: 'GFS HRRR Conus',
 		grid: {
-			type: 'projected',
+			type: 'projectedFromBounds',
 			nx: 1799,
 			ny: 1059,
-			latMin: 21.138,
-			lonMin: -122.72,
-			dx: 0,
-			dy: 0,
+			latitudeBounds: [21.138, 47.8424],
+			longitudeBounds: [-122.72, -60.918],
 			zoom: 3.5,
 			projection: {
 				λ0: -97.5,
 				ϕ0: 0,
 				ϕ1: 38.5,
 				ϕ2: 38.5,
-				latitude: [21.138, 47.8424],
-				longitude: [-122.72, -60.918],
 				name: 'LambertConformalConicProjection'
 			}
 		},
@@ -217,11 +211,11 @@ export const domainOptions: Array<Domain> = [
 		value: 'ncep_nbm_conus',
 		label: 'GFS NBM Conus',
 		grid: {
-			type: 'projected',
+			type: 'projectedFromGeographicOrigin',
 			nx: 2345,
 			ny: 1597,
-			latMin: 19.229,
-			lonMin: 233.723 - 360,
+			latitude: 19.229,
+			longitude: 233.723 - 360,
 			dx: 2539.7,
 			dy: 2539.7,
 			zoom: 3.5,
@@ -231,8 +225,6 @@ export const domainOptions: Array<Domain> = [
 				ϕ1: 25,
 				ϕ2: 25,
 				radius: 6371200,
-				latitude: 19.229,
-				longitude: 233.723 - 360,
 				name: 'LambertConformalConicProjection'
 			}
 		},
@@ -244,21 +236,17 @@ export const domainOptions: Array<Domain> = [
 		value: 'ncep_nam_conus',
 		label: 'GFS NAM Conus',
 		grid: {
-			type: 'projected',
+			type: 'projectedFromBounds',
 			nx: 1799,
 			ny: 1059,
-			latMin: 21.138,
-			lonMin: -122.72,
-			dx: 0,
-			dy: 0,
+			latitudeBounds: [21.138, 47.8424],
+			longitudeBounds: [-122.72, -60.918],
 			zoom: 3.5,
 			projection: {
 				λ0: -97.5,
 				ϕ0: 0,
 				ϕ1: 38.5,
 				ϕ2: 38.5,
-				latitude: [21.138, 47.8424],
-				longitude: [-122.72, -60.918],
 				name: 'LambertConformalConicProjection'
 			}
 		},
@@ -384,18 +372,15 @@ export const domainOptions: Array<Domain> = [
 		value: 'cmc_gem_hrdps',
 		label: 'GEM HRDPS Continental',
 		grid: {
-			type: 'projected',
+			type: 'projectedFromBounds',
 			nx: 2540,
 			ny: 1290,
-			latMin: 39.626034,
-			lonMin: -133.62952,
-			dx: 0.15,
-			dy: 0.15,
+			latitudeBounds: [39.626034, 47.876457],
+			longitudeBounds: [-133.62952, -40.708557],
 			zoom: 1,
 			projection: {
-				rotation: [-36.0885, 245.305],
-				latitude: [39.626034, 47.876457],
-				longitude: [-133.62952, -40.708557],
+				rotatedLat: -36.0885,
+				rotatedLon: 245.305,
 				name: 'RotatedLatLonProjection'
 			}
 		},
@@ -407,18 +392,17 @@ export const domainOptions: Array<Domain> = [
 		value: 'cmc_gem_rdps',
 		label: 'GEM Regional',
 		grid: {
-			type: 'projected',
+			type: 'projectedFromBounds',
 			nx: 935,
 			ny: 824,
-			latMin: 18.14503,
-			lonMin: 217.10745,
-			dx: 0.15,
-			dy: 0.15,
+			latitudeBounds: [18.14503, 45.405453],
+			longitudeBounds: [217.10745, 349.8256],
 			zoom: 1,
 			projection: {
 				latitude: 90,
 				longitude: 249,
-				name: 'StereograpicProjection'
+				radius: 6371229,
+				name: 'StereographicProjection'
 			}
 		},
 		time_interval: 1,
@@ -574,21 +558,17 @@ export const domainOptions: Array<Domain> = [
 		value: 'metno_nordic_pp',
 		label: 'MET Norway Nordic',
 		grid: {
-			type: 'projected',
+			type: 'projectedFromBounds',
 			nx: 1796,
 			ny: 2321,
-			latMin: 52.30272,
-			lonMin: 1.9184653,
-			dx: 0.25,
-			dy: 0.25,
+			latitudeBounds: [52.30272, 72.18527],
+			longitudeBounds: [1.9184653, 41.764282],
 			zoom: 4,
 			projection: {
 				λ0: 15,
 				ϕ0: 63,
 				ϕ1: 63,
 				ϕ2: 63,
-				latitude: [52.30272, 72.18527],
-				longitude: [1.9184653, 41.764282],
 				name: 'LambertConformalConicProjection'
 			}
 		},
@@ -619,11 +599,11 @@ export const domainOptions: Array<Domain> = [
 		value: 'kma_ldps',
 		label: 'KMA LDPS 1.5km',
 		grid: {
-			type: 'projected',
+			type: 'projectedFromGeographicOrigin',
 			nx: 602,
 			ny: 781,
-			latMin: 32.2569,
-			lonMin: 121.834,
+			latitude: 32.2569,
+			longitude: 121.834,
 			dx: 1500,
 			dy: 1500,
 			zoom: 5.5,
@@ -633,8 +613,6 @@ export const domainOptions: Array<Domain> = [
 				ϕ1: 30,
 				ϕ2: 60,
 				radius: 6371229,
-				latitude: 32.2569,
-				longitude: 121.834,
 				name: 'LambertConformalConicProjection'
 			}
 		},
@@ -648,18 +626,15 @@ export const domainOptions: Array<Domain> = [
 		value: 'knmi_harmonie_arome_europe',
 		label: 'KNMI Harmonie Arome Europe',
 		grid: {
-			type: 'projected',
+			type: 'projectedFromBounds',
 			nx: 676,
 			ny: 564,
-			latMin: 39.740627,
-			lonMin: -25.162262,
-			dx: 0,
-			dy: 0,
+			latitudeBounds: [39.740627, 62.619324],
+			longitudeBounds: [-25.162262, 38.75702],
 			zoom: 3.5,
 			projection: {
-				rotation: [-35, -8],
-				latitude: [39.740627, 62.619324],
-				longitude: [-25.162262, 38.75702],
+				rotatedLat: -35,
+				rotatedLon: -8,
 				name: 'RotatedLatLonProjection'
 			}
 		},
@@ -690,20 +665,18 @@ export const domainOptions: Array<Domain> = [
 		value: 'meteoswiss_icon_ch1',
 		label: 'MeteoSwiss ICON CH1',
 		grid: {
-			type: 'projected',
+			type: 'projectedFromProjectedOrigin',
 			nx: 1089,
 			ny: 705,
-			latMin: 43.18,
-			lonMin: -3.94,
+			projectedLatitudeOrigin: -4.06,
+			projectedLongitudeOrigin: -6.46,
 			dx: 0.01,
 			dy: 0.01,
 			zoom: 5.2,
 			projection: {
-				rotation: [43.0, 190.0],
-				latitude: -6.46,
-				longitude: -4.06,
-				name: 'RotatedLatLonProjection',
-				projectOrigin: false
+				rotatedLat: 43.0,
+				rotatedLon: 190.0,
+				name: 'RotatedLatLonProjection'
 			}
 		},
 		time_interval: 1,
@@ -714,20 +687,18 @@ export const domainOptions: Array<Domain> = [
 		value: 'meteoswiss_icon_ch2',
 		label: 'MeteoSwiss ICON CH2',
 		grid: {
-			type: 'projected',
+			type: 'projectedFromProjectedOrigin',
 			nx: 545,
 			ny: 353,
-			latMin: 43.18,
-			lonMin: -3.94,
+			projectedLatitudeOrigin: -4.06,
+			projectedLongitudeOrigin: -6.46,
 			dx: 0.02,
 			dy: 0.02,
 			zoom: 5.2,
 			projection: {
-				rotation: [43.0, 190.0],
-				latitude: -6.46,
-				longitude: -4.06,
-				name: 'RotatedLatLonProjection',
-				projectOrigin: false
+				rotatedLat: 43.0,
+				rotatedLon: 190.0,
+				name: 'RotatedLatLonProjection'
 			}
 		},
 		time_interval: 1,
@@ -757,22 +728,19 @@ export const domainOptions: Array<Domain> = [
 		value: 'ukmo_uk_deterministic_2km',
 		label: 'UK Met Office 2km',
 		grid: {
-			type: 'projected',
+			type: 'projectedFromProjectedOrigin',
 			nx: 1042,
 			ny: 970,
-			latMin: 0, //-1036000
-			lonMin: 0, //-1158000
+			projectedLatitudeOrigin: -1036000,
+			projectedLongitudeOrigin: -1158000,
 			dx: 2000,
 			dy: 2000,
 			zoom: 4,
 			projection: {
 				λ0: -2.5,
 				ϕ1: 54.9,
-				latitude: -1036000,
-				longitude: -1158000,
 				radius: 6371229,
-				name: 'LambertAzimuthalEqualAreaProjection',
-				projectOrigin: false
+				name: 'LambertAzimuthalEqualAreaProjection'
 			}
 		},
 		time_interval: 1,

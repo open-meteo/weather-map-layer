@@ -1,8 +1,9 @@
 import { setupGlobalCache } from '@openmeteo/file-reader';
 import { type GetResourceResponse, type RequestParameters } from 'maplibre-gl';
 
-import { colorScales as defaultColorScales, getColorScale } from './utils/color-scales';
+import { colorScales as defaultColorScales } from './utils/color-scales';
 import { MS_TO_KMH } from './utils/constants';
+import { getColorScale } from './utils/styling';
 import { variableOptions as defaultVariableOptions } from './utils/variables';
 
 import { domainOptions as defaultDomainOptions } from './domains';
@@ -46,7 +47,7 @@ export const getValueFromLatLong = (
 
 	const values = data.values;
 	const grid = GridFactory.create(domain.grid, ranges);
-	let px = grid.getLinearInterpolatedValue(values, lat, lon);
+	let px = grid.getLinearInterpolatedValue(values, lat, ((lon + 180) % 360) - 180);
 	if (variable.value.includes('wind')) {
 		px = px * MS_TO_KMH;
 	}

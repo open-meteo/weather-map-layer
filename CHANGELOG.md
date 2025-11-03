@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.0.5](https://github.com/open-meteo/mapbox-layer/compare/v0.0.4...v0.0.5) (2025-10-31)
+
+
+### Features
+
+* better tests and type safety for projected grids ([#68](https://github.com/open-meteo/mapbox-layer/issues/68)) ([fb565a1](https://github.com/open-meteo/mapbox-layer/commit/fb565a19a96d8ed4ab131803404803e25bfc7540))
+* cleanup projections ([#58](https://github.com/open-meteo/mapbox-layer/issues/58)) ([e2b011a](https://github.com/open-meteo/mapbox-layer/commit/e2b011a361f775bd65d866341f2164364357829e))
+
+
+### Bug Fixes
+
+* eslint setup ([#59](https://github.com/open-meteo/mapbox-layer/issues/59)) ([4a100d4](https://github.com/open-meteo/mapbox-layer/commit/4a100d4ad4f8f8ea3d150373e3afefa1f4deaf03))
+* umd file name ([130f9e8](https://github.com/open-meteo/mapbox-layer/commit/130f9e83171321a42931ec0ddbdf7318b5bc1fca))
+
 ## [0.0.4](https://github.com/open-meteo/mapbox-layer/compare/v0.0.3...v0.0.4) (2025-10-28)
 
 ### Features

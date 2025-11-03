@@ -3,13 +3,13 @@ import Pbf from 'pbf';
 import { lat2tile, lon2tile } from './math';
 import { command, writeLayer, zigzag } from './pbf';
 
-import { ProjectedGridData, RegularGridData } from '../types';
+import { RegularGridData } from '../types';
 
 export const generateGridPoints = (
 	pbf: Pbf,
 	values: Float32Array,
 	directions: Float32Array | undefined,
-	grid: RegularGridData | ProjectedGridData,
+	grid: RegularGridData,
 	x: number,
 	y: number,
 	z: number,
