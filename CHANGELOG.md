@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.0.6](https://github.com/open-meteo/mapbox-layer/compare/v0.0.5...v0.0.6) (2025-11-03)
+
+
+### Features
+
+* Add new seasonal data sources SEAS5 and EC46 from ECMWF ([ba178b0](https://github.com/open-meteo/mapbox-layer/commit/ba178b0911854dfb45521acdd2660fe57f1f0058))
+* script to generate color scales ([#67](https://github.com/open-meteo/mapbox-layer/issues/67)) ([1c565e3](https://github.com/open-meteo/mapbox-layer/commit/1c565e36019952c1e38714558c60ae342fa352ef))
+* Wind arrows from arrayBuffer ([fe76420](https://github.com/open-meteo/mapbox-layer/commit/fe764205d3c680a440bd474a328a37d14bf04859))
+
+
+### Bug Fixes
+
+* add marker for all examples and catch all in config ([f8c9b5a](https://github.com/open-meteo/mapbox-layer/commit/f8c9b5a257ed92be9d3b97a6666794428f8361fb))
+* bump the openmeteo group with 4 updates ([5ee2e00](https://github.com/open-meteo/mapbox-layer/commit/5ee2e00fab73db820655db97ad9e777f84987d4b))
+* bump the openmeteo group with 4 updates ([8b4bd12](https://github.com/open-meteo/mapbox-layer/commit/8b4bd12d4cf42db8076a8c47fbe59541c7955c29))
+* comment wrap for readme ([2efc058](https://github.com/open-meteo/mapbox-layer/commit/2efc058ef648c170fdf04a2c537b431a6822cca6))
+* explicit defintions in extra files release please ([4bae205](https://github.com/open-meteo/mapbox-layer/commit/4bae205c3378b94e7b47840dc5debab35508dd6e))
+* link in readme is not correct ([#71](https://github.com/open-meteo/mapbox-layer/issues/71)) ([4a81823](https://github.com/open-meteo/mapbox-layer/commit/4a81823ee909b21e4a1a20f9495c86e974058dc8))
+* try cathcall with extension ([78a1fca](https://github.com/open-meteo/mapbox-layer/commit/78a1fca271348f45c1b1a51b1ac7fd9a8ef7d618))
+
 ## [0.0.5](https://github.com/open-meteo/mapbox-layer/compare/v0.0.4...v0.0.5) (2025-10-31)
 
 
