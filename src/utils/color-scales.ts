@@ -861,6 +861,36 @@ export const colorScales: ColorScales = {
 		interpolationMethod: 'linear',
 		unit: 'C°'
 	},
+	temperature_2m_anomaly: {
+		min: -5,
+		max: 5,
+		steps: 20,
+		scalefactor: 2,
+		colors: [
+			[0, 0, 255],
+			[28, 28, 255],
+			[57, 57, 255],
+			[85, 85, 255],
+			[113, 113, 255],
+			[142, 142, 255],
+			[170, 170, 255],
+			[198, 198, 255],
+			[227, 227, 255],
+			[255, 255, 255],
+			[255, 255, 255],
+			[255, 227, 227],
+			[255, 198, 198],
+			[255, 170, 170],
+			[255, 142, 142],
+			[255, 113, 113],
+			[255, 85, 85],
+			[255, 57, 57],
+			[255, 28, 28],
+			[255, 0, 0]
+		],
+		interpolationMethod: 'linear',
+		unit: 'K'
+	},
 	thunderstorm: {
 		min: 0,
 		max: 100,

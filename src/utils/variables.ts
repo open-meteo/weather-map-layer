@@ -115,7 +115,9 @@ export const variableOptions = [
 	{ value: 'soil_moisture_10_to_40cm', label: 'Soil Moisture (10-40 cm)' },
 	{ value: 'soil_moisture_27_to_81cm', label: 'Soil Moisture (27-81 cm)' },
 	{ value: 'soil_moisture_40_to_100cm', label: 'Soil Moisture (40-100 cm)' },
-	{ value: 'soil_moisture_100_to_200cm', label: 'Soil Moisture (100-200 cm)' }
+	{ value: 'soil_moisture_100_to_200cm', label: 'Soil Moisture (100-200 cm)' },
+
+	{ value: 'temperature_2m_anomaly', label: 'Temperature (2m) Anomaly' }
 ];
 
 for (const pl of pressureLevels) {

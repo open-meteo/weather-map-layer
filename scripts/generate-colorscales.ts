@@ -141,6 +141,17 @@ const colorScaleDefinitions: Record<string, ColorScaleDefinition> = {
 		interpolationMethod: 'linear',
 		unit: 'C°'
 	},
+	temperature_2m_anomaly: {
+		min: -5,
+		max: 5,
+		steps: 20,
+		colors: [
+			{ colors: ['blue', 'white'], steps: 10 },
+			{ colors: ['white', 'red'], steps: 10 }
+		],
+		interpolationMethod: 'linear',
+		unit: 'K'
+	},
 	thunderstorm: {
 		min: 0,
 		max: 100,

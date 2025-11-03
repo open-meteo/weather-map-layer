@@ -304,6 +304,34 @@ export const domainOptions: Array<Domain> = [
 		model_interval: 3,
 		windUVComponents: true
 	},
+	{
+		value: 'ecmwf_seas5_monthly',
+		label: 'ECMWF SEAS5',
+		grid: {
+			type: 'gaussian',
+			nx: 421120,
+			ny: 1,
+			zoom: 3.2,
+			gaussianGridLatitudeLines: 320
+		},
+		time_interval: 24 * 30,
+		model_interval: 24 * 30,
+		windUVComponents: true
+	},
+	{
+		value: 'ecmwf_ec46_weekly',
+		label: 'ECMWF EC46',
+		grid: {
+			type: 'gaussian',
+			nx: 421120,
+			ny: 1,
+			zoom: 3.2,
+			gaussianGridLatitudeLines: 320
+		},
+		time_interval: 24 * 7,
+		model_interval: 24,
+		windUVComponents: true
+	},
 
 	// GEM
 	{
