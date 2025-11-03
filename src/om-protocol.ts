@@ -116,7 +116,10 @@ const getTilejson = async (fullUrl: string): Promise<TileJSON> => {
 let setColorScales: ColorScales;
 let setDomainOptions: Domain[];
 let setVariableOptions: Variable[];
-export const initOMFile = (url: string, omProtocolSettings: OmProtocolSettings): Promise<void> => {
+export const initProtocol = (
+	url: string,
+	omProtocolSettings: OmProtocolSettings
+): Promise<void> => {
 	return new Promise((resolve, reject) => {
 		const { useSAB } = omProtocolSettings;
 		tileSize = omProtocolSettings.tileSize;
@@ -133,8 +136,9 @@ export const initOMFile = (url: string, omProtocolSettings: OmProtocolSettings):
 		omFileReader
 			.setToOmFile(omUrl)
 			.then(() => {
-				omFileReader.readVariable(variable.value, ranges).then((values) => {
+				omFileReader.readVariable(variable.value, null).then((values) => {
 					data = values;
+
 					resolve();
 
 					if (omProtocolSettings.postReadCallback) {
@@ -178,13 +182,10 @@ export const parseOmUrl = (url: string): OmParseUrlCallbackResult => {
 			{ start: 0, end: domain.grid.nx }
 		];
 	}
-
-	return { partial, domain, variable, ranges, omUrl };
+	return { variable, ranges, omUrl };
 };
 
 export interface OmParseUrlCallbackResult {
-	partial: boolean;
-	domain: Domain;
 	variable: Variable;
 	ranges: DimensionRange[] | null;
 	omUrl: string;
@@ -214,6 +215,7 @@ export const defaultOmProtocolSettings: OmProtocolSettings = {
 	postReadCallback: undefined
 };
 
+// let protocolPromise: Promise<void>;
 export const omProtocol = async (
 	params: RequestParameters,
 	abortController?: AbortController,
@@ -221,7 +223,7 @@ export const omProtocol = async (
 ): Promise<GetResourceResponse<TileJSON | ImageBitmap | ArrayBuffer>> => {
 	if (params.type == 'json') {
 		try {
-			await initOMFile(params.url, omProtocolSettings);
+			await initProtocol(params.url, omProtocolSettings);
 		} catch (e) {
 			throw new Error(e as string);
 		}

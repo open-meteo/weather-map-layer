@@ -8,5 +8,6 @@
 			"bump-patch-for-minor-pre-major": true,
 			"include-v-in-tag": true
 		}
-	}
+	},
+	"extra-files": ["README.md", "examples/temperature.html"]
 }

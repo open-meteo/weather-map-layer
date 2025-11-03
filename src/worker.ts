@@ -1,108 +1,17 @@
 import Pbf from 'pbf';
 
+import { generateArrows } from './utils/arrows';
 import { MS_TO_KMH } from './utils/constants';
 import { generateContours } from './utils/contours';
 import { generateGridPoints } from './utils/grid-points';
-import { degreesToRadians, rotatePoint, tile2lat, tile2lon } from './utils/math';
+import { tile2lat, tile2lon } from './utils/math';
 import { getColor, getOpacity } from './utils/styling';
-import { drawOnTiles, hideZero } from './utils/variables';
+import { hideZero } from './utils/variables';
 
-import { GridFactory, GridInterface } from './grids/index';
+import { GridFactory } from './grids/index';
 import { TileRequest } from './worker-pool';
 
-import type { Variable } from './types';
-
 const OPACITY = 75;
-
-let arrowCanvas: OffscreenCanvasRenderingContext2D | null = null;
-const getArrowCanvas = (size: number) => {
-	if (arrowCanvas != null) {
-		return arrowCanvas;
-	}
-
-	const canvas = new OffscreenCanvas(size, size);
-	const ctx = canvas.getContext('2d');
-	if (ctx == null) {
-		throw new Error('Failed to create arrow canvas');
-	}
-
-	ctx.clearRect(0, 0, size, size);
-	ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
-	ctx.beginPath();
-	ctx.moveTo(size / 2, size * 0.1);
-	ctx.lineTo(size * 0.63, size * 0.32);
-	ctx.lineTo(size / 2, size * 0.1);
-	ctx.lineTo(size * 0.37, size * 0.32);
-	ctx.lineTo(size / 2, size * 0.1);
-	ctx.lineTo(size / 2, size * 0.95);
-	ctx.stroke();
-
-	arrowCanvas = ctx;
-	return ctx;
-};
-
-const drawArrow = (
-	rgba: Uint8ClampedArray,
-	iBase: number,
-	jBase: number,
-	x: number,
-	y: number,
-	z: number,
-	values: Float32Array,
-	tileSize: number,
-	boxSize: number,
-	variable: Variable,
-	grid: GridInterface,
-	directions: Float32Array
-): void => {
-	const arrow = getArrowCanvas(boxSize);
-
-	const iCenter = iBase + Math.floor(boxSize / 2);
-	const jCenter = jBase + Math.floor(boxSize / 2);
-
-	const lat = tile2lat(y + iCenter / tileSize, z);
-	const lon = tile2lon(x + jCenter / tileSize, z);
-
-	const px = grid.getLinearInterpolatedValue(values, lat, lon);
-	const direction = degreesToRadians(grid.getLinearInterpolatedValue(directions, lat, lon));
-
-	arrow.rotate(direction);
-	const arrowPixelData = arrow.getImageData(0, 0, boxSize, boxSize).data;
-
-	if (direction) {
-		for (let i = 0; i < boxSize; i++) {
-			for (let j = 0; j < boxSize; j++) {
-				const ind = j + i * boxSize;
-				const rotatedPoint = rotatePoint(
-					Math.floor(boxSize / 2),
-					Math.floor(boxSize / 2),
-					-direction,
-					i,
-					j
-				);
-				const newI = Math.floor(rotatedPoint[0]);
-				const newJ = Math.floor(rotatedPoint[1]);
-				const indTile = jBase + newJ + (iBase + newI) * tileSize;
-
-				let opacityValue;
-
-				if (variable.value.startsWith('wind')) {
-					opacityValue = Math.min(((px - 0.4) / 1) * 0.5, 1);
-				} else {
-					opacityValue = 0.8;
-				}
-
-				if (arrowPixelData[4 * ind + 3] && opacityValue > 0.1) {
-					rgba[4 * indTile] = 0;
-					rgba[4 * indTile + 1] = 0;
-					rgba[4 * indTile + 2] = 0;
-					rgba[4 * indTile + 3] =
-						Number(arrowPixelData[4 * ind + 3]) * opacityValue * (OPACITY / 25);
-				}
-			}
-		}
-	}
-};
 
 self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 	if (message.data.type == 'getImage') {
@@ -131,15 +40,8 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 		const grid = GridFactory.create(domain.grid, ranges);
 
 		const isWind = variable.value.includes('wind');
-		const isWeatherCode = variable.value === 'weather_code';
-		const isDirection =
-			(variable.value.startsWith('wave') && !variable.value.includes('_period')) ||
-			(variable.value.startsWith('wind') &&
-				!variable.value.includes('_gusts') &&
-				!variable.value.includes('_wave')) ||
-			(drawOnTiles.includes(variable.value) &&
-				(variable.value.startsWith('wave') || variable.value.startsWith('wind')));
 		const isHideZero = hideZero.includes(variable.value);
+		const isWeatherCode = variable.value === 'weather_code';
 
 		for (let i = 0; i < tileSize; i++) {
 			const lat = tile2lat(y + i / tileSize, z);
@@ -176,20 +78,6 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 			}
 		}
 
-		if (isDirection) {
-			const directions = message.data.data.directions;
-			if (!directions) {
-				throw new Error('Directions are required for direction layer');
-			}
-
-			const boxSize = Math.floor(tileSize / 8);
-			for (let i = 0; i < tileSize; i += boxSize) {
-				for (let j = 0; j < tileSize; j += boxSize) {
-					drawArrow(rgba, i, j, x, y, z, values, tileSize, boxSize, variable, grid, directions);
-				}
-			}
-		}
-
 		const imageBitmap = await createImageBitmap(new ImageData(rgba, tileSize, tileSize), {
 			premultiplyAlpha: 'premultiply'
 		});
@@ -206,6 +94,7 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 		const domain = message.data.domain;
 		const interval = message.data.interval;
 		const directions = message.data.data.directions;
+		const colorScale = message.data.colorScale;
 
 		if (!values) {
 			throw new Error('No values provided');
@@ -218,7 +107,11 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 				throw new Error('Only regular grid types supported');
 			}
 			generateGridPoints(pbf, values, directions, domain.grid, x, y, z);
-		} else {
+		}
+		if (key.includes('arrows=true') && directions) {
+			generateArrows(pbf, values, directions, domain, ranges, x, y, z, colorScale);
+		}
+		if (key.includes('contours=true')) {
 			const grid = GridFactory.create(domain.grid, ranges);
 			generateContours(pbf, values, grid, x, y, z, interval ? interval : 2);
 		}

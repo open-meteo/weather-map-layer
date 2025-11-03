@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 	<head>
-		<title>Open-Meteo Mapbox Layer - Temperature Labels Example</title>
+		<title>Open-Meteo Mapbox Layer - Pressure Contouring Example</title>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.10.0/dist/maplibre-gl.css" />
@@ -51,7 +51,7 @@
 			});
 
 			// s3 storage structure: /data_spatial/{domain}/{modelRun /year/month/day/time}Z/{selectedTime year-month-day-time.om}?variable={variable}
-			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m`;
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=wind_u_component_10m`;
 
 			map.on('load', () => {
 				map.addSource('omFileRasterSource', {
@@ -67,23 +67,42 @@
 					source: 'omFileRasterSource'
 				});
 
-				map.addSource('omFileGridSource', {
-					url: 'om://' + omUrl + '?grid=true',
+				map.addSource('omFileVectorSource', {
+					url: 'om://' + omUrl + '&arrows=true',
 					type: 'vector'
 				});
 
 				map.addLayer({
-					id: 'omFileGridLabels',
-					type: 'symbol',
-					source: 'omFileGridSource',
-					'source-layer': 'grid',
+					id: 'omFileVectorLayer',
+					type: 'line',
+					source: 'omFileVectorSource',
+					'source-layer': 'wind-arrows',
+					paint: {
+						'line-color': [
+							'case',
+							['boolean', ['>', ['to-number', ['get', 'value']], 5], false],
+							'rgba(0,0,0, 0.6)',
+							[
+								'case',
+								['boolean', ['>', ['to-number', ['get', 'value']], 4], false],
+								'rgba(0,0,0, 0.5)',
+								[
+									'case',
+									['boolean', ['>', ['to-number', ['get', 'value']], 3], false],
+									'rgba(0,0,0, 0.4)',
+									[
+										'case',
+										['boolean', ['>', ['to-number', ['get', 'value']], 2], false],
+										'rgba(0,0,0, 0.3)',
+										'rgba(0,0,0, 0.2)'
+									]
+								]
+							]
+						],
+						'line-width': 2
+					},
 					layout: {
-						'symbol-placement': 'point',
-						'text-font': ['Noto Sans Regular'],
-						'text-field': ['to-string', ['get', 'value']],
-						'text-size': 16
-						// 'text-allow-overlap': true,
-						// 'text-ignore-placement': true
+						'line-cap': 'round'
 					}
 				});
 			});

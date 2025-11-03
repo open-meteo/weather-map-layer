@@ -28,6 +28,7 @@ export const generateGridPoints = (
 	// if (z > 3) {
 	// 	mod = 1;
 	// }
+	//
 
 	for (let j = 0; j < grid.ny; j++) {
 		const lat = grid.latMin + grid.dy * j;
