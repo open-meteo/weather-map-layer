@@ -56,7 +56,7 @@ map.on('load', () => {
 
 For a standalone example, see `examples/temperature.html`.
 
-[comment]: <> (x-release-please-start-version)
+<!-- x-release-please-start-version -->
 
 ```ts
 ...
@@ -64,7 +64,7 @@ For a standalone example, see `examples/temperature.html`.
 ...
 ```
 
-[comment]: <> (x-release-please-end)
+<!-- x-release-please-end -->
 
 ```ts
 <script>
