@@ -1,270 +1,5 @@
-import type { ColorScale, ColorScales, Variable } from '../types';
+import type { ColorScales } from '../types';
 
-const OPACITY = 75;
-
-export const getColor = (colorScale: ColorScale, px: number): [number, number, number] => {
-	return colorScale.colors[
-		Math.min(
-			colorScale.colors.length - 1,
-			Math.max(0, Math.floor((px - colorScale.min) * colorScale.scalefactor))
-		)
-	];
-};
-
-export const getOpacity = (
-	v: string,
-	px: number,
-	dark: boolean,
-	colorScale: ColorScale
-): number => {
-	if (colorScale.opacity) {
-		return 255 * (colorScale.opacity / 100);
-	} else if (v == 'cloud_cover' || v == 'thunderstorm_probability') {
-		// scale opacity with percentage
-		return 255 * (px ** 1.5 / 1000) * (OPACITY / 100);
-	} else if (v.startsWith('cloud_base')) {
-		// scale cloud base to 20900m
-		return Math.min(1 - px / 20900, 1) * 255 * (OPACITY / 100);
-	} else if (v.startsWith('precipitation')) {
-		// scale opacity with precip values below 1.5mm
-		return Math.min(px / 1.5, 1) * 255 * (OPACITY / 100);
-	} else if (v.startsWith('wind')) {
-		// scale opacity with wind values below 10kmh
-		if (px < 10) {
-			return Math.min(Math.pow(px - 2, 3) / 1000, 1) * 255 * (OPACITY / 100);
-		} else {
-			return 255 * (OPACITY / 100);
-		}
-	} else {
-		// else set the opacity with env variable and deduct 20% for darkmode
-		return 255 * (dark ? OPACITY / 100 - 0.2 : OPACITY / 100);
-	}
-};
-
-export const getColorScale = (variable: Variable['value']) => {
-	return (
-		colorScales[variable] ??
-		colorScales[variable.split('_')[0]] ??
-		colorScales[variable.split('_')[0] + '_' + variable.split('_')[1]] ??
-		colorScales['temperature']
-	);
-};
-
-// TODO: Interpolation should be set per variable not per ColorScale
-export const getInterpolationMethod = (colorScale: ColorScale): 'nearest' | 'linear' => {
-	if (!colorScale.interpolationMethod || colorScale.interpolationMethod === 'none') {
-		return 'nearest';
-	} else if (colorScale.interpolationMethod === 'linear') {
-		return 'linear';
-	} else {
-		// default is linear
-		return 'linear';
-	}
-};
-
-// function interpolateColorScaleHSL(colors: Array<string>, steps: number) {
-// 	const segments = colors.length - 1;
-// 	const stepsPerSegment = Math.floor(steps / segments);
-// 	const remainder = steps % segments;
-
-// 	const rgbArray: number[][] = [];
-
-// 	for (let i = 0; i < segments; i++) {
-// 		const startColor = colors[i];
-// 		const endColor = colors[i + 1];
-// 		const interpolate = interpolateHsl(startColor, endColor);
-
-// 		const numSteps = stepsPerSegment + (i < remainder ? 1 : 0);
-
-// 		for (let j = 0; j < numSteps; j++) {
-// 			const t = j / (numSteps - 1); // range [0, 1]
-// 			let c = color(interpolate(t));
-// 			if (c) {
-// 				c = c.rgb();
-// 				rgbArray.push([c.r, c.g, c.b]);
-// 			}
-// 		}
-// 	}
-
-// 	return rgbArray;
-// }
-
-// const precipScale: ColorScale = {
-// 	min: 0,
-// 	max: 20,
-// 	scalefactor: 1,
-// 	colors: [
-// 		...interpolateColorScaleHSL(['blue', 'green'], 5), // 0 to 5mm
-// 		...interpolateColorScaleHSL(['green', 'orange'], 5), // 5 to 10mm
-// 		...interpolateColorScaleHSL(['orange', 'red'], 10) // 10 to 20mm
-// 	],
-// 	interpolationMethod: 'linear',
-// 	unit: 'mm'
-// };
-
-// const convectiveCloudScale: ColorScale = {
-// 	min: 0,
-// 	max: 6000,
-// 	scalefactor: 1,
-// 	colors: [
-// 		...interpolateColorScaleHSL(['#c0392b', '#d35400', '#f1c40f', '#16a085', '#2980b9'], 6000)
-// 	],
-// 	interpolationMethod: 'none',
-// 	unit: 'm'
-// };
-
-// export const colorScales: ColorScales = {
-// 	cape: {
-// 		min: 0,
-// 		max: 4000,
-// 		scalefactor: 1,
-// 		colors: [
-// 			...interpolateColorScaleHSL(
-// 				['#009392', '#39b185', '#9ccb86', '#e9e29c', '#eeb479', '#e88471', '#cf597e'],
-// 				4000
-// 			)
-// 		],
-// 		interpolationMethod: 'linear',
-// 		unit: ''
-// 	},
-// 	cloud_base: {
-// 		min: 0,
-// 		max: 20900,
-// 		scalefactor: 1,
-// 		colors: [
-// 			...interpolateColorScaleHSL(['#FFF', '#c3c2c2'], 20900) // 0 to 20900m
-// 		],
-// 		interpolationMethod: 'linear',
-// 		unit: 'm'
-// 	},
-// 	cloud_cover: {
-// 		min: 0,
-// 		max: 100,
-// 		scalefactor: 1,
-// 		colors: [
-// 			...interpolateColorScaleHSL(['#FFF', '#c3c2c2'], 100) // 0 to 100%
-// 		],
-// 		interpolationMethod: 'linear',
-// 		unit: '%'
-// 	},
-// 	convective_cloud_top: convectiveCloudScale,
-// 	convective_cloud_base: convectiveCloudScale,
-// 	precipitation: precipScale,
-// 	pressure: {
-// 		min: 950,
-// 		max: 1050,
-// 		scalefactor: 0.5,
-// 		colors: [
-// 			...interpolateColorScaleHSL(['#4444FF', '#FFFFFF'], 25), // 950 to 1000hPa
-// 			...interpolateColorScaleHSL(['#FFFFFF', '#FF4444'], 25) // 1000hPa to 1050hPa
-// 		],
-// 		interpolationMethod: 'linear',
-// 		unit: 'hPa'
-// 	},
-// 	rain: precipScale,
-// 	relative: {
-// 		min: 0,
-// 		max: 100,
-// 		scalefactor: 1,
-// 		colors: [
-// 			...interpolateColorScaleHSL(
-// 				['#009392', '#39b185', '#9ccb86', '#e9e29c', '#eeb479', '#e88471', '#cf597e'].reverse(),
-// 				100
-// 			)
-// 		],
-// 		interpolationMethod: 'linear',
-// 		unit: '%'
-// 	},
-// 	shortwave: {
-// 		min: 0,
-// 		max: 1000,
-// 		scalefactor: 1,
-// 		colors: [
-// 			...interpolateColorScaleHSL(
-// 				['#009392', '#39b185', '#9ccb86', '#e9e29c', '#eeb479', '#e88471', '#cf597e'],
-// 				1000
-// 			)
-// 		],
-// 		interpolationMethod: 'linear',
-// 		unit: 'W/m^2'
-// 	},
-// 	temperature: {
-// 		min: -40,
-// 		max: 60,
-// 		scalefactor: 1,
-// 		colors: [
-// 			...interpolateColorScaleHSL(['purple', 'blue'], 40), // -40°C to 0°C
-// 			...interpolateColorScaleHSL(['blue', 'green'], 16), // 0°Cto 16°C
-// 			...interpolateColorScaleHSL(['green', 'orange'], 12), // 0°C to 28°C
-// 			...interpolateColorScaleHSL(['orange', 'red'], 14), // 28°C to 42°C
-// 			...interpolateColorScaleHSL(['red', 'purple'], 18) // 42°C to 60°C
-// 		],
-// 		interpolationMethod: 'linear',
-// 		unit: 'C°'
-// 	},
-// 	thunderstorm: {
-// 		min: 0,
-// 		max: 100,
-// 		scalefactor: 1,
-// 		colors: [
-// 			...interpolateColorScaleHSL(['blue', 'green'], 33), //
-// 			...interpolateColorScaleHSL(['green', 'orange'], 33), //
-// 			...interpolateColorScaleHSL(['orange', 'red'], 34) //
-// 		],
-// 		interpolationMethod: 'linear',
-// 		unit: '%'
-// 	},
-// 	swell: {
-// 		min: 0,
-// 		max: 10,
-// 		scalefactor: 5,
-// 		colors: [
-// 			...interpolateColorScaleHSL(['blue', 'green'], 10), // 0 to 2m
-// 			...interpolateColorScaleHSL(['green', 'orange'], 20), // 2 to 6m
-// 			...interpolateColorScaleHSL(['orange', 'red'], 20) // 6 to 10m
-// 		],
-// 		interpolationMethod: 'linear',
-// 		unit: 'm'
-// 	},
-// 	uv: {
-// 		min: 0,
-// 		max: 12,
-// 		scalefactor: 1,
-// 		colors: [
-// 			...interpolateColorScaleHSL(
-// 				['#009392', '#39b185', '#9ccb86', '#e9e29c', '#eeb479', '#e88471', '#cf597e'],
-// 				12
-// 			)
-// 		],
-// 		interpolationMethod: 'linear',
-// 		unit: ''
-// 	},
-// 	wave: {
-// 		min: 0,
-// 		max: 10,
-// 		scalefactor: 5,
-// 		colors: [
-// 			...interpolateColorScaleHSL(['blue', 'green'], 10), // 0 to 2m
-// 			...interpolateColorScaleHSL(['green', 'orange'], 20), // 2 to 6m
-// 			...interpolateColorScaleHSL(['orange', 'red'], 20) // 6 to 10m
-// 		],
-// 		interpolationMethod: 'linear',
-// 		unit: 'm'
-// 	},
-// 	wind: {
-// 		min: 0,
-// 		max: 40,
-// 		scalefactor: 1,
-// 		colors: [
-// 			...interpolateColorScaleHSL(['blue', 'green'], 10), // 0 to 10kn
-// 			...interpolateColorScaleHSL(['green', 'orange'], 10), // 10 to 20kn
-// 			...interpolateColorScaleHSL(['orange', 'red'], 20) // 20 to 40kn
-// 		],
-// 		interpolationMethod: 'linear',
-// 		unit: 'm/s'
-// 	}
-// };
-//
 export const colorScales: ColorScales = {
 	cape: {
 		min: 0,
@@ -706,116 +441,6 @@ export const colorScales: ColorScales = {
 		interpolationMethod: 'none',
 		unit: 'm'
 	},
-	convective_cloud_base: {
-		min: 0,
-		max: 6000,
-		steps: 100,
-		scalefactor: 0.016666666666666666,
-		colors: [
-			[192, 57, 43],
-			[193, 57, 41],
-			[194, 58, 39],
-			[195, 58, 37],
-			[196, 58, 35],
-			[197, 59, 33],
-			[198, 60, 31],
-			[198, 60, 30],
-			[199, 61, 28],
-			[200, 62, 26],
-			[201, 63, 24],
-			[202, 64, 22],
-			[203, 65, 20],
-			[203, 66, 19],
-			[204, 68, 17],
-			[205, 69, 15],
-			[206, 70, 13],
-			[206, 72, 12],
-			[207, 73, 10],
-			[208, 75, 8],
-			[208, 77, 7],
-			[209, 78, 5],
-			[210, 80, 3],
-			[210, 82, 2],
-			[211, 84, 0],
-			[211, 84, 0],
-			[212, 88, 0],
-			[214, 93, 1],
-			[215, 97, 1],
-			[216, 102, 2],
-			[218, 106, 3],
-			[219, 111, 3],
-			[221, 115, 4],
-			[222, 120, 4],
-			[223, 125, 5],
-			[224, 129, 5],
-			[226, 134, 6],
-			[227, 139, 6],
-			[228, 143, 7],
-			[230, 148, 8],
-			[231, 153, 8],
-			[232, 158, 9],
-			[233, 163, 9],
-			[235, 167, 10],
-			[236, 172, 11],
-			[237, 177, 11],
-			[238, 182, 12],
-			[240, 187, 13],
-			[241, 192, 13],
-			[241, 196, 15],
-			[241, 196, 15],
-			[238, 212, 15],
-			[235, 228, 15],
-			[220, 231, 16],
-			[199, 228, 16],
-			[179, 224, 17],
-			[159, 221, 17],
-			[140, 217, 17],
-			[122, 214, 18],
-			[104, 210, 18],
-			[87, 207, 19],
-			[71, 203, 19],
-			[55, 200, 19],
-			[40, 196, 20],
-			[25, 193, 20],
-			[20, 190, 29],
-			[20, 186, 43],
-			[21, 183, 56],
-			[21, 180, 69],
-			[21, 176, 81],
-			[21, 173, 93],
-			[22, 170, 104],
-			[22, 166, 114],
-			[22, 163, 124],
-			[22, 160, 133],
-			[22, 160, 133],
-			[23, 161, 137],
-			[23, 162, 142],
-			[24, 163, 146],
-			[25, 165, 151],
-			[26, 166, 155],
-			[26, 167, 160],
-			[27, 168, 165],
-			[28, 169, 169],
-			[29, 166, 170],
-			[29, 164, 171],
-			[30, 161, 172],
-			[31, 159, 173],
-			[32, 156, 174],
-			[32, 154, 175],
-			[33, 151, 176],
-			[34, 149, 177],
-			[35, 146, 178],
-			[36, 144, 179],
-			[37, 141, 180],
-			[37, 138, 181],
-			[38, 136, 182],
-			[39, 133, 183],
-			[40, 131, 184],
-			[41, 128, 185]
-		],
-		interpolationMethod: 'none',
-		unit: 'm'
-	},
 	precipitation: {
 		min: 0,
 		max: 20,
@@ -905,36 +530,6 @@ export const colorScales: ColorScales = {
 		],
 		interpolationMethod: 'linear',
 		unit: 'hPa'
-	},
-	rain: {
-		min: 0,
-		max: 20,
-		steps: 20,
-		scalefactor: 1,
-		colors: [
-			[0, 0, 255],
-			[0, 112, 223],
-			[0, 192, 192],
-			[0, 160, 80],
-			[0, 128, 0],
-			[0, 128, 0],
-			[54, 160, 0],
-			[130, 192, 0],
-			[223, 220, 0],
-			[255, 165, 0],
-			[255, 165, 0],
-			[255, 147, 0],
-			[255, 128, 0],
-			[255, 110, 0],
-			[255, 92, 0],
-			[255, 73, 0],
-			[255, 55, 0],
-			[255, 37, 0],
-			[255, 18, 0],
-			[255, 0, 0]
-		],
-		interpolationMethod: 'linear',
-		unit: 'mm'
 	},
 	relative: {
 		min: 0,
@@ -1458,6 +1053,196 @@ export const colorScales: ColorScales = {
 		interpolationMethod: 'linear',
 		unit: ''
 	},
+	wind: {
+		min: 0,
+		max: 70,
+		steps: 40,
+		scalefactor: 0.5714285714285714,
+		colors: [
+			[0, 0, 255],
+			[0, 54, 241],
+			[0, 101, 227],
+			[0, 142, 213],
+			[0, 176, 199],
+			[0, 184, 164],
+			[0, 170, 114],
+			[0, 156, 69],
+			[0, 142, 32],
+			[0, 128, 0],
+			[0, 128, 0],
+			[21, 142, 0],
+			[47, 156, 0],
+			[77, 170, 0],
+			[111, 184, 0],
+			[149, 199, 0],
+			[192, 213, 0],
+			[227, 215, 0],
+			[241, 192, 0],
+			[255, 165, 0],
+			[255, 165, 0],
+			[255, 156, 0],
+			[255, 148, 0],
+			[255, 139, 0],
+			[255, 130, 0],
+			[255, 122, 0],
+			[255, 113, 0],
+			[255, 104, 0],
+			[255, 96, 0],
+			[255, 87, 0],
+			[255, 78, 0],
+			[255, 69, 0],
+			[255, 61, 0],
+			[255, 52, 0],
+			[255, 43, 0],
+			[255, 35, 0],
+			[255, 26, 0],
+			[255, 17, 0],
+			[255, 9, 0],
+			[255, 0, 0]
+		],
+		interpolationMethod: 'linear',
+		unit: 'km/h'
+	},
+	rain: {
+		min: 0,
+		max: 20,
+		steps: 20,
+		scalefactor: 1,
+		colors: [
+			[0, 0, 255],
+			[0, 112, 223],
+			[0, 192, 192],
+			[0, 160, 80],
+			[0, 128, 0],
+			[0, 128, 0],
+			[54, 160, 0],
+			[130, 192, 0],
+			[223, 220, 0],
+			[255, 165, 0],
+			[255, 165, 0],
+			[255, 147, 0],
+			[255, 128, 0],
+			[255, 110, 0],
+			[255, 92, 0],
+			[255, 73, 0],
+			[255, 55, 0],
+			[255, 37, 0],
+			[255, 18, 0],
+			[255, 0, 0]
+		],
+		interpolationMethod: 'linear',
+		unit: 'mm'
+	},
+	convective_cloud_base: {
+		min: 0,
+		max: 6000,
+		steps: 100,
+		scalefactor: 0.016666666666666666,
+		colors: [
+			[192, 57, 43],
+			[193, 57, 41],
+			[194, 58, 39],
+			[195, 58, 37],
+			[196, 58, 35],
+			[197, 59, 33],
+			[198, 60, 31],
+			[198, 60, 30],
+			[199, 61, 28],
+			[200, 62, 26],
+			[201, 63, 24],
+			[202, 64, 22],
+			[203, 65, 20],
+			[203, 66, 19],
+			[204, 68, 17],
+			[205, 69, 15],
+			[206, 70, 13],
+			[206, 72, 12],
+			[207, 73, 10],
+			[208, 75, 8],
+			[208, 77, 7],
+			[209, 78, 5],
+			[210, 80, 3],
+			[210, 82, 2],
+			[211, 84, 0],
+			[211, 84, 0],
+			[212, 88, 0],
+			[214, 93, 1],
+			[215, 97, 1],
+			[216, 102, 2],
+			[218, 106, 3],
+			[219, 111, 3],
+			[221, 115, 4],
+			[222, 120, 4],
+			[223, 125, 5],
+			[224, 129, 5],
+			[226, 134, 6],
+			[227, 139, 6],
+			[228, 143, 7],
+			[230, 148, 8],
+			[231, 153, 8],
+			[232, 158, 9],
+			[233, 163, 9],
+			[235, 167, 10],
+			[236, 172, 11],
+			[237, 177, 11],
+			[238, 182, 12],
+			[240, 187, 13],
+			[241, 192, 13],
+			[241, 196, 15],
+			[241, 196, 15],
+			[238, 212, 15],
+			[235, 228, 15],
+			[220, 231, 16],
+			[199, 228, 16],
+			[179, 224, 17],
+			[159, 221, 17],
+			[140, 217, 17],
+			[122, 214, 18],
+			[104, 210, 18],
+			[87, 207, 19],
+			[71, 203, 19],
+			[55, 200, 19],
+			[40, 196, 20],
+			[25, 193, 20],
+			[20, 190, 29],
+			[20, 186, 43],
+			[21, 183, 56],
+			[21, 180, 69],
+			[21, 176, 81],
+			[21, 173, 93],
+			[22, 170, 104],
+			[22, 166, 114],
+			[22, 163, 124],
+			[22, 160, 133],
+			[22, 160, 133],
+			[23, 161, 137],
+			[23, 162, 142],
+			[24, 163, 146],
+			[25, 165, 151],
+			[26, 166, 155],
+			[26, 167, 160],
+			[27, 168, 165],
+			[28, 169, 169],
+			[29, 166, 170],
+			[29, 164, 171],
+			[30, 161, 172],
+			[31, 159, 173],
+			[32, 156, 174],
+			[32, 154, 175],
+			[33, 151, 176],
+			[34, 149, 177],
+			[35, 146, 178],
+			[36, 144, 179],
+			[37, 141, 180],
+			[37, 138, 181],
+			[38, 136, 182],
+			[39, 133, 183],
+			[40, 131, 184],
+			[41, 128, 185]
+		],
+		interpolationMethod: 'none',
+		unit: 'm'
+	},
 	wave: {
 		min: 0,
 		max: 10,
@@ -1517,55 +1302,5 @@ export const colorScales: ColorScales = {
 		],
 		interpolationMethod: 'linear',
 		unit: 'm'
-	},
-	wind: {
-		min: 0,
-		max: 70,
-		steps: 40,
-		scalefactor: 40 / 70,
-		colors: [
-			[0, 0, 255],
-			[0, 54, 241],
-			[0, 101, 227],
-			[0, 142, 213],
-			[0, 176, 199],
-			[0, 184, 164],
-			[0, 170, 114],
-			[0, 156, 69],
-			[0, 142, 32],
-			[0, 128, 0],
-			[0, 128, 0],
-			[21, 142, 0],
-			[47, 156, 0],
-			[77, 170, 0],
-			[111, 184, 0],
-			[149, 199, 0],
-			[192, 213, 0],
-			[227, 215, 0],
-			[241, 192, 0],
-			[255, 165, 0],
-			[255, 165, 0],
-			[255, 156, 0],
-			[255, 148, 0],
-			[255, 139, 0],
-			[255, 130, 0],
-			[255, 122, 0],
-			[255, 113, 0],
-			[255, 104, 0],
-			[255, 96, 0],
-			[255, 87, 0],
-			[255, 78, 0],
-			[255, 69, 0],
-			[255, 61, 0],
-			[255, 52, 0],
-			[255, 43, 0],
-			[255, 35, 0],
-			[255, 26, 0],
-			[255, 17, 0],
-			[255, 9, 0],
-			[255, 0, 0]
-		],
-		interpolationMethod: 'linear',
-		unit: 'km/h'
 	}
 };

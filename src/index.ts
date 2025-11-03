@@ -5,6 +5,7 @@ export * from './utils/grid-points';
 export * from './utils/index';
 export * from './utils/math';
 export * from './utils/pbf';
+export * from './utils/styling';
 export * from './utils/variables';
 export * from './utils/arrows';
 export * from './grids/index';

@@ -5,17 +5,17 @@
 [![npm version](https://img.shields.io/npm/v/@openmeteo/mapbox-layer?label=@openmeteo/mapbox-layer)](https://www.npmjs.com/package/@openmeteo/mapbox-layer)
 
 > **⚠️ Notice**
-> This package is still under construction and is not yet fully production‑ready.
+> This package is still under construction and is not yet fully production-ready.
 > API changes may occur and some features might be incomplete.
 
 ## Overview
 
-This repository demonstrates how to use the **Open‑Meteo File Protocol** (`.om`) with Mapbox / MapLibre GL JS.
+This repository demonstrates how to use the **Open-Meteo File Protocol** (`.om`) with Mapbox / MapLibre GL JS.
 The `.om` files are hosted on an S3 bucket and can be accessed directly via the `om` protocol:
 
-The actual weather API implementation lives in the [open‑meteo/open‑meteo](https://github.com/open-meteo/open-meteo) repository.
+The actual weather API implementation lives in the [open-meteo/open-meteo](https://github.com/open-meteo/open-meteo) repository.
 
-An interactive demo is available at [maps.open‑meteo.com](https://maps.open‑meteo.com/).
+An interactive demo is available at [maps.open-meteo.com](https://maps.open-meteo.com/).
 
 ## Installation
 
@@ -88,7 +88,7 @@ For a standalone example, see `examples/temperature.html`.
 
 ## Examples
 
-The repository contains an `examples` directory with ready‑to‑run demos:
+The repository contains an `examples` directory with ready-to-run demos:
 
 - `examples/temperature.html` – shows temperature data from an OM file.
 - `examples/precipitation.html` – displays precipitation using a similar setup.
@@ -123,7 +123,7 @@ map.on('load', () => {
 });
 ```
 
-For the contouring there is the `examples/vector` directory with ready‑to‑run demos:
+For the contouring there is the `examples/vector` directory with ready-to-run demos:
 
 - `examples/vector/contouring-pressure.html` – shows how to use contouring with a pressure map
 - `examples/vector/grid-points.html` – displays all grid points for a model, with value data on each point.

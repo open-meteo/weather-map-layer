@@ -11,7 +11,7 @@ export const generateArrows = (
 	values: Float32Array,
 	directions: Float32Array,
 	domain: Domain,
-	ranges: DimensionRange[],
+	ranges: DimensionRange[] | null,
 	x: number,
 	y: number,
 	z: number,

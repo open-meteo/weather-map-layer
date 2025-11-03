@@ -1,11 +1,11 @@
 import Pbf from 'pbf';
 
 import { generateArrows } from './utils/arrows';
-import { getColor, getOpacity } from './utils/color-scales';
 import { MS_TO_KMH } from './utils/constants';
 import { generateContours } from './utils/contours';
 import { generateGridPoints } from './utils/grid-points';
 import { tile2lat, tile2lon } from './utils/math';
+import { getColor, getOpacity } from './utils/styling';
 import { hideZero } from './utils/variables';
 
 import { GridFactory } from './grids/index';
