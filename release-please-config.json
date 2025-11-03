@@ -9,5 +9,5 @@
 			"include-v-in-tag": true
 		}
 	},
-	"extra-files": ["README.md", "examples/temperature.html"]
+	"extra-files": ["README.md", "examples/*"]
 }
