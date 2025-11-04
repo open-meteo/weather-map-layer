@@ -136,7 +136,7 @@ export const initProtocol = (
 		omFileReader
 			.setToOmFile(omUrl)
 			.then(() => {
-				omFileReader.readVariable(variable.value, null).then((values) => {
+				omFileReader.readVariable(variable.value, ranges).then((values) => {
 					data = values;
 
 					resolve();
