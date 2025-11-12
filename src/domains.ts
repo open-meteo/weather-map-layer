@@ -254,6 +254,23 @@ export const domainOptions: Array<Domain> = [
 		model_interval: 6,
 		windUVComponents: true
 	},
+	{
+		value: 'ncep_gfswave016',
+		label: 'GFS Wave 0.16°',
+		grid: {
+			type: 'regular',
+			nx: 2160,
+			ny: 406,
+			latMin: -15,
+			lonMin: -180,
+			dx: 360 / 2160,
+			dy: (52.5 + 15) / (406 - 1),
+			zoom: 1
+		},
+		time_interval: 1,
+		model_interval: 6,
+		windUVComponents: true
+	},
 
 	// ECWMF
 	{
