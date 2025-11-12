@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.0.7](https://github.com/open-meteo/mapbox-layer/compare/v0.0.6...v0.0.7) (2025-11-12)
+
+
+### Features
+
+* add GFS Wave ([f82775d](https://github.com/open-meteo/mapbox-layer/commit/f82775d6d801ccf0b542ed6762bec12442978541))
+
+
+### Bug Fixes
+
+* bump the openmeteo group with 3 updates ([50c5bdf](https://github.com/open-meteo/mapbox-layer/commit/50c5bdf0c0ea72e006cec41a21286b9a2345b525))
+* bump the openmeteo group with 3 updates ([71efdce](https://github.com/open-meteo/mapbox-layer/commit/71efdce800cf3ecb00a8cd3bf25ea4d7f7f02a2c))
+* ranges ([102570a](https://github.com/open-meteo/mapbox-layer/commit/102570adc386ecc5e79f4421342f40c2f12ab40a))
+* reenable minify ([9fe90d0](https://github.com/open-meteo/mapbox-layer/commit/9fe90d079902258852d1271ac63fc279467c640e))
+
 ## [0.0.6](https://github.com/open-meteo/mapbox-layer/compare/v0.0.5...v0.0.6) (2025-11-03)
 
 
