@@ -255,6 +255,23 @@ export const domainOptions: Array<Domain> = [
 		windUVComponents: true
 	},
 	{
+		value: 'ncep_gfswave025',
+		label: 'GFS Wave 0.25°',
+		grid: {
+			type: 'regular',
+			nx: 1440,
+			ny: 721,
+			latMin: -90,
+			lonMin: -180,
+			dx: 0.25,
+			dy: 0.25,
+			zoom: 1
+		},
+		time_interval: 1,
+		model_interval: 6,
+		windUVComponents: true
+	},
+	{
 		value: 'ncep_gfswave016',
 		label: 'GFS Wave 0.16°',
 		grid: {
