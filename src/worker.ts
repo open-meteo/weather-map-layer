@@ -11,8 +11,6 @@ import { hideZero } from './utils/variables';
 import { GridFactory } from './grids/index';
 import { TileRequest } from './worker-pool';
 
-const OPACITY = 75;
-
 self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 	if (message.data.type == 'getImage') {
 		const key = message.data.key;

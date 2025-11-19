@@ -3,20 +3,37 @@ import Pbf from 'pbf';
 interface Feature {
 	id: number;
 	type: number;
-	properties: {};
+	properties: Record<string, unknown>;
 	geom: number[];
 }
 
 interface Context {
-	feature: Feature | undefined;
+	feature?: Feature;
 	keys: string[];
-	values: any[];
-	keycache: {};
-	valuecache: {};
+	values: Array<string | number | boolean>;
+	keycache: Record<string, number>;
+	valuecache: Record<string, number>;
+}
+
+interface VectorTileLayer {
+	version?: number;
+	name: string;
+	extent: number;
+	features: Feature[];
+}
+
+interface GeometryPoint {
+	x: number;
+	y: number;
+}
+
+interface GeometryFeature {
+	loadGeometry(): GeometryPoint[][];
+	type: number;
 }
 
 // writer for VectorTileLayer
-export const writeLayer = (layer: any, pbf: Pbf) => {
+export const writeLayer = (layer: VectorTileLayer, pbf: Pbf) => {
 	pbf.writeVarintField(15, layer.version || 2);
 	pbf.writeStringField(1, layer.name);
 	pbf.writeVarintField(5, layer.extent);
@@ -65,7 +82,7 @@ export const zigzag = (n: number) => {
 	return (n << 1) ^ (n >> 31);
 };
 
-export const writeGeometry = (feature: any, pbf: Pbf) => {
+export const writeGeometry = (feature: GeometryFeature, pbf: Pbf) => {
 	const geometry = feature.loadGeometry();
 	const type = feature.type;
 	let x = 0;
@@ -97,18 +114,18 @@ export const writeGeometry = (feature: any, pbf: Pbf) => {
 	}
 };
 
-export const writeProperties = (context: any, pbf: Pbf) => {
-	const feature = context.feature;
+export const writeProperties = (context: Context, pbf: Pbf) => {
+	const feature = context.feature!;
 	const keys = context.keys;
 	const values = context.values;
 	const keycache = context.keycache;
 	const valuecache = context.valuecache;
 
 	for (const key in feature.properties) {
-		let value = feature.properties[key];
+		const raw = feature.properties[key];
+		if (raw === null) continue; // don't encode null value properties
 
 		let keyIndex = keycache[key];
-		if (value === null) continue; // don't encode null value properties
 
 		if (typeof keyIndex === 'undefined') {
 			keys.push(key);
@@ -117,14 +134,18 @@ export const writeProperties = (context: any, pbf: Pbf) => {
 		}
 		pbf.writeVarint(keyIndex);
 
-		const type = typeof value;
-		if (type !== 'string' && type !== 'boolean' && type !== 'number') {
-			value = JSON.stringify(value);
+		// normalize value to a primitive for caching/encoding
+		let storedValue: string | number | boolean;
+		if (typeof raw === 'string' || typeof raw === 'boolean' || typeof raw === 'number') {
+			storedValue = raw;
+		} else {
+			storedValue = JSON.stringify(raw);
 		}
-		const valueKey = type + ':' + value;
+
+		const valueKey = typeof raw + ':' + storedValue;
 		let valueIndex = valuecache[valueKey];
 		if (typeof valueIndex === 'undefined') {
-			values.push(value);
+			values.push(storedValue);
 			valueIndex = values.length - 1;
 			valuecache[valueKey] = valueIndex;
 		}
@@ -132,19 +153,20 @@ export const writeProperties = (context: any, pbf: Pbf) => {
 	}
 };
 
-export const writeValue = (value: any, pbf: Pbf) => {
+export const writeValue = (value: string | number | boolean, pbf: Pbf) => {
 	const type = typeof value;
 	if (type === 'string') {
-		pbf.writeStringField(1, value);
+		pbf.writeStringField(1, value as string);
 	} else if (type === 'boolean') {
-		pbf.writeBooleanField(7, value);
+		pbf.writeBooleanField(7, value as boolean);
 	} else if (type === 'number') {
-		if (value % 1 !== 0) {
-			pbf.writeDoubleField(3, value);
-		} else if (value < 0) {
-			pbf.writeSVarintField(6, value);
+		const num = value as number;
+		if (num % 1 !== 0) {
+			pbf.writeDoubleField(3, num);
+		} else if (num < 0) {
+			pbf.writeSVarintField(6, num);
 		} else {
-			pbf.writeVarintField(5, value);
+			pbf.writeVarintField(5, num);
 		}
 	}
 };

@@ -16,10 +16,11 @@ export class GridFactory {
 				return new ProjectionGrid(data, ranges);
 			case 'regular':
 				return new RegularGrid(data, ranges);
-			default:
+			default: {
 				// This ensures exhaustiveness checking
 				const _exhaustive: never = data;
 				throw new Error(`Unknown grid type: ${_exhaustive}`);
+			}
 		}
 	}
 }

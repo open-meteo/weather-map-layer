@@ -17,7 +17,7 @@ export default ts.config(
 			globals: { ...globals.browser, ...globals.node },
 			parserOptions: {
 				projectService: {
-					allowDefaultProject: ['*.js', '*.ts']
+					allowDefaultProject: ['*.js', '*.ts', 'scripts/*.ts']
 				},
 				ecmaVersion: 'latest',
 				sourceType: 'module'

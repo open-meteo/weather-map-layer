@@ -33,31 +33,24 @@ export const generateArrows = (
 	const grid = GridFactory.create(domain.grid);
 
 	for (let tileY = 0; tileY < extent + 1; tileY += size) {
-		let lat = tile2lat(y + tileY / extent, z);
+		const lat = tile2lat(y + tileY / extent, z);
 		for (let tileX = 0; tileX < extent + 1; tileX += size) {
-			let lon = tile2lon(x + tileX / extent, z);
+			const lon = tile2lon(x + tileX / extent, z);
 
-			let center = [tileX - size / 2, tileY - size / 2];
+			const center = [tileX - size / 2, tileY - size / 2];
 			const geom = [];
 
-			// make scale to zoomlevel
-			let index = grid.getIndex(lat, lon)
-			if (index % domain.grid.nx < 20) {
-				continue
-			}
-			if (index /  domain.grid.ny > (domain.grid.nx -20)) {
-				continue
-			}
-
-			let speed = grid.getLinearInterpolatedValue(values, lat, lon);
-			let direction = degreesToRadians(grid.getLinearInterpolatedValue(directions, lat, lon) + 180);
+			const speed = grid.getLinearInterpolatedValue(values, lat, lon);
+			const direction = degreesToRadians(
+				grid.getLinearInterpolatedValue(directions, lat, lon) + 180
+			);
 
 			const properties: { value?: number; direction?: number } = {
 				value: speed,
 				direction: direction
 			};
 
-			let rotation = direction;
+			const rotation = direction;
 			let length = 0.95;
 			if (speed < 30) {
 				length = 0.9;
@@ -85,7 +78,7 @@ export const generateArrows = (
 			}
 
 			// left arrow head
-			let [xt0, yt0] = rotatePoint(
+			const [xt0, yt0] = rotatePoint(
 				center[0],
 				center[1],
 				rotation,

@@ -1,6 +1,6 @@
 import * as maplibregl from 'maplibre-gl';
 
-import type { Domain, DomainMetaData, Variable } from '../types';
+import type { Domain, Variable } from '../types';
 
 const now = new Date();
 now.setHours(now.getHours() + 1, 0, 0, 0);
@@ -24,7 +24,8 @@ export const closestDomainInterval = (time: Date, domain: Domain) => {
 	return newTime;
 };
 
-export const closestModelRun = (domain: Domain, selectedTime: Date, latest?: DomainMetaData) => {
+// TODO: Is this used/needed?
+export const closestModelRun = (domain: Domain, selectedTime: Date) => {
 	const year = selectedTime.getUTCFullYear();
 	const month = selectedTime.getUTCMonth();
 	const date = selectedTime.getUTCDate();

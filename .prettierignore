@@ -4,6 +4,7 @@ node_modules
 .env
 .env.*
 !.env.example
+CHANGELOG.md
 
 # Package Managers
 package-lock.json

@@ -107,8 +107,7 @@ export const generateContours = (
 	y: number,
 	z: number,
 	interval: number = 2,
-	extent: number = 4096,
-	threshold = undefined
+	extent: number = 4096
 ) => {
 	const features = [];
 	let cursor: [number, number] = [0, 0];

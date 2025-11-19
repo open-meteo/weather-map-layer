@@ -25,10 +25,11 @@ export function createProjection(opts: ProjectionData): Projection {
 			return new LambertConformalConicProjection(opts);
 		case 'LambertAzimuthalEqualAreaProjection':
 			return new LambertAzimuthalEqualAreaProjection(opts);
-		default:
+		default: {
 			// This ensures exhaustiveness checking
 			const _exhaustive: never = opts;
 			throw new Error(`Unknown projection: ${_exhaustive}`);
+		}
 	}
 }
 

@@ -46,30 +46,34 @@ export class ProjectionGrid implements GridInterface {
 		this.ny = ranges[0].end - ranges[0].start;
 
 		switch (data.type) {
-			case 'projectedFromBounds':
+			case 'projectedFromBounds': {
 				this.projection = createProjection(data.projection);
-				let sw = this.projection.forward(data.latitudeBounds[0], data.longitudeBounds[0]);
-				let ne = this.projection.forward(data.latitudeBounds[1], data.longitudeBounds[1]);
+				const sw = this.projection.forward(data.latitudeBounds[0], data.longitudeBounds[0]);
+				const ne = this.projection.forward(data.latitudeBounds[1], data.longitudeBounds[1]);
 				this.origin = sw;
 				this.dx = (ne[0] - sw[0]) / (data.nx - 1);
 				this.dy = (ne[1] - sw[1]) / (data.ny - 1);
 				break;
-			case 'projectedFromGeographicOrigin':
+			}
+			case 'projectedFromGeographicOrigin': {
 				this.projection = createProjection(data.projection);
 				this.origin = this.projection.forward(data.latitude, data.longitude);
 				this.dx = data.dx;
 				this.dy = data.dy;
 				break;
-			case 'projectedFromProjectedOrigin':
+			}
+			case 'projectedFromProjectedOrigin': {
 				this.projection = createProjection(data.projection);
 				this.origin = [data.projectedLongitudeOrigin, data.projectedLatitudeOrigin];
 				this.dx = data.dx;
 				this.dy = data.dy;
 				break;
-			default:
+			}
+			default: {
 				// This ensures exhaustiveness checking
 				const _exhaustive: never = data;
 				throw new Error(`Unknown projection: ${_exhaustive}`);
+			}
 		}
 
 		this.minX = this.origin[0] + this.dx * ranges[1].start;
