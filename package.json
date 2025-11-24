@@ -33,7 +33,7 @@
 		"prepare": "npm run build"
 	},
 	"devDependencies": {
-		"@eslint/compat": "^1.4.0",
+		"@eslint/compat": "^2.0.0",
 		"@eslint/js": "^9.38.0",
 		"@trivago/prettier-plugin-sort-imports": "^6.0.0",
 		"@types/d3-interpolate": "^3.0.4",
