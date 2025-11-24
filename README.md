@@ -1,6 +1,6 @@
 # Open-Meteo Mapbox Layer
 
-[![Build & Tests](https://github.com/open-meteo/mapbox-layer/actions/workflows/ci.yml/badge.svg)](https://github.com/open-meteo/mapbox-layer/actions/workflows/ci.yml)
+[![Linting & Tests](https://github.com/open-meteo/mapbox-layer/actions/workflows/ci.yml/badge.svg)](https://github.com/open-meteo/mapbox-layer/actions/workflows/ci.yml)
 [![GitHub license](https://img.shields.io/github/license/open-meteo/mapbox-layer)](https://github.com/open-meteo/mapbox-layer/blob/main/LICENSE)
 [![npm version](https://img.shields.io/npm/v/@openmeteo/mapbox-layer?label=@openmeteo/mapbox-layer)](https://www.npmjs.com/package/@openmeteo/mapbox-layer)
 
@@ -103,9 +103,9 @@ The repository contains an `examples` directory with ready-to-run demos:
 
 Run the examples by opening the corresponding `.html` file in a browser.
 
-## Contouring
+## Arrows / Contouring / Gridpoints
 
-For contouring a new source must be added, since the contouring functionality uses vector tiles.
+For directional arrows / contouring / gridpoints, a new source must be added, since these features use vector tiles instead of raster tiles.
 
 ```ts
 ...
@@ -129,7 +129,7 @@ map.on('load', () => {
 });
 ```
 
-For the contouring there is the `examples/vector` directory with ready-to-run demos:
+For the vector source examples there is the `examples/vector` sub-directory with ready-to-run demos:
 
 - `examples/vector/contouring-pressure.html` – shows how to use contouring with a pressure map
 - `examples/vector/grid-points.html` – displays all grid points for a model, with value data on each point.
