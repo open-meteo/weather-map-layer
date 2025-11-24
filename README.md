@@ -1,6 +1,6 @@
 # Open-Meteo Mapbox Layer
 
-[![Test](https://github.com/open-meteo/mapbox-layer/actions/workflows/test.yml/badge.svg)](https://github.com/open-meteo/mapbox-layer/actions/workflows/test.yml)
+[![Build & Tests](https://github.com/open-meteo/mapbox-layer/actions/workflows/ci.yml/badge.svg)](https://github.com/open-meteo/mapbox-layer/actions/workflows/ci.yml)
 [![GitHub license](https://img.shields.io/github/license/open-meteo/mapbox-layer)](https://github.com/open-meteo/mapbox-layer/blob/main/LICENSE)
 [![npm version](https://img.shields.io/npm/v/@openmeteo/mapbox-layer?label=@openmeteo/mapbox-layer)](https://www.npmjs.com/package/@openmeteo/mapbox-layer)
 
