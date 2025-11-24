@@ -13,47 +13,13 @@ updates:
         update-types: ['version-update:semver-patch']
     commit-message:
       prefix: 'fix: '
+    cooldown:
+      default-days: 7
     groups:
       openmeteo:
         patterns:
           - '*'
-      # svelte:
-      #   patterns:
-      #     - 'vite'
-      #     - 'svelte'
 
-      #     - 'vite-*'
-      #     - 'rollup*'
-      #     - 'svelte-*'
-      #     - '@sveltejs/*'
-
-      #     - 'mdsvex'
-      #     - 'mode-watcher'
-      # eslint:
-      #   patterns:
-      #     - 'eslint'
-      #     - 'prettier'
-      #     - 'typescript'
-
-      #     - 'eslint-*'
-      #     - 'prettier-*'
-      #     - '@typescript-eslint/*'
-
-      #     - '@eslint/compat'
-      # shadcn:
-      #   patterns:
-      #     - 'zod'
-      #     - 'simple-icons'
-
-      #     - '@lucide/svelte'
-      #     - 'lucide-svelte'
-      #     - 'lucide-static'
-      # tailwind:
-      #   patterns:
-      #     - 'tailwindcss'
-
-      #     - 'tailwind-*'
-      #     - '@tailwindcss*'
   - package-ecosystem: 'github-actions'
     directory: '/'
     schedule:
@@ -61,3 +27,5 @@ updates:
       time: '10:00'
     commit-message:
       prefix: 'fix: '
+    cooldown:
+      default-days: 7
