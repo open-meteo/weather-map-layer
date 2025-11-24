@@ -1,4 +1,4 @@
-name: Run Checks and Tests
+name: Linting & Tests
 
 on:
   push:
