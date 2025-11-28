@@ -11,22 +11,70 @@ export const interpolateLinear = (
 	yFraction: number,
 	nx: number
 ): number => {
-	const p0 = Number(values[index]);
-	let p1 = Number(values[index + 1]);
-	const p2 = Number(values[index + nx]);
-	let p3 = Number(values[index + 1 + nx]);
-
-	if ((index + 1) % nx == 0) {
-		p1 = p0;
-		p3 = p0;
+	// Right border
+	// Note: For global grids, data could be allowed to wrap
+	if ((index + 1) % nx === 0) {
+		return NaN;
 	}
 
-	return (
-		p0 * (1 - xFraction) * (1 - yFraction) +
-		p1 * xFraction * (1 - yFraction) +
-		p2 * (1 - xFraction) * yFraction +
-		p3 * xFraction * yFraction
-	);
+	// Bottom border
+	if (index + nx > values.length) {
+		return NaN;
+	}
+
+	const p0 = Number(values[index]);
+	const p1 = Number(values[index + 1]);
+	const p2 = Number(values[index + nx]);
+	const p3 = Number(values[index + 1 + nx]);
+
+	const w0 = (1 - xFraction) * (1 - yFraction);
+	const w1 = xFraction * (1 - yFraction);
+	const w2 = (1 - xFraction) * yFraction;
+	const w3 = xFraction * yFraction;
+
+	const n0 = Number.isNaN(p0);
+	const n1 = Number.isNaN(p1);
+	const n2 = Number.isNaN(p2);
+	const n3 = Number.isNaN(p3);
+
+	// If none are NaN → normal bilinear interpolation
+	if (!n0 && !n1 && !n2 && !n3) {
+		return p0 * w0 + p1 * w1 + p2 * w2 + p3 * w3;
+	}
+
+	// --- EXACTLY ONE POINT MISSING CASES ---
+	// ------------------
+	// p0 is missing → valid triangle = (p1, p2, p3)
+	// ------------------
+	if (n0 && !n1 && !n2 && !n3) {
+		if (xFraction + yFraction < 1) return NaN; // Not in triangle
+		const ws = w1 + w2 + w3;
+		return (p1 * w1 + p2 * w2 + p3 * w3) / ws;
+	}
+
+	// p1 is missing → valid triangle = (p0, p2, p3)
+	if (!n0 && n1 && !n2 && !n3) {
+		if (1 - xFraction + yFraction < 1) return NaN; // Not in triangle
+		const ws = w0 + w2 + w3;
+		return (p0 * w0 + p2 * w2 + p3 * w3) / ws;
+	}
+
+	// p2 is missing → valid triangle = (p0, p1, p3)
+	if (!n0 && !n1 && n2 && !n3) {
+		if (xFraction + 1 - yFraction < 1) return NaN; // Not in triangle
+		const ws = w0 + w1 + w3;
+		return (p0 * w0 + p1 * w1 + p3 * w3) / ws;
+	}
+
+	// p3 is missing → valid triangle = (p0, p1, p2)
+	if (!n0 && !n1 && !n2 && n3) {
+		if (1 - xFraction + 1 - yFraction < 1) return NaN; // Not in triangle
+		const ws = w0 + w1 + w2;
+		return (p0 * w0 + p1 * w1 + p2 * w2) / ws;
+	}
+
+	// More than 1 point missing → no valid triangle
+	return NaN;
 };
 
 // 1D Cardinal Spline for 4 values
