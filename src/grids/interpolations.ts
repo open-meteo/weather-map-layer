@@ -11,14 +11,15 @@ export const interpolateLinear = (
 	yFraction: number,
 	nx: number
 ): number => {
-	const p0 = Number(values[index]);
-	let p1 = Number(values[index + 1]);
-	const p2 = Number(values[index + nx]);
-	let p3 = Number(values[index + 1 + nx]);
-
+	// Right border
+	// Note: For global grids, data could be allowed to wrap
 	if ((index + 1) % nx === 0) {
-		p1 = p0;
-		p3 = p0;
+		return NaN;
+	}
+
+	// Bottom border
+	if (index + nx > values.length) {
+		return NaN;
 	}
 
 	const w0 = (1 - xFraction) * (1 - yFraction);
