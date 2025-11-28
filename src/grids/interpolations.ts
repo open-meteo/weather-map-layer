@@ -22,6 +22,11 @@ export const interpolateLinear = (
 		return NaN;
 	}
 
+	const p0 = Number(values[index]);
+	const p1 = Number(values[index + 1]);
+	const p2 = Number(values[index + nx]);
+	const p3 = Number(values[index + 1 + nx]);
+
 	const w0 = (1 - xFraction) * (1 - yFraction);
 	const w1 = xFraction * (1 - yFraction);
 	const w2 = (1 - xFraction) * yFraction;
