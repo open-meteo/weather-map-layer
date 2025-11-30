@@ -1,16 +1,16 @@
 <!doctype html>
 <html lang="en">
 	<head>
-		<title>Open-Meteo Mapbox Layer - Precipitation Example</title>
+		<title>Open-Meteo Mapbox Layer - Temperature Example</title>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.css" />
-		<script src="https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.js"></script>
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.10.0/dist/maplibre-gl.css" />
+		<script src="https://unpkg.com/maplibre-gl@5.10.0/dist/maplibre-gl.js"></script>
 		<!-- x-release-please-start-version -->
 		<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.7/dist/index.js"></script>
 		<!-- x-release-please-end -->
 		<!-- Local development -->
-		<!--<script src="../dist/index.js"></script>-->
+		<!--<script src="../../dist/index.js"></script>-->
 		<style>
 			html,
 			body,
@@ -44,12 +44,13 @@
 							type: 'raster',
 							source: 'osm'
 						}
-					]
+					],
+					glyphs: 'https://maptiler.servert.nl/fonts/{fontstack}/{range}.pbf'
 				},
 				hash: true
 			});
 
-			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=precipitation`;
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/ecmwf_ec46_weekly/latest.json?variable=temperature_2m_anomaly&interval=0.5&contours=true`;
 
 			map.on('load', () => {
 				map.addSource('omFileSource', {
@@ -63,6 +64,37 @@
 					id: 'omFileLayer',
 					type: 'raster',
 					source: 'omFileSource'
+				});
+
+				map.addSource('omFileVectorSource', {
+					url: 'om://' + omUrl,
+					type: 'vector'
+				});
+
+				map.addLayer({
+					id: 'omFileVectorLayer',
+					type: 'line',
+					source: 'omFileVectorSource',
+					'source-layer': 'contours',
+					paint: {
+						'line-color': 'rgba(0, 0, 0, 0.3)',
+						'line-width': 1
+					}
+				});
+
+				map.addLayer({
+					id: 'omFileVectorLayerLabels',
+					type: 'symbol',
+					source: 'omFileVectorSource',
+					'source-layer': 'contours',
+					layout: {
+						'symbol-placement': 'line-center',
+						'symbol-spacing': 1,
+						'text-font': ['Noto Sans Regular'],
+						'text-field': ['to-string', ['get', 'value']],
+						'text-padding': 1,
+						'text-offset': [0, -0.6]
+					}
 				});
 			});
 		</script>

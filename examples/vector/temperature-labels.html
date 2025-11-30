@@ -9,7 +9,6 @@
 		<!-- x-release-please-start-version -->
 		<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.7/dist/index.js"></script>
 		<!-- x-release-please-end -->
-
 		<!-- Local development -->
 		<!--<script src="../../dist/index.js"></script>-->
 		<style>
@@ -52,8 +51,7 @@
 				hash: true
 			});
 
-			// s3 storage structure: /data_spatial/{domain}/{modelRun /year/month/day/time}Z/{selectedTime year-month-day-time.om}?variable={variable}
-			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m`;
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m`;
 
 			map.on('load', () => {
 				map.addSource('omFileRasterSource', {
