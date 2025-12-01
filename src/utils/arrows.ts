@@ -4,7 +4,7 @@ import Pbf from 'pbf';
 import { degreesToRadians, rotatePoint, tile2lat, tile2lon } from './math';
 import { command, writeLayer, zigzag } from './pbf';
 
-import { ColorScale, DimensionRange, Domain } from '../types';
+import { DimensionRange, Domain } from '../types';
 
 export const generateArrows = (
 	pbf: Pbf,
@@ -15,7 +15,6 @@ export const generateArrows = (
 	x: number,
 	y: number,
 	z: number,
-	colorScale: ColorScale,
 	extent: number = 4096,
 	arrows: number = 27
 ) => {
@@ -30,7 +29,7 @@ export const generateArrows = (
 	const size = extent / arrows;
 
 	let cursor = [0, 0];
-	const grid = GridFactory.create(domain.grid);
+	const grid = GridFactory.create(domain.grid, ranges);
 
 	for (let tileY = 0; tileY < extent + 1; tileY += size) {
 		const lat = tile2lat(y + tileY / extent, z);
