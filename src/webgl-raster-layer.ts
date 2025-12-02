@@ -1,5 +1,4 @@
 import { CustomLayerInterface, CustomRenderMethodInput, Map } from 'maplibre-gl';
-import { MercatorCoordinate } from 'maplibre-gl';
 
 import { WeatherMapLayerFileReader } from './om-file-reader';
 
@@ -7,8 +6,8 @@ import { Domain, RegularGridData } from './types';
 
 export class WebGLRasterLayer implements CustomLayerInterface {
 	id: string;
-	type: 'custom' = 'custom';
-	renderingMode: '2d' = '2d';
+	type: 'custom' = 'custom' as const;
+	renderingMode: '2d' = '2d' as const;
 
 	private map: Map | undefined;
 	private gl: WebGL2RenderingContext | undefined;
@@ -267,7 +266,7 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 		gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, nx, ny, 0, gl.RED, gl.FLOAT, data.values);
 
 		// Check for GL errors
-		let error = gl.getError();
+		const error = gl.getError();
 		if (error !== gl.NO_ERROR) {
 			console.error('WebGL error after texture upload:', error);
 		}

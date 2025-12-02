@@ -6,8 +6,8 @@ import { Domain, RegularGridData } from './types';
 
 export class WebGLWindLayer implements CustomLayerInterface {
 	id: string;
-	type: 'custom' = 'custom';
-	renderingMode: '2d' = '2d';
+	type: 'custom' = 'custom' as const;
+	renderingMode: '2d' = '2d' as const;
 
 	private map: Map | undefined;
 	private gl: WebGL2RenderingContext | undefined;
@@ -287,7 +287,7 @@ export class WebGLWindLayer implements CustomLayerInterface {
 		gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, nx, ny, 0, gl.RED, gl.FLOAT, vValues);
 
 		// Check for GL errors
-		let error = gl.getError();
+		const error = gl.getError();
 		if (error !== gl.NO_ERROR) {
 			console.error('WebGL error after wind texture upload:', error);
 		}
@@ -320,7 +320,7 @@ export class WebGLWindLayer implements CustomLayerInterface {
 		this.renderParticles(gl as WebGL2RenderingContext, options);
 	}
 
-	private updateParticles(gl: WebGL2RenderingContext, options: CustomRenderMethodInput): void {
+	private updateParticles(gl: WebGL2RenderingContext, _options: CustomRenderMethodInput): void {
 		// Disable blending for the update pass
 		// The particle update step is a pure data-writing operation.
 		// Blending should be off to ensure the exact RGBA values calculated in the
