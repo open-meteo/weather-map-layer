@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.0.8](https://github.com/open-meteo/mapbox-layer/compare/v0.0.7...v0.0.8) (2025-12-02)
+
+
+### Features
+
+* Add GEM HRDPS West & ECMWF WAM + 0.25 ([e1035b7](https://github.com/open-meteo/mapbox-layer/commit/e1035b75ee6bfe4b941c1d16e99952a4f4af0ccb))
+* Add GFS Wave 025 ([5169f48](https://github.com/open-meteo/mapbox-layer/commit/5169f482b171addefdfb3f9c16f9430461d50133))
+* Isolate state of different variables ([#85](https://github.com/open-meteo/mapbox-layer/issues/85)) ([5a5bca8](https://github.com/open-meteo/mapbox-layer/commit/5a5bca850c94b80e13de100a2c128c114f1b8493))
+* run lint during ci ([#83](https://github.com/open-meteo/mapbox-layer/issues/83)) ([29fd82e](https://github.com/open-meteo/mapbox-layer/commit/29fd82e37e9690138f88987c74e0fdf93dda34da))
+
+
+### Bug Fixes
+
+* add cooldown for dependabot ([72e9be3](https://github.com/open-meteo/mapbox-layer/commit/72e9be390822cec75f82d43252f6c820e21be656))
+* allow 3 point interpolation ([506972a](https://github.com/open-meteo/mapbox-layer/commit/506972af553aeaa3d8e96e73afa8ef61d3ce7568))
+* allow 3 point interpolation ([01f4f8b](https://github.com/open-meteo/mapbox-layer/commit/01f4f8b97d43834ae4eb504e03082f49dfe1a2ee))
+* arrows with partials ([b47dc63](https://github.com/open-meteo/mapbox-layer/commit/b47dc63177354a34fe2bd118a61ac84fd2dbd5b4))
+* broken link in Readme ([48dc374](https://github.com/open-meteo/mapbox-layer/commit/48dc37413bd8593fa0b69255e34ee2917ff36765))
+* bump actions/checkout from 5 to 6 ([#94](https://github.com/open-meteo/mapbox-layer/issues/94)) ([6a57852](https://github.com/open-meteo/mapbox-layer/commit/6a5785271743fdce3219193665a50810df6ab4e1))
+* bump the openmeteo group with 2 updates ([d5d4d6e](https://github.com/open-meteo/mapbox-layer/commit/d5d4d6ee9030eaff3ba4daaaf8a7e55cd7253ca1))
+* bump the openmeteo group with 2 updates ([9c94901](https://github.com/open-meteo/mapbox-layer/commit/9c9490133b5f697ec1f250473539d50975da5585))
+* OMUrl path in examples outdated ([c520b03](https://github.com/open-meteo/mapbox-layer/commit/c520b030342a7c92ee07fe87c8e34f91db720816))
+* rename workflow ([d28db6a](https://github.com/open-meteo/mapbox-layer/commit/d28db6a77065fbabfa30e0bb9d48083a79a4bcb1))
+* small ellaboration vector sources readme ([0d47c73](https://github.com/open-meteo/mapbox-layer/commit/0d47c737471d1b859b54f5023bfaa8eaf23f7aa5))
+* update unplugin-dts to latest beta ([367dc6d](https://github.com/open-meteo/mapbox-layer/commit/367dc6d377fa5e5e3469836495c6d6713e735dde))
+
 ## [0.0.7](https://github.com/open-meteo/mapbox-layer/compare/v0.0.6...v0.0.7) (2025-11-12)
 
 
