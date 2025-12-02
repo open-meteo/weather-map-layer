@@ -2,10 +2,9 @@ import { OmDataType, type OmFileReader, OmHttpBackend } from '@openmeteo/file-re
 
 import { fastAtan2, radiansToDegrees } from './utils/math';
 
-import type { Data } from './om-protocol';
 import { pad } from './utils';
 
-import type { DimensionRange } from './types';
+import type { Data, DimensionRange } from './types';
 
 /**
  * Configuration options for the OMapsFileReader.
@@ -30,7 +29,7 @@ export class OMapsFileReader {
 	private static readonly s3BackendCache = new Map<string, OmHttpBackend>();
 
 	private reader?: OmFileReader;
-	private readonly config: Required<FileReaderConfig>;
+	readonly config: Required<FileReaderConfig>;
 
 	constructor(config: FileReaderConfig = {}) {
 		this.config = {

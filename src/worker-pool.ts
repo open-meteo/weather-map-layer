@@ -1,35 +1,7 @@
-import type { Data } from './om-protocol';
 // @ts-expect-error worker import
 import TileWorker from './worker?worker&inline';
 
-import type { ColorScale, DimensionRange, Domain, Variable } from './types';
-
-export interface TileRequest {
-	type: 'getArrayBuffer' | 'getImage';
-
-	x: number;
-	y: number;
-	z: number;
-	key: string;
-	data: Data;
-	dark: boolean;
-	ranges: DimensionRange[] | null;
-	tileSize: number;
-	interval: number;
-	domain: Domain;
-	variable: Variable;
-	colorScale: ColorScale;
-	mapBounds: number[];
-}
-
-export type TileResponse = ImageBitmap | ArrayBuffer;
-export type TilePromise = Promise<TileResponse>;
-
-export type WorkerResponse = {
-	type: 'returnImage' | 'returnArrayBuffer';
-	tile: TileResponse;
-	key: string;
-};
+import { TilePromise, TileRequest, TileResponse, WorkerResponse } from './types';
 
 export class WorkerPool {
 	private workers: Worker[] = [];

@@ -1,3 +1,87 @@
+import { OMapsFileReader } from './om-file-reader';
+
+export interface OmProtocolInstance {
+	omFileReader: OMapsFileReader;
+
+	// per-URL state:
+	stateByKey: Map<string, OmUrlState>;
+}
+
+export interface DataIdentityOptions {
+	domain: Domain;
+	variable: Variable;
+	ranges: DimensionRange[] | null;
+}
+
+export interface RenderOptions {
+	dark: boolean;
+	tileSize: 64 | 128 | 256 | 512 | 1024;
+	resolutionFactor: 0.5 | 1 | 2;
+	drawGrid: boolean;
+	drawArrows: boolean;
+	drawContours: boolean;
+	interval: number;
+	colorScale: ColorScale;
+}
+
+export interface ParsedUrlComponents {
+	baseUrl: string;
+	params: URLSearchParams;
+	stateKey: string;
+	tileIndex: TileIndex | null;
+}
+
+export interface ParsedRequest {
+	baseUrl: string;
+	stateKey: string;
+	tileIndex: TileIndex | null;
+	renderOptions: RenderOptions; // Only rendering-related params
+	dataOptions: DataIdentityOptions; // Only data-identity params
+}
+
+export interface OmUrlState {
+	dataOptions: DataIdentityOptions;
+	omFileUrl: string;
+	data: Data | null;
+	dataPromise: Promise<Data> | null;
+	lastAccess: number;
+}
+
+/**
+ * Custom resolver function type.
+ * Receives parsed URL components and settings, returns resolved identity and options.
+ */
+export type RequestResolver = (
+	urlComponents: ParsedUrlComponents,
+	settings: OmProtocolSettings
+) => { dataOptions: DataIdentityOptions; renderOptions: RenderOptions };
+
+export interface OmProtocolSettings {
+	// static
+	useSAB: boolean;
+
+	// dynamic
+	colorScales: ColorScales;
+	domainOptions: Domain[];
+	variableOptions: Variable[];
+
+	/**
+	 * Optional custom resolver for URL settings.
+	 * Receives parsed URL components and returns resolved settings.
+	 * Default implementation uses standard query param parsing.
+	 */
+	resolveRequest: RequestResolver;
+
+	postReadCallback:
+		| ((omFileReader: OMapsFileReader, omUrl: string, data: Data) => void)
+		| undefined;
+}
+
+export interface Data {
+	values: Float32Array | undefined;
+	directions: Float32Array | undefined;
+}
+
 export type TileJSON = {
 	tilejson: '2.2.0';
 	tiles: Array<string>;
@@ -20,6 +104,24 @@ export type TileIndex = {
 	z: number;
 	x: number;
 	y: number;
+};
+
+export interface TileRequest {
+	type: 'getArrayBuffer' | 'getImage';
+	key: string;
+	data: Data;
+	tileIndex: TileIndex;
+	renderOptions: RenderOptions;
+	dataOptions: DataIdentityOptions;
+}
+
+export type TileResponse = ImageBitmap | ArrayBuffer;
+export type TilePromise = Promise<TileResponse>;
+
+export type WorkerResponse = {
+	type: 'returnImage' | 'returnArrayBuffer';
+	tile: TileResponse;
+	key: string;
 };
 
 export type Bbox = [number, number, number, number];

@@ -1,0 +1,147 @@
+import { GridFactory } from '../grids/index';
+
+import { parseUrlComponents } from './parse-url';
+import { getColorScale } from './styling';
+
+import type {
+	ColorScales,
+	DataIdentityOptions,
+	DimensionRange,
+	Domain,
+	OmProtocolSettings,
+	ParsedRequest,
+	ParsedUrlComponents,
+	RenderOptions,
+	Variable
+} from '../types';
+
+const VALID_TILE_SIZES = [64, 128, 256, 512, 1024];
+const VALID_RESOLUTION_FACTORS = [0.5, 1, 2];
+const DEFAULT_TILE_SIZE = 256;
+const DEFAULT_RESOLUTION_FACTOR = 1;
+
+export const parseRequest = (url: string, settings: OmProtocolSettings): ParsedRequest => {
+	const urlComponents = parseUrlComponents(url);
+	const resolver = settings.resolveRequest ?? defaultResolveRequest;
+	const { dataOptions, renderOptions } = resolver(urlComponents, settings);
+
+	return {
+		baseUrl: urlComponents.baseUrl,
+		stateKey: urlComponents.stateKey,
+		tileIndex: urlComponents.tileIndex,
+		dataOptions,
+		renderOptions
+	};
+};
+
+export const defaultResolveRequest = (
+	urlComponents: ParsedUrlComponents,
+	settings: OmProtocolSettings
+): { dataOptions: DataIdentityOptions; renderOptions: RenderOptions } => {
+	const dataOptions = defaultResolveDataIdentity(
+		urlComponents,
+		settings.domainOptions,
+		settings.variableOptions
+	);
+
+	const renderOptions = defaultResolveRenderOptions(
+		urlComponents,
+		dataOptions,
+		settings.colorScales
+	);
+
+	return { dataOptions, renderOptions };
+};
+
+const defaultResolveDataIdentity = (
+	urlComponents: ParsedUrlComponents,
+	domainOptions: Domain[],
+	variableOptions: Variable[]
+): DataIdentityOptions => {
+	const { baseUrl, params } = urlComponents;
+
+	const domainValue = baseUrl.split('/')[4];
+	const domain = domainOptions.find((dm) => dm.value === domainValue);
+	if (!domain) {
+		throw new Error(`Invalid domain: ${domainValue}`);
+	}
+
+	const variableValue = params.get('variable');
+	if (!variableValue) {
+		throw new Error(`Variable is required but not defined`);
+	}
+	const variable = variableOptions.find((v) => v.value === variableValue) ?? {
+		value: variableValue
+	};
+	// if (!variable) {
+	// 	throw new Error(`Invalid variable: ${variableValue}`);
+	// }
+
+	const partial = params.get('partial') === 'true';
+	const mapBounds = params.get('bounds')?.split(',').map(Number) as number[] | undefined;
+
+	let ranges: DimensionRange[];
+	if (partial && mapBounds) {
+		const gridGetter = GridFactory.create(domain.grid, null);
+		ranges = gridGetter.getCoveringRanges(mapBounds[0], mapBounds[1], mapBounds[2], mapBounds[3]);
+	} else {
+		ranges = [
+			{ start: 0, end: domain.grid.ny },
+			{ start: 0, end: domain.grid.nx }
+		];
+	}
+
+	return { domain, variable, ranges };
+};
+
+const defaultResolveRenderOptions = (
+	urlComponents: ParsedUrlComponents,
+	dataOptions: DataIdentityOptions,
+	colorScales: ColorScales
+): RenderOptions => {
+	const { params } = urlComponents;
+
+	const dark = params.get('dark') === 'true';
+
+	const tileSize = parseTileSize(params.get('tile-size'));
+	const resolutionFactor = parseResolutionFactor(params.get('resolution-factor'));
+
+	const drawGrid = params.get('grid') === 'true';
+	const drawArrows = params.get('arrows') === 'true';
+	const drawContours = params.get('contours') === 'true';
+	const interval = Number(params.get('interval')) || 0;
+
+	const colorScale =
+		colorScales?.custom ??
+		colorScales[dataOptions.variable.value] ??
+		getColorScale(dataOptions.variable.value);
+
+	return {
+		dark,
+		tileSize,
+		resolutionFactor,
+		drawGrid,
+		drawArrows,
+		drawContours,
+		interval,
+		colorScale
+	};
+};
+
+const parseTileSize = (value: string | null): 64 | 128 | 256 | 512 | 1024 => {
+	const size = value ? Number(value) : DEFAULT_TILE_SIZE;
+	if (!VALID_TILE_SIZES.includes(size)) {
+		throw new Error(`Invalid tile size, please use one of: ${VALID_TILE_SIZES.join(', ')}`);
+	}
+	return size as 64 | 128 | 256 | 512 | 1024;
+};
+
+const parseResolutionFactor = (value: string | null): 0.5 | 1 | 2 => {
+	const factor = value ? Number(value) : DEFAULT_RESOLUTION_FACTOR;
+	if (!VALID_RESOLUTION_FACTORS.includes(factor)) {
+		throw new Error(
+			`Invalid resolution factor, please use one of: ${VALID_RESOLUTION_FACTORS.join(', ')}`
+		);
+	}
+	return factor as 0.5 | 1 | 2;
+};

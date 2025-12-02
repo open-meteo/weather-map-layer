@@ -18,18 +18,6 @@ export const generateGridPoints = (
 ) => {
 	const features = [];
 
-	// let mod = 4;
-	// if (z > 1) {
-	// 	mod = 3;
-	// }
-	// if (z > 2) {
-	// 	mod = 2;
-	// }
-	// if (z > 3) {
-	// 	mod = 1;
-	// }
-	//
-
 	for (let j = 0; j < grid.ny; j++) {
 		const lat = grid.latMin + grid.dy * j;
 		// if (lat > minLatTile && lat < maxLatTile) {

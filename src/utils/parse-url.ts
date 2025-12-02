@@ -1,16 +1,82 @@
 import { pad } from '.';
 import { domainOptions } from '../domains';
 
-const now = new Date();
+import { ParsedUrlComponents, TileIndex } from '../types';
 
-const omUrlRegex =
+const OM_URL_REGEX = /^om:\/\/([^?]+)(?:\?(.*))?$/;
+// Match both regular and percent-encoded slashes
+const TILE_SUFFIX_REGEX = /(?:\/)(\d+)(?:\/)(\d+)(?:\/)(\d+)$/i;
+
+// Parameters that don't affect the data identity (only affect rendering)
+const RENDERING_ONLY_PARAMS = new Set([
+	'grid',
+	'arrows',
+	'contours',
+	'partial',
+	'tile-size', // TODO: tile_size ?
+	'resolution-factor', // TODO: resolution_factor ?
+	'interval'
+]);
+
+const parseTileIndex = (url: string): { tileIndex: TileIndex | null; remainingUrl: string } => {
+	const match = url.match(TILE_SUFFIX_REGEX);
+	if (!match) {
+		return { tileIndex: null, remainingUrl: url };
+	}
+
+	return {
+		tileIndex: {
+			z: parseInt(match[1]),
+			x: parseInt(match[2]),
+			y: parseInt(match[3])
+		},
+		remainingUrl: url.slice(0, match.index)
+	};
+};
+
+/**
+ * Parses URL structure - this is always done internally.
+ * Handles om:// prefix, query params, and tile coordinates.
+ *
+ * The URL structure is:
+ * om://<baseUrl>?<params>/<z>/<x>/<y>  (tile request)
+ * om://<baseUrl>?<params>              (tilejson request)
+ * om://<baseUrl>/<z>/<x>/<y>           (tile request, no params)
+ * om://<baseUrl>                       (tilejson request, no params)
+ */
+export const parseUrlComponents = (url: string): ParsedUrlComponents => {
+	const { tileIndex, remainingUrl } = parseTileIndex(url);
+
+	const match = remainingUrl.match(OM_URL_REGEX);
+	if (!match) {
+		throw new Error(`Invalid OM protocol URL: ${url}`);
+	}
+
+	const [, baseUrl, queryString] = match;
+	const params = new URLSearchParams(queryString ?? '');
+
+	// Build state key from baseUrl + only data-affecting params
+	const dataParams = new URLSearchParams();
+	for (const [key, value] of params) {
+		if (!RENDERING_ONLY_PARAMS.has(key)) {
+			dataParams.set(key, value);
+		}
+	}
+	dataParams.sort();
+	const paramString = dataParams.toString();
+	const stateKey = paramString ? `${baseUrl}?${paramString}` : baseUrl;
+
+	return { baseUrl, params, stateKey, tileIndex };
+};
+
+const VALID_OM_FILE_REGEX =
 	/(http|https):\/\/(?<uri>[\s\S]+)\/(?<domain>[\s\S]+)\/(?<runYear>[\s\S]+)?\/(?<runMonth>[\s\S]+)?\/(?<runDate>[\s\S]+)?\/(?<runTime>[\s\S]+)?\/(?<file>[\s\S]+)?\.(om|json)(?<params>[\s\S]+)?/;
-const domainRegex = /(http|https):\/\/(?<uri>[\s\S]+)\/(?<domain>[\s\S]+)\/(?<meta>[\s\S]+).json/;
-const timeStepRegex =
+const DOMAIN_REGEX = /(http|https):\/\/(?<uri>[\s\S]+)\/(?<domain>[\s\S]+)\/(?<meta>[\s\S]+).json/;
+const TIME_STEP_REGEX =
 	/(?<capture>(current_time|valid_times))(_)?(?<modifier>(\+|-))?(?<amountAndUnit>.*)?/;
 
 /**
- * Returns positive amount if modifer is '+' or 'undefined', returns negative amount otherwise
+ * Returns positive amount if modifier is '+' or 'undefined', returns negative amount otherwise
  */
 const getModifiedAmount = (amount: number, modifier = '+') => {
 	if (modifier === '+' || modifier === undefined) return amount;
@@ -18,9 +84,9 @@ const getModifiedAmount = (amount: number, modifier = '+') => {
 };
 
 export const parseMetaJson = async (omUrl: string) => {
-	let date = new Date(now);
+	let date = new Date();
 	const url = omUrl.replace('om://', '');
-	const { uri, domain, meta } = url.match(domainRegex)?.groups as {
+	const { uri, domain, meta } = url.match(DOMAIN_REGEX)?.groups as {
 		uri: string;
 		domain: string;
 		meta: string; // E.G. latest | in-progress
@@ -32,7 +98,7 @@ export const parseMetaJson = async (omUrl: string) => {
 
 	const parsedOmUrl = new URL(url);
 	const timeStep = parsedOmUrl.searchParams.get('time_step');
-	const timeStepMatch = timeStep?.match(timeStepRegex);
+	const timeStepMatch = timeStep?.match(TIME_STEP_REGEX);
 	if (timeStep && timeStepMatch) {
 		const { capture, modifier, amountAndUnit } = timeStepMatch.groups as {
 			capture: string;
@@ -80,14 +146,18 @@ export const parseMetaJson = async (omUrl: string) => {
 	}
 	parsedOmUrl.searchParams.delete('time_step'); // delete time_step urlSearchParam since it has no effect on map
 
-	return parsedOmUrl.href.replace(
-		`${meta}.json`,
-		`${modelRun.getUTCFullYear()}/${pad(modelRun.getUTCMonth() + 1)}/${pad(modelRun.getUTCDate())}/${pad(modelRun.getUTCHours())}00Z/${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}T${pad(date.getUTCHours())}00.om`
+	// we need to return a URL that is not percent encoded
+	return decodeURIComponent(
+		'om://' +
+			parsedOmUrl.href.replace(
+				`${meta}.json`,
+				`${modelRun.getUTCFullYear()}/${pad(modelRun.getUTCMonth() + 1)}/${pad(modelRun.getUTCDate())}/${pad(modelRun.getUTCHours())}00Z/${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}T${pad(date.getUTCHours())}00.om`
+			)
 	);
 };
 
 export const assertOmUrlValid = (url: string) => {
-	const groups = url.match(omUrlRegex)?.groups;
+	const groups = url.match(VALID_OM_FILE_REGEX)?.groups;
 	if (!groups) return false;
 
 	const { domain, runYear } = groups;
