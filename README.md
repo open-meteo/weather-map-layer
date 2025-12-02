@@ -34,7 +34,7 @@ import { omProtocol } from '@openmeteo/mapbox-layer';
 
 maplibregl.addProtocol('om', omProtocol);
 
-const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/15/1200Z/2025-10-15T1400.om?variable=temperature_2m`;
+const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?variable=temperature_2m`;
 
 map.on('load', () => {
 	map.addSource('omFileSource', {
@@ -73,7 +73,7 @@ For a standalone example, see `examples/temperature.html`.
 
 	maplibregl.addProtocol('om', OpenMeteoMapboxLayer.omProtocol);
 
-	const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m`;
+	const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?variable=temperature_2m`;
 
 	map.on('load', () => {
 		map.addSource('omFileSource', {
