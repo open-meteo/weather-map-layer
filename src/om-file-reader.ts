@@ -1,4 +1,9 @@
-import { OmDataType, type OmFileReader, OmHttpBackend } from '@openmeteo/file-reader';
+import {
+	OmDataType,
+	OmFileReadOptions,
+	type OmFileReader,
+	OmHttpBackend
+} from '@openmeteo/file-reader';
 
 import { fastAtan2, radiansToDegrees } from './utils/math';
 
@@ -30,6 +35,7 @@ export class OMapsFileReader {
 
 	private reader?: OmFileReader;
 	readonly config: Required<FileReaderConfig>;
+	private readonly allDerivationRules: VariableDerivationRule[];
 
 	constructor(config: FileReaderConfig = {}) {
 		this.config = {
@@ -39,6 +45,9 @@ export class OMapsFileReader {
 			eTagValidation: false,
 			...config
 		};
+
+		// TODO: This could be a combination of user-defined and default derivation rules
+		this.allDerivationRules = DEFAULT_DERIVATION_RULES;
 	}
 
 	async setToOmFile(omUrl: string): Promise<void> {
@@ -79,6 +88,85 @@ export class OMapsFileReader {
 		}
 	}
 
+	/** Find the first derivation rule that matches the given variable name. */
+	private findDerivationRule(variable: string): VariableDerivationRule | undefined {
+		return this.allDerivationRules.find((rule) => {
+			if (typeof rule.pattern === 'string') {
+				return variable.includes(rule.pattern);
+			} else {
+				return rule.pattern.test(variable);
+			}
+		});
+	}
+
+	/** Read variable data using a derivation rule. */
+	private async readWithDerivationRule(
+		variable: string,
+		rule: VariableDerivationRule,
+		ranges: DimensionRange[] | null
+	): Promise<Data> {
+		if (!this.reader) {
+			throw new Error('Reader not initialized. Call setToOmFile() first.');
+		}
+
+		const [primaryVar, secondaryVar] = rule.getSourceVars(variable);
+
+		// Get readers for source variables
+		const primaryReader = await this.reader.getChildByName(primaryVar);
+		if (!primaryReader) {
+			throw new Error(`Primary variable ${primaryVar} not found`);
+		}
+
+		const secondaryReader = await this.reader.getChildByName(secondaryVar);
+		if (!secondaryReader) {
+			throw new Error(`Secondary variable ${secondaryVar} not found`);
+		}
+
+		// Read data
+		const dimensions = primaryReader.getDimensions();
+		const readRanges = this.getRanges(ranges, dimensions);
+		const readOptions: OmFileReadOptions<OmDataType.FloatArray> = {
+			type: OmDataType.FloatArray,
+			ranges: readRanges,
+			intoSAB: this.config.useSAB
+		};
+
+		const primaryPromise = primaryReader.read(readOptions);
+		const secondaryPromise = secondaryReader.read(readOptions);
+		const [primaryData, secondaryData] = await Promise.all([primaryPromise, secondaryPromise]);
+
+		// Process using the rule
+		return rule.process(primaryData, secondaryData);
+	}
+
+	/**
+	 * Read a single variable directly (no derivation).
+	 */
+	private async readSimpleVariable(
+		variable: string,
+		ranges: DimensionRange[] | null
+	): Promise<Data> {
+		if (!this.reader) {
+			throw new Error('Reader not initialized. Call setToOmFile() first.');
+		}
+
+		const variableReader = await this.reader.getChildByName(variable);
+		if (!variableReader) {
+			throw new Error(`Variable ${variable} not found`);
+		}
+
+		const dimensions = variableReader.getDimensions();
+		const readRanges = this.getRanges(ranges, dimensions);
+
+		const values = (await variableReader.read({
+			type: OmDataType.FloatArray,
+			ranges: readRanges,
+			intoSAB: this.config.useSAB
+		})) as Float32Array;
+
+		return { values, directions: undefined };
+	}
+
 	/**
 	 * Read a specific variable from the file. Implements on the fly conversion for
 	 * some variables, e.g. uv components are converted to speed and direction.
@@ -88,109 +176,13 @@ export class OMapsFileReader {
 	 * @returns Promise resolving to data object containing values and optional directions
 	 */
 	async readVariable(variable: string, ranges: DimensionRange[] | null = null): Promise<Data> {
-		if (!this.reader) {
-			throw new Error('Reader not initialized. Call init() first.');
-		}
+		const derivationRule = this.findDerivationRule(variable);
 
-		let values, directions: Float32Array | undefined;
-		if (variable.includes('_u_component')) {
-			// combine uv components, and calculate directions
-			const variableReaderU = await this.reader.getChildByName(variable);
-			const variableReaderV = await this.reader.getChildByName(
-				variable.replace('_u_component', '_v_component')
-			);
-
-			if (!variableReaderU || !variableReaderV) {
-				throw new Error(`Variable ${variable} not found`);
-			}
-
-			const dimensions = variableReaderU.getDimensions();
-			const readRanges = this.getRanges(ranges, dimensions);
-
-			const valuesUPromise = variableReaderU.read({
-				type: OmDataType.FloatArray,
-				ranges: readRanges,
-				intoSAB: this.config.useSAB
-			});
-			const valuesVPromise = variableReaderV.read({
-				type: OmDataType.FloatArray,
-				ranges: readRanges,
-				intoSAB: this.config.useSAB
-			});
-
-			const [valuesU, valuesV]: [Float32Array, Float32Array] = (await Promise.all([
-				valuesUPromise,
-				valuesVPromise
-			])) as [Float32Array, Float32Array];
-
-			const BufferConstructor = valuesU.buffer.constructor as typeof ArrayBuffer;
-			values = new Float32Array(new BufferConstructor(valuesU.byteLength));
-			directions = new Float32Array(new BufferConstructor(valuesU.byteLength));
-
-			for (let i = 0; i < valuesU.length; ++i) {
-				const u = valuesU[i];
-				const v = valuesV[i];
-				values[i] = Math.sqrt(u * u + v * v);
-				directions[i] = (radiansToDegrees(fastAtan2(u, v)) + 180) % 360;
-			}
+		if (derivationRule) {
+			return this.readWithDerivationRule(variable, derivationRule, ranges);
 		} else {
-			const variableReader = await this.reader.getChildByName(variable);
-
-			if (!variableReader) {
-				throw new Error(`Variable ${variable} not found`);
-			}
-
-			const dimensions = variableReader.getDimensions();
-			const readRanges = this.getRanges(ranges, dimensions);
-
-			values = await variableReader?.read({
-				type: OmDataType.FloatArray,
-				ranges: readRanges,
-				intoSAB: this.config.useSAB
-			});
+			return this.readSimpleVariable(variable, ranges);
 		}
-
-		if (variable.includes('_speed_')) {
-			// also get the direction for speed values
-			const variableReader = await this.reader.getChildByName(
-				variable.replace('_speed_', '_direction_')
-			);
-
-			if (!variableReader) {
-				throw new Error(`Variable ${variable.replace('_speed_', '_direction_')} not found`);
-			}
-			const dimensions = variableReader.getDimensions();
-			const readRanges = this.getRanges(ranges, dimensions);
-
-			directions = await variableReader.read({
-				type: OmDataType.FloatArray,
-				ranges: readRanges,
-				intoSAB: this.config.useSAB
-			});
-		}
-		if (variable === 'wave_height') {
-			// also get the direction for speed values
-			const variableReader = await this.reader.getChildByName(
-				variable.replace('wave_height', 'wave_direction')
-			);
-
-			if (!variableReader) {
-				throw new Error(`Variable ${variable.replace('wave_height', 'wave_direction')} not found`);
-			}
-			const dimensions = variableReader.getDimensions();
-			const readRanges = this.getRanges(ranges, dimensions);
-
-			directions = await variableReader.read({
-				type: OmDataType.FloatArray,
-				ranges: readRanges,
-				intoSAB: this.config.useSAB
-			});
-		}
-
-		return {
-			values: values,
-			directions: directions
-		};
 	}
 
 	private getNextUrls(omUrl: string) {
@@ -258,3 +250,74 @@ export class OMapsFileReader {
 		delete this.reader;
 	}
 }
+
+/**
+ * Rule for deriving values and directions from one or two source variables.
+ */
+interface VariableDerivationRule {
+	/** Pattern to match variable names (string or RegExp) */
+	pattern: string | RegExp;
+
+	/** Derive two variables from the requested variable. */
+	getSourceVars: (variable: string) => [string, string];
+
+	/**
+	 * Process the raw data from source variables into values and directions.
+	 * @param primary - Data from the primary source variable
+	 * @param secondary - Data from the secondary source variable
+	 * @returns Data object with values and optional directions
+	 */
+	process: (primary: Float32Array, secondary: Float32Array) => Data;
+}
+
+/**
+ * Default derivation rules for common meteorological variables.
+ */
+const DEFAULT_DERIVATION_RULES: VariableDerivationRule[] = [
+	// UV wind components -> speed and direction
+	{
+		pattern: /_[uv]_component/,
+		getSourceVars: (variable: string) => [
+			variable.replace('_v_component', '_u_component'),
+			variable.replace('_u_component', '_v_component')
+		],
+		process: (u: Float32Array, v: Float32Array) => {
+			const BufferConstructor = u.buffer.constructor as typeof ArrayBuffer;
+			const values = new Float32Array(new BufferConstructor(u.byteLength));
+			const directions = new Float32Array(new BufferConstructor(u.byteLength));
+
+			for (let i = 0; i < u.length; i++) {
+				values[i] = Math.sqrt(u[i] * u[i] + v[i] * v[i]);
+				directions[i] = (radiansToDegrees(fastAtan2(u[i], v[i])) + 180) % 360;
+			}
+
+			return { values, directions };
+		}
+	},
+
+	// Speed/Direction pairs (already stored separately)
+	{
+		pattern: /_(?:speed|direction)_/,
+		getSourceVars: (variable: string) => [
+			variable.includes('_speed_') ? variable : variable.replace('_direction_', '_speed_'),
+			variable.includes('_direction_') ? variable : variable.replace('_speed_', '_direction_')
+		],
+		process: (speed: Float32Array, direction: Float32Array) => ({
+			values: speed,
+			directions: direction
+		})
+	},
+
+	// Wave height and direction
+	{
+		pattern: /wave_(?:height|direction)/,
+		getSourceVars: (variable: string) => [
+			variable.replace('wave_direction', 'wave_height'),
+			variable.replace('wave_height', 'wave_direction')
+		],
+		process: (height: Float32Array, direction: Float32Array) => ({
+			values: height,
+			directions: direction
+		})
+	}
+];
