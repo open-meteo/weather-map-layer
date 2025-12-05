@@ -1,62 +1,94 @@
-import * as maplibregl from 'maplibre-gl';
-
-import type { Domain, Variable } from '../types';
-
-const now = new Date();
-now.setHours(now.getHours() + 1, 0, 0, 0);
+import type { ModelDt, ModelUpdateInterval } from '../types';
 
 export const pad = (n: string | number) => {
 	return ('0' + n).slice(-2);
 };
 
-export function capitalize(s: string) {
+export const capitalize = (s: string) => {
 	return String(s[0]).toUpperCase() + String(s).slice(1);
-}
+};
 
-export const closestDomainInterval = (time: Date, domain: Domain) => {
-	const newTime = new Date(time.getTime());
-	if (domain.time_interval > 1) {
-		if (time.getUTCHours() % domain.time_interval > 0) {
-			const closestUTCHour = time.getUTCHours() - (time.getUTCHours() % domain.time_interval);
-			newTime.setUTCHours(closestUTCHour + domain.time_interval);
+/**
+ * Computes the next/previous/nearest time step for a model domain using UTC.
+ * `timeInterval` must be one of:
+ * - '15_minute', 'hourly', '3_hourly', '6_hourly', 'weekly_on_monday', 'monthly'
+ *
+ * @param time - source Date (not mutated)
+ * @param timeInterval - the time step type (see above)
+ * @param direction - 'forward' | 'backward' | 'nearest' (default 'nearest')
+ * @returns a new Date adjusted to the requested domain step (UTC-based)
+ * @throws Error on invalid timeInterval
+ */
+export const domainStep = (
+	time: Date,
+	timeInterval: ModelDt,
+	direction: 'forward' | 'backward' | 'floor' = 'floor'
+): Date => {
+	const newTime = new Date(time);
+	const modifier = direction === 'floor' ? 0 : direction === 'forward' ? 1 : -1;
+	switch (timeInterval) {
+		case '15_minute':
+			newTime.setUTCMinutes(Math.floor(time.getUTCMinutes() / 15) * 15 + modifier * 15);
+			break;
+		case 'hourly':
+			newTime.setUTCHours(time.getUTCHours() + modifier, 0, 0, 0);
+			break;
+		case '3_hourly':
+			newTime.setUTCHours(Math.floor(time.getUTCHours() / 3) * 3 + modifier * 3, 0, 0, 0);
+			break;
+		case '6_hourly':
+			newTime.setUTCHours(Math.floor(time.getUTCHours() / 6) * 6 + modifier * 6, 0, 0, 0);
+			break;
+		case '12_hourly':
+			newTime.setUTCHours(Math.floor(time.getUTCHours() / 12) * 12 + modifier * 12, 0, 0, 0);
+			break;
+		case 'daily':
+			newTime.setUTCDate(time.getUTCDate() + modifier);
+			newTime.setUTCHours(0, 0, 0, 0);
+			break;
+		case 'weekly_on_monday': {
+			const dayOfWeek = newTime.getUTCDay();
+			const nextMondayInDays = (8 - dayOfWeek) % 7;
+			switch (direction) {
+				case 'backward':
+				case 'floor':
+					if (nextMondayInDays === 0 && direction === 'floor') {
+						newTime.setUTCDate(time.getUTCDate());
+					} else {
+						newTime.setUTCDate(time.getUTCDate() + nextMondayInDays - 7);
+					}
+					break;
+				case 'forward':
+					if (nextMondayInDays === 0) {
+						newTime.setUTCDate(time.getUTCDate() + 7);
+					} else {
+						newTime.setUTCDate(time.getUTCDate() + nextMondayInDays);
+					}
+					break;
+			}
+			newTime.setUTCHours(0, 0, 0, 0);
+			break;
+		}
+		case 'monthly':
+			newTime.setUTCMonth(time.getUTCMonth() + modifier);
+			newTime.setUTCDate(1);
+			newTime.setUTCHours(0, 0, 0, 0);
+			break;
+		default: {
+			// This ensures exhaustiveness checking
+			const _exhaustive: never = timeInterval;
+			throw new Error(`Invalid time interval: ${timeInterval}`);
 		}
 	}
 	return newTime;
 };
 
-// TODO: Is this used/needed?
-export const closestModelRun = (domain: Domain, selectedTime: Date) => {
-	const year = selectedTime.getUTCFullYear();
-	const month = selectedTime.getUTCMonth();
-	const date = selectedTime.getUTCDate();
-
-	const closestModelRunUTCHour =
-		selectedTime.getUTCHours() - (selectedTime.getUTCHours() % domain.model_interval);
-
-	const closestModelRun = new Date();
-	closestModelRun.setUTCFullYear(year);
-	closestModelRun.setUTCMonth(month);
-	closestModelRun.setUTCDate(date);
-	closestModelRun.setUTCHours(closestModelRunUTCHour);
-	closestModelRun.setUTCMinutes(0);
-	closestModelRun.setUTCSeconds(0);
-	closestModelRun.setUTCMilliseconds(0);
-
-	return closestModelRun;
-};
-
-export const getOMUrl = (
-	time: Date,
-	mode: 'dark' | 'bright',
-	partial: boolean,
-	domain: Domain,
-	variable: Variable,
-	modelRun: Date,
-	paddedBounds?: maplibregl.LngLatBounds
-) => {
-	if (paddedBounds) {
-		return `https://map-tiles.open-meteo.com/data_spatial/${domain.value}/${modelRun.getUTCFullYear()}/${pad(modelRun.getUTCMonth() + 1)}/${pad(modelRun.getUTCDate())}/${pad(modelRun.getUTCHours())}00Z/${time.getUTCFullYear()}-${pad(time.getUTCMonth() + 1)}-${pad(time.getUTCDate())}T${pad(time.getUTCHours())}00.om?dark=${mode === 'dark'}&variable=${variable.value}&partial=${partial}&bounds=${paddedBounds.getSouth()},${paddedBounds.getWest()},${paddedBounds.getNorth()},${paddedBounds.getEast()}`;
-	} else {
-		return `https://map-tiles.open-meteo.com/data_spatial/${domain.value}/${modelRun.getUTCFullYear()}/${pad(modelRun.getUTCMonth() + 1)}/${pad(modelRun.getUTCDate())}/${pad(modelRun.getUTCHours())}00Z/${time.getUTCFullYear()}-${pad(time.getUTCMonth() + 1)}-${pad(time.getUTCDate())}T${pad(time.getUTCHours())}00.om?dark=${mode === 'dark'}&variable=${variable.value}&partial=${partial}`;
-	}
+/**
+ * Get the closest model run time rounded down to the model interval, in UTC.
+ * Supported model intervals:
+ * - 'hourly', '3_hourly', '6_hourly', '12_hourly', 'daily', 'monthly'
+ */
+export const closestModelRun = (time: Date, modelInterval: ModelUpdateInterval): Date => {
+	const modelDtCompatible: ModelDt = modelInterval;
+	return domainStep(time, modelDtCompatible, 'floor');
 };
