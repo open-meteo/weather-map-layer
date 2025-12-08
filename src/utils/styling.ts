@@ -1,6 +1,6 @@
 import { colorScales } from './color-scales';
 
-import type { ColorScale, Variable } from '../types';
+import type { ColorScale } from '../types';
 
 const OPACITY = 75;
 
@@ -43,7 +43,7 @@ export const getOpacity = (
 	}
 };
 
-export const getColorScale = (variable: Variable['value']) => {
+export const getColorScale = (variable: string) => {
 	return (
 		colorScales[variable] ??
 		colorScales[variable.split('_')[0]] ??

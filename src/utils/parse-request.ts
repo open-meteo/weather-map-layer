@@ -11,8 +11,7 @@ import type {
 	OmProtocolSettings,
 	ParsedRequest,
 	ParsedUrlComponents,
-	RenderOptions,
-	Variable
+	RenderOptions
 } from '../types';
 
 const VALID_TILE_SIZES = [64, 128, 256, 512, 1024];
@@ -38,11 +37,7 @@ export const defaultResolveRequest = (
 	urlComponents: ParsedUrlComponents,
 	settings: OmProtocolSettings
 ): { dataOptions: DataIdentityOptions; renderOptions: RenderOptions } => {
-	const dataOptions = defaultResolveDataIdentity(
-		urlComponents,
-		settings.domainOptions,
-		settings.variableOptions
-	);
+	const dataOptions = defaultResolveDataIdentity(urlComponents, settings.domainOptions);
 
 	const renderOptions = defaultResolveRenderOptions(
 		urlComponents,
@@ -55,8 +50,7 @@ export const defaultResolveRequest = (
 
 const defaultResolveDataIdentity = (
 	urlComponents: ParsedUrlComponents,
-	domainOptions: Domain[],
-	variableOptions: Variable[]
+	domainOptions: Domain[]
 ): DataIdentityOptions => {
 	const { baseUrl, params } = urlComponents;
 
@@ -66,16 +60,10 @@ const defaultResolveDataIdentity = (
 		throw new Error(`Invalid domain: ${domainValue}`);
 	}
 
-	const variableValue = params.get('variable');
-	if (!variableValue) {
+	const variable = params.get('variable');
+	if (!variable) {
 		throw new Error(`Variable is required but not defined`);
 	}
-	const variable = variableOptions.find((v) => v.value === variableValue) ?? {
-		value: variableValue
-	};
-	// if (!variable) {
-	// 	throw new Error(`Invalid variable: ${variableValue}`);
-	// }
 
 	const partial = params.get('partial') === 'true';
 	const mapBounds = params.get('bounds')?.split(',').map(Number) as number[] | undefined;
@@ -112,9 +100,7 @@ const defaultResolveRenderOptions = (
 	const interval = Number(params.get('interval')) || 0;
 
 	const colorScale =
-		colorScales?.custom ??
-		colorScales[dataOptions.variable.value] ??
-		getColorScale(dataOptions.variable.value);
+		colorScales?.custom ?? colorScales[dataOptions.variable] ?? getColorScale(dataOptions.variable);
 
 	return {
 		dark,

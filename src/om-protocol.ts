@@ -3,7 +3,6 @@ import { type GetResourceResponse, type RequestParameters } from 'maplibre-gl';
 import { colorScales as defaultColorScales } from './utils/color-scales';
 import { defaultResolveRequest, parseRequest } from './utils/parse-request';
 import { assertOmUrlValid, parseMetaJson } from './utils/parse-url';
-import { variableOptions as defaultVariableOptions } from './utils/variables';
 
 import { domainOptions as defaultDomainOptions } from './domains';
 import { GridFactory } from './grids/index';
@@ -29,7 +28,6 @@ export const defaultOmProtocolSettings: OmProtocolSettings = {
 	// dynamic
 	colorScales: defaultColorScales,
 	domainOptions: defaultDomainOptions,
-	variableOptions: defaultVariableOptions,
 
 	resolveRequest: defaultResolveRequest,
 	postReadCallback: undefined

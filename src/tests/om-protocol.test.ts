@@ -69,8 +69,7 @@ describe('Request Resolution', () => {
 	describe('defaultResolveRequest', () => {
 		it('resolves data identity and render options from URL', async () => {
 			const domainOptions = [createTestDomain('domain1')];
-			const variableOptions = [{ value: 'temperature', label: 'Temperature' }];
-			const settings = createTestSettings({ domainOptions, variableOptions });
+			const settings = createTestSettings({ domainOptions });
 
 			const url =
 				'om://https://example.com/data_spatial/domain1/file.om?variable=temperature&dark=true&interval=2';
@@ -78,15 +77,14 @@ describe('Request Resolution', () => {
 			const { dataOptions, renderOptions } = defaultResolveRequest(components, settings);
 
 			expect(dataOptions.domain.value).toBe('domain1');
-			expect(dataOptions.variable.value).toBe('temperature');
+			expect(dataOptions.variable).toBe('temperature');
 			expect(renderOptions.dark).toBe(true);
 			expect(renderOptions.interval).toBe(2);
 		});
 
 		it('computes partial ranges when partial=true and bounds provided', async () => {
 			const domainOptions = [createTestDomain('domain1')];
-			const variableOptions = [{ value: 'temperature' }];
-			const settings = createTestSettings({ domainOptions, variableOptions });
+			const settings = createTestSettings({ domainOptions });
 
 			const url =
 				'om://https://example.com/data_spatial/domain1/file.om?variable=temperature&partial=true&bounds=0,0,10,10';
@@ -102,8 +100,7 @@ describe('Request Resolution', () => {
 
 		it('uses full grid ranges when partial=false', async () => {
 			const domainOptions = [createTestDomain('domain1', { nx: 100, ny: 200 })];
-			const variableOptions = [{ value: 'temperature' }];
-			const settings = createTestSettings({ domainOptions, variableOptions });
+			const settings = createTestSettings({ domainOptions });
 
 			const url =
 				'om://https://example.com/data_spatial/domain1/file.om?variable=temperature&bounds=0,0,10,10';
@@ -139,8 +136,7 @@ describe('Request Resolution', () => {
 
 		it('parses render options with defaults', async () => {
 			const domainOptions = [createTestDomain('domain1')];
-			const variableOptions = [{ value: 'temp' }];
-			const settings = createTestSettings({ domainOptions, variableOptions });
+			const settings = createTestSettings({ domainOptions });
 
 			const url = 'om://https://example.com/data_spatial/domain1/file.om?variable=temp';
 			const components = parseUrlComponents(url);
@@ -157,8 +153,7 @@ describe('Request Resolution', () => {
 
 		it('parses custom render options', async () => {
 			const domainOptions = [createTestDomain('domain1')];
-			const variableOptions = [{ value: 'temp' }];
-			const settings = createTestSettings({ domainOptions, variableOptions });
+			const settings = createTestSettings({ domainOptions });
 
 			const url =
 				'om://https://example.com/data_spatial/domain1/file.om?variable=temp&tile-size=512&resolution-factor=2&grid=true&arrows=true&contours=true';
@@ -174,8 +169,7 @@ describe('Request Resolution', () => {
 
 		it('throws for invalid tile size', async () => {
 			const domainOptions = [createTestDomain('domain1')];
-			const variableOptions = [{ value: 'temp' }];
-			const settings = createTestSettings({ domainOptions, variableOptions });
+			const settings = createTestSettings({ domainOptions });
 
 			const url =
 				'om://https://example.com/data_spatial/domain1/file.om?variable=temp&tile-size=999';
@@ -186,8 +180,7 @@ describe('Request Resolution', () => {
 
 		it('throws for invalid resolution factor', async () => {
 			const domainOptions = [createTestDomain('domain1')];
-			const variableOptions = [{ value: 'temp' }];
-			const settings = createTestSettings({ domainOptions, variableOptions });
+			const settings = createTestSettings({ domainOptions });
 
 			const url =
 				'om://https://example.com/data_spatial/domain1/file.om?variable=temp&resolution-factor=3';
@@ -340,7 +333,7 @@ describe('getValueFromLatLong', () => {
 		await omProtocol({ url, type: 'arrayBuffer' }, undefined, defaultOmProtocolSettings);
 
 		// Then query value
-		const result = getValueFromLatLong(0, 0, url, { value: 'temperature_2m' });
+		const result = getValueFromLatLong(0, 0, url);
 
 		expect(result.value).toBe(0); // Mock returns zeros
 	});
@@ -352,8 +345,7 @@ describe('getValueFromLatLong', () => {
 			getValueFromLatLong(
 				0,
 				0,
-				'om://https://example.com/data_spatial/dwd_icon/file.om?variable=temp',
-				{ value: 'temp' }
+				'om://https://example.com/data_spatial/dwd_icon/file.om?variable=temp'
 			)
 		).toThrow('OmProtocolInstance is not initialized');
 	});
@@ -377,8 +369,7 @@ describe('getValueFromLatLong', () => {
 			getValueFromLatLong(
 				0,
 				0,
-				'om://https://example.com/data_spatial/dwd_icon/other.om?variable=other',
-				{ value: 'other' }
+				'om://https://example.com/data_spatial/dwd_icon/other.om?variable=other'
 			)
 		).toThrow('State not found');
 	});

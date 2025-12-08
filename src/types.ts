@@ -9,7 +9,7 @@ export interface OmProtocolInstance {
 
 export interface DataIdentityOptions {
 	domain: Domain;
-	variable: Variable;
+	variable: string;
 	ranges: DimensionRange[] | null;
 }
 
@@ -63,7 +63,6 @@ export interface OmProtocolSettings {
 	// dynamic
 	colorScales: ColorScales;
 	domainOptions: Domain[];
-	variableOptions: Variable[];
 
 	/**
 	 * Optional custom resolver for URL settings.
@@ -142,13 +141,6 @@ export type TilePixel = {
 	column: number;
 	tileIndex: TileIndex;
 };
-
-export type Variable = {
-	value: string;
-	label?: string;
-};
-
-export type Variables = Variable[];
 
 export type ColorScale = {
 	min: number;

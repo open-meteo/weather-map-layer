@@ -152,7 +152,7 @@ export class OMapsFileReader {
 
 		const variableReader = await this.reader.getChildByName(variable);
 		if (!variableReader) {
-			throw new Error(`Variable ${variable} not found`);
+			throw new Error(`Variable: ${variable} not found`);
 		}
 
 		const dimensions = variableReader.getDimensions();

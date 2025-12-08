@@ -1,7 +1,6 @@
 import Pbf from 'pbf';
 
 import { generateArrows } from './utils/arrows';
-import { MS_TO_KMH } from './utils/constants';
 import { generateContours } from './utils/contours';
 import { generateGridPoints } from './utils/grid-points';
 import { tile2lat, tile2lon } from './utils/math';
@@ -34,9 +33,8 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 
 		const grid = GridFactory.create(domain.grid, ranges);
 
-		const isWind = variable.value.includes('wind');
-		const isHideZero = hideZero.includes(variable.value);
-		const isWeatherCode = variable.value === 'weather_code';
+		const isHideZero = hideZero.includes(variable);
+		const isWeatherCode = variable === 'weather_code';
 
 		for (let i = 0; i < tileSize; i++) {
 			const lat = tile2lat(y + i / tileSize, z);
@@ -51,10 +49,6 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 					}
 				}
 
-				if (isWind) {
-					px = px * MS_TO_KMH;
-				}
-
 				if (isNaN(px) || px === Infinity || isWeatherCode) {
 					rgba[4 * ind] = 0;
 					rgba[4 * ind + 1] = 0;
@@ -67,7 +61,7 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 						rgba[4 * ind] = color[0];
 						rgba[4 * ind + 1] = color[1];
 						rgba[4 * ind + 2] = color[2];
-						rgba[4 * ind + 3] = getOpacity(variable.value, px, dark, colorScale);
+						rgba[4 * ind + 3] = getOpacity(variable, px, dark, colorScale);
 					}
 				}
 			}
