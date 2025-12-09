@@ -78,7 +78,6 @@ describe('Request Resolution', () => {
 
 			expect(dataOptions.domain.value).toBe('domain1');
 			expect(dataOptions.variable).toBe('temperature');
-			expect(renderOptions.dark).toBe(true);
 			expect(renderOptions.interval).toBe(2);
 		});
 
@@ -142,13 +141,13 @@ describe('Request Resolution', () => {
 			const components = parseUrlComponents(url);
 			const { renderOptions } = defaultResolveRequest(components, settings);
 
-			expect(renderOptions.dark).toBe(false);
 			expect(renderOptions.tileSize).toBe(256);
 			expect(renderOptions.resolutionFactor).toBe(1);
 			expect(renderOptions.drawGrid).toBe(false);
 			expect(renderOptions.drawArrows).toBe(false);
 			expect(renderOptions.drawContours).toBe(false);
 			expect(renderOptions.interval).toBe(0);
+			expect(renderOptions.colorScale.colors.length).toBe(65);
 		});
 
 		it('parses custom render options', async () => {
@@ -217,9 +216,7 @@ describe('Request Resolution', () => {
 						min: 0,
 						max: 100,
 						colors: [],
-						steps: 10,
 						unit: 'C',
-						scalefactor: 1,
 						interpolationMethod: 'linear'
 					}
 				}

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Mapbox Layer - Custom RGBA Colorscale</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.css" />
+		<script src="https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.js"></script>
+		<!-- x-release-please-start-version -->
+		<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.8/dist/index.js"></script>
+		<!-- x-release-please-end -->
+		<!-- Local development -->
+		<!--<script src="../../dist/index.js"></script>-->
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<script>
+			const customColorScales = {
+				// use same key as variable name
+				temperature_2m: {
+					type: 'rgba',
+					unit: '°C',
+					min: -40,
+					max: 60,
+
+					// colors as rgb array
+					colors: [
+						[128, 0, 128, 0.75],
+						[127, 0, 140, 0.75],
+						[124, 0, 151, 0.75],
+						[118, 0, 163, 0.75],
+						[111, 0, 174, 0.75],
+						[101, 0, 186, 0.75],
+						[90, 0, 197, 0.75],
+						[76, 0, 209, 0.75],
+						[60, 0, 220, 0.75],
+						[42, 0, 232, 0.75],
+						[22, 0, 243, 0.75],
+						[0, 0, 255, 0.75],
+						[0, 0, 255, 0.75],
+						[0, 112, 223, 0.75],
+						[0, 192, 192, 0.75],
+						[0, 160, 80, 0.75],
+						[0, 128, 0, 0.75],
+						[0, 128, 0, 0.75],
+						[77, 170, 0, 0.75],
+						[192, 213, 0, 0.75],
+						[255, 165, 0, 0.75],
+						[255, 165, 0, 0.75],
+						[255, 124, 0, 0.75],
+						[255, 83, 0, 0.75],
+						[255, 41, 0, 0.75],
+						[255, 0, 0, 0.75],
+						[255, 0, 0, 0.75],
+						[213, 0, 71, 0.75],
+						[170, 0, 114, 0.75],
+						[128, 0, 128, 0.75]
+					]
+				}
+			};
+
+			const omProtocolOptions = OpenMeteoMapboxLayer.defaultOmProtocolSettings;
+			omProtocolOptions.colorScales = customColorScales;
+
+			// use the settings as argument for the protocol
+			maplibregl.addProtocol('om', (params) =>
+				OpenMeteoMapboxLayer.omProtocol(params, undefined, omProtocolOptions)
+			);
+
+			const map = new maplibregl.Map({
+				container: 'map',
+				style: {
+					version: 8,
+					sources: {
+						osm: {
+							type: 'raster',
+							tiles: ['https://a.tile.openstreetmap.org/{z}/{x}/{y}.png'],
+							tileSize: 256,
+							attribution: '&copy; OpenStreetMap Contributors'
+						}
+					},
+					layers: [
+						{
+							id: 'osm',
+							type: 'raster',
+							source: 'osm'
+						}
+					]
+				},
+				hash: true
+			});
+
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m`;
+
+			map.on('load', () => {
+				map.addSource('omFileSource', {
+					url: 'om://' + omUrl,
+					type: 'raster',
+					tileSize: 256,
+					maxzoom: 12
+				});
+
+				map.addLayer({
+					id: 'omFileLayer',
+					type: 'raster',
+					source: 'omFileSource'
+				});
+			});
+		</script>
+	</body>
+</html>

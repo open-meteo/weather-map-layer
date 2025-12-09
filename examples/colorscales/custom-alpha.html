@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 	<head>
-		<title>Open-Meteo Mapbox Layer - Custom Colorscales</title>
+		<title>Open-Meteo Mapbox Layer - Custom Alpha Resolvable Colorscale</title>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.css" />
@@ -10,7 +10,7 @@
 		<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.8/dist/index.js"></script>
 		<!-- x-release-please-end -->
 		<!-- Local development -->
-		<!--<script src="../dist/index.js"></script>-->
+		<!--<script src="../../dist/index.js"></script>-->
 		<style>
 			html,
 			body,
@@ -27,12 +27,24 @@
 			const customColorScales = {
 				// use same key as variable name
 				temperature_2m: {
-					min: -40,
-					max: 60,
-					steps: 30,
-					scalefactor: 30 / (60 - -40), // (steps / (max - min))
-					interpolationMethod: 'linear', // linear or none
+					type: 'alpha_resolvable',
+					unit: '°C',
+					min: -20,
+					max: 45,
+					// function that resolves values to alpha values
+					opacity: (px) => {
+						// this scaling function emphasizes very cold and very hot temperatures
+						const min = -20;
+						const max = 45;
+						const mid = (min + max) / 2;
+						const halfRange = (max - min) / 2;
+						// normalized distance from the midpoint [0..1]
+						const norm = Math.min(Math.max(Math.abs(px - mid) / halfRange, 0), 1);
 
+						const minAlpha = 0.3;
+						const alpha = minAlpha + Math.pow(norm, 1.5) * (1 - minAlpha);
+						return Math.min(Math.max(alpha, minAlpha), 1);
+					},
 					// colors as rgb array
 					colors: [
 						[128, 0, 128],
@@ -65,10 +77,7 @@
 						[213, 0, 71],
 						[170, 0, 114],
 						[128, 0, 128]
-					],
-
-					unit: 'F°', // optional
-					opacity: 65 // optional
+					]
 				}
 			};
 

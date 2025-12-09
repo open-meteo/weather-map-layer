@@ -105,9 +105,9 @@ export const variableOptions = [
 	{ value: 'snowfall', label: 'Snowfall' },
 	{ value: 'snowfall_probability', label: 'Snowfall Probability' },
 	{ value: 'snowfall_height', label: 'Snowfall Height' },
-	{ value: 'snowfall_water_equivalent', label: 'Snow Water Equivalent' },
-	{ value: 'snowfall_water_equivalent_anomaly', label: 'Snow Water Equivalent Anomaly' },
-	{ value: 'snowfall_water_equivalent_mean', label: 'Snow Water Equivalent Mean' },
+	{ value: 'snowfall_water_equivalent', label: 'Snowfall Water Equivalent' },
+	{ value: 'snowfall_water_equivalent_anomaly', label: 'Snowfall Water Equivalent Anomaly' },
+	{ value: 'snowfall_water_equivalent_mean', label: 'Snowfall Water Equivalent Mean' },
 
 	{ value: 'sunshine_duration', label: 'Sunshine Duration' },
 	{ value: 'sunshine_duration_anomaly', label: 'Sunshine Duration Anomaly' },
@@ -252,13 +252,5 @@ for (const height of heights) {
 	variableOptions.push({ value: `wind_u_component_${height}m`, label: `Wind (${height}m)` });
 	variableOptions.push({ value: `wind_speed_${height}m`, label: `Wind (${height}m)` });
 }
-
-export const hideZero = [
-	'rain',
-	'cloud_cover',
-	'precipitation',
-	'convective_cloud_top',
-	'convective_cloud_base'
-];
 
 export const drawOnTiles = ['pressure_msl'];
