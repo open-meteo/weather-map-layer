@@ -94,18 +94,21 @@ For a standalone example, see `examples/temperature.html`.
 
 ## Examples
 
+### Raster sources
+
 The repository contains an `examples` directory with ready-to-run demos:
 
 - `examples/temperature.html` – shows temperature data from an OM file.
 - `examples/precipitation.html` – displays precipitation using a similar setup.
-- `examples/wind.html` – displays wind values with directional arrows.
+- `examples/wind.html` – displays wind values, for arrows overlay see [Vector sources](#vector-sources).
 - `examples/combined-variables.html` – shows multiple data sources on the same map.
+- `examples/colorscales/darkmode.html` – uses the `dark=true` url flag for dark background basemaps.
 - `examples/colorscales/custom-rgba.html` – shows how to use your own RGBA color definition.
 - `examples/colorscales/custom-alpha.html` – shows how to use a function to scale opacity values and a custom RGB color definition.
 
 Run the examples by opening the corresponding `.html` file in a browser.
 
-## Arrows / Contouring / Gridpoints
+### Vector sources
 
 For directional arrows / contouring / gridpoints, an additional source must be added, since these features use vector tiles instead of raster tiles.
 

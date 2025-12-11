@@ -10,7 +10,7 @@
 		<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.8/dist/index.js"></script>
 		<!-- x-release-please-end -->
 		<!-- Local development -->
-		<!--<script src="../dist/index.js"></script>-->
+		<!--<script src="../../dist/index.js"></script>-->
 		<style>
 			html,
 			body,
@@ -50,33 +50,21 @@
 				hash: true
 			});
 
-			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H`;
-			const omCloudCoverUrl = omUrl + `&variable=cloud_cover`;
-			const omPrecipitationUrl = omUrl + `&variable=precipitation`;
+			// give the 'dark=true' parameter to the url for dark background maps
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m&dark=true`;
 
 			map.on('load', () => {
-				map.addSource('omCloudCoverSource', {
-					url: 'om://' + omCloudCoverUrl,
+				map.addSource('omFileSource', {
+					url: 'om://' + omUrl,
 					type: 'raster',
 					tileSize: 256,
 					maxzoom: 12
-				});
-				map.addLayer({
-					id: 'omCloudCoverLayer',
-					type: 'raster',
-					source: 'omCloudCoverSource'
 				});
 
-				map.addSource('omPrecipitationSource', {
-					url: 'om://' + omPrecipitationUrl,
-					type: 'raster',
-					tileSize: 256,
-					maxzoom: 12
-				});
 				map.addLayer({
-					id: 'omPrecipitationLayer',
+					id: 'omFileLayer',
 					type: 'raster',
-					source: 'omPrecipitationSource'
+					source: 'omFileSource'
 				});
 			});
 		</script>
