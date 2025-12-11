@@ -7,8 +7,6 @@ import {
 
 import { fastAtan2, radiansToDegrees } from './utils/math';
 
-import { pad } from './utils';
-
 import type { Data, DimensionRange } from './types';
 
 /**
@@ -185,60 +183,11 @@ export class OMapsFileReader {
 		}
 	}
 
-	private getNextUrls(omUrl: string) {
-		const re = new RegExp(/([0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}00)/);
-		const matches = omUrl.match(re);
-		let nextUrl, prevUrl;
-		if (matches) {
-			const date = new Date('20' + matches[0].substring(0, matches[0].length - 2) + ':00Z');
-
-			date.setUTCHours(date.getUTCHours() - 1);
-			prevUrl = omUrl.replace(
-				re,
-				`${String(date.getUTCFullYear()).substring(2, 4)}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}T${pad(date.getUTCHours())}00`
-			);
-
-			date.setUTCHours(date.getUTCHours() + 2);
-			nextUrl = omUrl.replace(
-				re,
-				`${String(date.getUTCFullYear()).substring(2, 4)}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}T${pad(date.getUTCHours())}00`
-			);
-		}
-		if (prevUrl && nextUrl) {
-			return [prevUrl, nextUrl];
+	hasFileOpen(omFileUrl: string) {
+		if (OMapsFileReader.s3BackendCache.get(omFileUrl)) {
+			return true;
 		} else {
-			return undefined;
-		}
-	}
-
-	/**
-	 * Prefetches small parts from adjacent files in the time sequence. This is particularly useful
-	 * if files are re-distributed via a CDN, with an upstream S3 bucket configured and will essentially
-	 * trigger the CDN to cache the file.
-	 */
-	_prefetch(omUrl: string) {
-		const nextOmUrls = this.getNextUrls(omUrl);
-		if (nextOmUrls) {
-			for (const nextOmUrl of nextOmUrls) {
-				// If not already cached, create and cache the backend
-				if (!OMapsFileReader.s3BackendCache.has(nextOmUrl)) {
-					const s3_backend = new OmHttpBackend({
-						url: nextOmUrl,
-						eTagValidation: false,
-						retries: 2
-					});
-					OMapsFileReader.s3BackendCache.set(nextOmUrl, s3_backend);
-					// Trigger a small fetch to prepare CF to already cache the file
-					fetch(nextOmUrl, {
-						method: 'GET',
-						headers: {
-							Range: 'bytes=0-255' // Just fetch first 256 bytes to trigger caching
-						}
-					}).catch(() => {
-						// Silently ignore errors for prefetches
-					});
-				}
-			}
+			return false;
 		}
 	}
 

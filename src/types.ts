@@ -55,6 +55,10 @@ export type RequestResolver = (
 	settings: OmProtocolSettings
 ) => { dataOptions: DataIdentityOptions; renderOptions: RenderOptions };
 
+export type PostReadCallback =
+	| ((omFileReader: OMapsFileReader, data: Data, state: OmUrlState) => void)
+	| undefined;
+
 export interface OmProtocolSettings {
 	// static
 	useSAB: boolean;
@@ -69,10 +73,7 @@ export interface OmProtocolSettings {
 	 * Default implementation uses standard query param parsing.
 	 */
 	resolveRequest: RequestResolver;
-
-	postReadCallback:
-		| ((omFileReader: OMapsFileReader, omUrl: string, data: Data) => void)
-		| undefined;
+	postReadCallback: PostReadCallback;
 }
 
 export interface Data {
