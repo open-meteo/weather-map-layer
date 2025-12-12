@@ -11,8 +11,8 @@ import type {
 	OmProtocolSettings,
 	ParsedRequest,
 	ParsedUrlComponents,
-	RGBAColorScale,
-	RenderOptions
+	RenderOptions,
+	RenderableColorScale
 } from '../types';
 
 const VALID_TILE_SIZES = [64, 128, 256, 512, 1024];
@@ -91,7 +91,7 @@ const defaultResolveRenderOptions = (
 	const { params } = urlComponents;
 
 	const dark = params.get('dark') === 'true';
-	let colorScale: RGBAColorScale;
+	let colorScale: RenderableColorScale;
 	if (colorScales.custom) {
 		colorScale = resolveColorScale(colorScales.custom, dark);
 	} else {

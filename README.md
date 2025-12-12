@@ -102,9 +102,9 @@ The repository contains an `examples` directory with ready-to-run demos:
 - `examples/precipitation.html` – displays precipitation using a similar setup.
 - `examples/wind.html` – displays wind values, for arrows overlay see [Vector sources](#vector-sources).
 - `examples/combined-variables.html` – shows multiple data sources on the same map.
-- `examples/colorscales/darkmode.html` – uses the `dark=true` url flag for dark background basemaps.
-- `examples/colorscales/custom-rgba.html` – shows how to use your own RGBA color definition.
-- `examples/colorscales/custom-alpha.html` – shows how to use a function to scale opacity values and a custom RGB color definition.
+- `examples/colorscales/darkmode.html` – uses the `dark=true` url flag to select optimized color scales for dark background basemaps.
+- `examples/colorscales/custom-rgba.html` – shows how to use a color scale that scales linearly along an array of RGBA values.
+- `examples/colorscales/custom-breakpoint.html` – shows how to custom breakpoints in the color scale definitions.
 
 Run the examples by opening the corresponding `.html` file in a browser.
 

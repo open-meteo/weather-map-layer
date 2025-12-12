@@ -2,76 +2,105 @@ import { COLOR_SCALES } from './color-scales';
 import { pressureHpaToIsaHeight } from './isa-height';
 
 import type {
+	BreakpointColorScale,
 	ColorScale,
 	ColorScales,
-	OpacityDefinition,
-	OpacityFn,
-	RGB,
-	RGBA,
-	RGBAColorScale,
-	ResolvableColorScale
+	RenderableColorScale,
+	ResolvedBreakpointColorScale
 } from '../types';
 
+function findLastIndexLE(arr: number[], value: number): number {
+	let lo = 0,
+		hi = arr.length - 1,
+		res = -1;
+	while (lo <= hi) {
+		const mid = (lo + hi) >>> 1;
+		if (arr[mid] <= value) {
+			res = mid;
+			lo = mid + 1;
+		} else {
+			hi = mid - 1;
+		}
+	}
+	return res;
+}
+
 export const getColor = (
-	colorScale: RGBAColorScale,
+	colorScale: RenderableColorScale,
 	px: number
 ): [number, number, number, number] => {
-	const deltaPerIndex = (colorScale.max - colorScale.min) / colorScale.colors.length;
-	const index = Math.min(
-		colorScale.colors.length - 1,
-		Math.max(0, Math.floor((px - colorScale.min) / deltaPerIndex))
-	);
-
-	return colorScale.colors[index];
+	switch (colorScale.type) {
+		case 'rgba': {
+			const deltaPerIndex = (colorScale.max - colorScale.min) / colorScale.colors.length;
+			const index = Math.min(
+				colorScale.colors.length - 1,
+				Math.max(0, Math.floor((px - colorScale.min) / deltaPerIndex))
+			);
+			return colorScale.colors[index];
+		}
+		case 'breakpoint': {
+			const index = Math.max(0, findLastIndexLE(colorScale.breakpoints, px));
+			return colorScale.colors[index];
+		}
+		default: {
+			// This ensures exhaustiveness checking
+			const _exhaustive: never = colorScale;
+			throw new Error(`Unknown color scale: ${_exhaustive}`);
+		}
+	}
 };
 
-const centeredPowerOpacity = (scale: number, exponent = 1.5, opacity = 75): OpacityFn => {
-	return (px: number) => {
-		const frac = Math.min(Math.pow(Math.abs(px) / scale, exponent), 1);
-		return Math.max(0, Math.min(100, frac * opacity));
+const transformScale = (
+	scale: BreakpointColorScale,
+	transform: (breakpoint: number) => number,
+	maybeUnit?: string
+): BreakpointColorScale => {
+	const breakpoints = scale.breakpoints.map(transform);
+	const unit = maybeUnit || scale.unit;
+	return {
+		...scale,
+		breakpoints,
+		unit
 	};
 };
 
-const constantOpacity = (opacity: number = 75): OpacityFn => {
-	return (_px: number) => opacity;
-};
-
-const COLOR_SCALES_WITH_ALIASES: ColorScales = {
+export const COLOR_SCALES_WITH_ALIASES: ColorScales = {
 	...COLOR_SCALES,
 	albedo: COLOR_SCALES['cloud_cover'],
-	boundary_layer_height: { ...COLOR_SCALES['convective_cloud_top'], min: 0, max: 2000 },
+	boundary_layer_height: transformScale(
+		COLOR_SCALES['convective_cloud_top'] as BreakpointColorScale,
+		(b) => b / 2
+	),
 	cloud_base: COLOR_SCALES['convective_cloud_top'],
 	cloud_top: COLOR_SCALES['convective_cloud_top'],
 	convective_cloud_base: COLOR_SCALES['convective_cloud_top'],
 	dew_point: COLOR_SCALES['temperature'],
 	diffuse_radiation: COLOR_SCALES['shortwave'],
 	direct_radiation: COLOR_SCALES['shortwave'],
-	freezing_level_height: { ...COLOR_SCALES['temperature'], unit: 'm', min: 0, max: 4000 },
+	freezing_level_height: transformScale(
+		COLOR_SCALES['temperature'] as BreakpointColorScale,
+		(b) => (b + 20) * 80,
+		'm'
+	),
 	latent_heat_flux: {
 		...COLOR_SCALES['temperature'],
-		unit: 'W/m²',
-		min: -50,
-		max: 20
+		unit: 'W/m²'
 	},
-	sea_surface_temperature: {
-		...COLOR_SCALES['temperature'],
-		min: -2,
-		max: 35
-	},
+	sea_surface_temperature: COLOR_SCALES['temperature'],
 	sensible_heat_flux: {
 		...COLOR_SCALES['temperature'],
-		unit: 'W/m²',
-		min: -50,
-		max: 50
+		unit: 'W/m²'
 	},
 	rain: COLOR_SCALES['precipitation'],
 	showers: COLOR_SCALES['precipitation'],
-	snow_depth_water_equivalent: { ...COLOR_SCALES['precipitation'], unit: 'mm', min: 0, max: 3200 },
+	snow_depth_water_equivalent: transformScale(
+		COLOR_SCALES['precipitation'] as BreakpointColorScale,
+		(b) => b * 200
+	),
 	snowfall_water_equivalent: COLOR_SCALES['precipitation'],
 	visibility: {
 		...COLOR_SCALES['geopotential_height'],
-		min: 0,
-		max: 20000
+		unit: 'W/m²'
 	},
 	wave: COLOR_SCALES['swell'],
 	wind_wave_height: COLOR_SCALES['swell'],
@@ -104,26 +133,30 @@ const getOptionalColorScale = (
 			return scale;
 		}
 
+		if (scale.type !== 'breakpoint') {
+			return scale;
+		}
+
 		const levelNum = Number(m[1]);
-		// Compute ISA height (meters) for the pressure level
-		const computedMax = pressureHpaToIsaHeight(Math.floor(0.9 * levelNum));
-		const computedMin = pressureHpaToIsaHeight(Math.ceil(1.1 * levelNum));
+
+		// geopotential_height color scale is defined on 500hPa -> scale it accordingly to other heights
+		const h500 = pressureHpaToIsaHeight(500);
+		const hLevel = pressureHpaToIsaHeight(levelNum);
+
+		const breakpoints = scale.breakpoints.map((breakpoint) => {
+			return (breakpoint * hLevel) / h500;
+		});
 
 		return {
 			...scale,
-			min: computedMin,
-			max: computedMax
+			breakpoints
 		};
 	}
 
 	if (['mean', 'max', 'min'].includes(parts[lastIndex])) {
 		return getOptionalColorScale(parts.slice(0, -1).join('_'), colorScalesSource);
 	} else if (parts[lastIndex] == 'anomaly') {
-		const match = getOptionalColorScale(parts.slice(0, -1).join('_'), colorScalesSource);
-		if (match && match.type === 'alpha_resolvable') {
-			const delta = (match.max - match.min) / 5;
-			return { ...match, max: delta, min: -delta, opacity: centeredPowerOpacity(delta * 0.5) };
-		}
+		return colorScalesSource['temperature_anomaly'];
 	}
 	return colorScalesSource[parts[0] + '_' + parts[1]] ?? colorScalesSource[parts[0]];
 };
@@ -132,7 +165,7 @@ export const getColorScale = (
 	variable: string,
 	dark: boolean,
 	colorScalesSource: ColorScales = COLOR_SCALES_WITH_ALIASES
-): RGBAColorScale => {
+): RenderableColorScale => {
 	const anyColorScale =
 		getOptionalColorScale(variable, colorScalesSource) ?? colorScalesSource['temperature'];
 	if (!anyColorScale) {
@@ -141,12 +174,29 @@ export const getColorScale = (
 	return resolveColorScale(anyColorScale, dark);
 };
 
-export const resolveColorScale = (colorScale: ColorScale, dark: boolean): RGBAColorScale => {
+// Helper to check if colors have light/dark variants
+const hasColorVariants = (
+	colors: BreakpointColorScale['colors']
+): colors is {
+	light: [number, number, number, number][];
+	dark: [number, number, number, number][];
+} => {
+	return !Array.isArray(colors) && 'light' in colors && 'dark' in colors;
+};
+
+export const resolveColorScale = (colorScale: ColorScale, dark: boolean): RenderableColorScale => {
 	switch (colorScale.type) {
-		case 'alpha_resolvable':
-			return resolveResolvableColorScale(colorScale, dark);
 		case 'rgba':
 			return colorScale;
+		case 'breakpoint': {
+			if (hasColorVariants(colorScale.colors)) {
+				return {
+					...colorScale,
+					colors: dark ? colorScale.colors.dark : colorScale.colors.light
+				} as ResolvedBreakpointColorScale;
+			}
+			return colorScale as ResolvedBreakpointColorScale;
+		}
 		default: {
 			// This ensures exhaustiveness checking
 			const _exhaustive: never = colorScale;
@@ -154,69 +204,5 @@ export const resolveColorScale = (colorScale: ColorScale, dark: boolean): RGBACo
 		}
 	}
 };
-
-const resolveResolvableColorScale = (
-	colorScale: ResolvableColorScale,
-	dark: boolean
-): RGBAColorScale => {
-	const colors: [number, number, number][] = Array.isArray(colorScale.colors)
-		? colorScale.colors
-		: dark
-			? colorScale.colors.dark
-			: colorScale.colors.light;
-
-	const opacityFn = normalizeOpacity(colorScale.opacity, dark);
-	const rgbaColors = applyOpacityToColors(colors, colorScale, opacityFn);
-
-	return {
-		type: 'rgba',
-		min: colorScale.min,
-		max: colorScale.max,
-		unit: colorScale.unit,
-		colors: rgbaColors
-	};
-};
-
-const applyOpacityToColors = (
-	colors: RGB[],
-	colorScale: ResolvableColorScale,
-	opacityFn: OpacityFn
-): RGBA[] => {
-	if (colors.length === 0) return [];
-
-	const steps = Math.max(1, colors.length - 1);
-	const delta = (colorScale.max - colorScale.min) / steps;
-
-	return colors.map((rgb, i) => {
-		const px = colorScale.min + delta * i;
-		const alpha = opacityFn(px);
-		return [...rgb, alpha] as RGBA;
-	});
-};
-
-type NormalizedOpacityFn = (px: number) => number;
-
-const normalizeOpacity = (
-	def: OpacityDefinition | undefined,
-	dark: boolean
-): NormalizedOpacityFn => {
-	if (def == null || def === undefined) {
-		return constantOpacity(dark ? 0.55 : 0.75);
-	}
-
-	if (typeof def === 'number') {
-		return constantOpacity(def);
-	}
-	// def is a function matching OpacityFn (px, dark?)
-	const fn = def as OpacityFn;
-	return (px: number) => {
-		const result = fn(px, dark);
-		const n = Number(result);
-		if (!Number.isFinite(n)) return clampOpacity(dark ? 0.55 : 0.75);
-		return clampOpacity(n);
-	};
-};
-
-const clampOpacity = (v: number) => Math.max(0, Math.min(1, v));
 
 const LEVEL_REGEX = /_(\d+)(hPa)?$/i;

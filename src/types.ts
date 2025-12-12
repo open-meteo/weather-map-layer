@@ -20,7 +20,7 @@ export interface RenderOptions {
 	drawArrows: boolean;
 	drawContours: boolean;
 	interval: number;
-	colorScale: RGBAColorScale;
+	colorScale: RenderableColorScale;
 }
 
 export interface ParsedUrlComponents {
@@ -142,12 +142,6 @@ export type TilePixel = {
 	tileIndex: TileIndex;
 };
 
-interface ColorScaleBase {
-	min: number;
-	max: number;
-	unit: string;
-}
-
 // Simple RGB color
 export type RGB = [number, number, number];
 export type RGBA = [number, number, number, number];
@@ -160,25 +154,37 @@ export type OpacityFn = (px: number, dark?: boolean) => number;
 // Opacity definition can a simple constant or a function
 export type OpacityDefinition = number | OpacityFn;
 
-// The two color scale variants
-export interface RGBAColorScale extends ColorScaleBase {
-	type: 'rgba';
+export interface BreakpointColorScale {
+	type: 'breakpoint';
+	unit: string;
+	// Must be sorted, e.g. [0, 10, 20, 30, 50, 100]
+	breakpoints: number[];
+	// Needs to have same length as breakpoints
+	colors: RGBA[] | { light: RGBA[]; dark: RGBA[] };
+}
+
+export interface ResolvedBreakpointColorScale {
+	type: 'breakpoint';
+	unit: string;
+	breakpoints: number[];
 	colors: RGBA[];
 }
 
-export interface ResolvableColorScale extends ColorScaleBase {
-	type: 'alpha_resolvable';
-	colors: ColorDefinition;
-	opacity?: OpacityDefinition;
+export interface RGBAColorScale {
+	type: 'rgba';
+	unit: string;
+	min: number;
+	max: number;
+	colors: RGBA[];
 }
 
 // Union type with discriminant
-export type ColorScale = RGBAColorScale | ResolvableColorScale;
+export type ColorScale = RGBAColorScale | BreakpointColorScale;
+
+export type RenderableColorScale = RGBAColorScale | ResolvedBreakpointColorScale;
 
 // Dictionary of color scales
 export type ColorScales = Record<string, ColorScale>;
-
-export type InterpolationMethod = 'none' | 'linear' | 'hermite2d';
 
 export type Interpolator = (
 	values: Float32Array<ArrayBufferLike>,

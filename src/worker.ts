@@ -22,7 +22,8 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 	}
 
 	if (message.data.type == 'getImage') {
-		const tileSize = message.data.renderOptions.tileSize;
+		const tileSize =
+			message.data.renderOptions.tileSize * message.data.renderOptions.resolutionFactor;
 		const colorScale = message.data.renderOptions.colorScale;
 
 		const pixels = tileSize * tileSize;

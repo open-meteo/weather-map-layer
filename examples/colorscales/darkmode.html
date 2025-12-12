@@ -19,10 +19,41 @@
 				padding: 0;
 				height: 100%;
 			}
+
+			.mode-toggle {
+				position: absolute;
+				right: 12px;
+				top: 12px;
+				background: rgba(255, 255, 255, 0.9);
+				border-radius: 6px;
+				padding: 8px 10px;
+				font-family: sans-serif;
+				box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+				z-index: 2;
+			}
+			.mode-toggle.dark {
+				background: rgba(20, 20, 20, 0.85);
+				color: #fff;
+			}
+			.mode-toggle label {
+				align-items: center;
+				display: inline-flex;
+				gap: 8px;
+				cursor: pointer;
+				user-select: none;
+			}
 		</style>
 	</head>
 	<body>
 		<div id="map"></div>
+
+		<div id="toggle" class="mode-toggle" role="region" aria-label="Map color mode">
+			<label>
+				<input id="modeCheckbox" type="checkbox" />
+				Dark mode
+			</label>
+		</div>
+
 		<script>
 			maplibregl.addProtocol('om', OpenMeteoMapboxLayer.omProtocol);
 
@@ -50,12 +81,34 @@
 				hash: true
 			});
 
-			// give the 'dark=true' parameter to the url for dark background maps
-			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m&dark=true`;
+			let dark = false;
+			const baseOmUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=cloud_cover`;
+
+			function setDarkMode(dark) {
+				// update UI style
+				const wrapper = document.getElementById('toggle');
+				if (dark) {
+					wrapper.classList.add('dark');
+				} else {
+					wrapper.classList.remove('dark');
+				}
+
+				const omUrl = baseOmUrl + (dark ? '&dark=true' : '');
+
+				const omFileSource = map.getSource('omFileSource');
+				if (omFileSource) {
+					omFileSource.setUrl('om://' + omUrl);
+				}
+			}
+
+			const checkbox = document.getElementById('modeCheckbox');
+			checkbox.addEventListener('change', (evt) => {
+				setDarkMode(evt.target.checked);
+			});
 
 			map.on('load', () => {
 				map.addSource('omFileSource', {
-					url: 'om://' + omUrl,
+					url: 'om://' + baseOmUrl,
 					type: 'raster',
 					tileSize: 256,
 					maxzoom: 12

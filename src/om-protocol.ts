@@ -1,8 +1,8 @@
 import { type GetResourceResponse, type RequestParameters } from 'maplibre-gl';
 
-import { COLOR_SCALES as defaultColorScales } from './utils/color-scales';
 import { defaultResolveRequest, parseRequest } from './utils/parse-request';
 import { assertOmUrlValid, parseMetaJson } from './utils/parse-url';
+import { COLOR_SCALES_WITH_ALIASES as defaultColorScales } from './utils/styling';
 
 import { domainOptions as defaultDomainOptions } from './domains';
 import { GridFactory } from './grids/index';
