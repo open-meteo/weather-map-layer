@@ -225,11 +225,18 @@ interface VariableDerivationRule {
 const DEFAULT_DERIVATION_RULES: VariableDerivationRule[] = [
 	// UV wind components -> speed and direction
 	{
-		pattern: /_[uv]_component/,
-		getSourceVars: (variable: string) => [
-			variable.replace('_v_component', '_u_component'),
-			variable.replace('_u_component', '_v_component')
-		],
+		pattern: /_[uv]_(component|current)/,
+		getSourceVars: (variable: string) => {
+			let postfix = '';
+			const match = variable.match(/_[uv]_(?<postfix>component|current)/);
+			if (match?.groups) {
+				postfix = match.groups.postfix;
+			}
+			return [
+				variable.replace(`_v_${postfix}`, `_u_${postfix}`),
+				variable.replace(`_u_${postfix}`, `_v_${postfix}`)
+			];
+		},
 		process: (u: Float32Array, v: Float32Array) => {
 			const BufferConstructor = u.buffer.constructor as typeof ArrayBuffer;
 			const values = new Float32Array(new BufferConstructor(u.byteLength));
