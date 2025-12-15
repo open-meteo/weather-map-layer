@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.0.9](https://github.com/open-meteo/mapbox-layer/compare/v0.0.8...v0.0.9) (2025-12-15)
+
+
+### Features
+
+* Add combined variable example ([#103](https://github.com/open-meteo/mapbox-layer/issues/103)) ([c4ceed3](https://github.com/open-meteo/mapbox-layer/commit/c4ceed36bf679d323b2224d07e24f09db7a5f605))
+* Add darkmode example ([#104](https://github.com/open-meteo/mapbox-layer/issues/104)) ([294d1ad](https://github.com/open-meteo/mapbox-layer/commit/294d1ad3ea09e5edef9018ede39d36a4788c426c))
+* Add missing variable labels and remove variable type ([#105](https://github.com/open-meteo/mapbox-layer/issues/105)) ([6c576e7](https://github.com/open-meteo/mapbox-layer/commit/6c576e746a9b0f2d8f60f2411fd3a11791e09025))
+* Custom contouring intervals and contouring intervals on breakpoints ([#116](https://github.com/open-meteo/mapbox-layer/issues/116)) ([132e3a8](https://github.com/open-meteo/mapbox-layer/commit/132e3a805376b0ebbf328ff1595e7e68a268998d))
+* Improve reader derivation rules for values and directions ([#99](https://github.com/open-meteo/mapbox-layer/issues/99)) ([3722506](https://github.com/open-meteo/mapbox-layer/commit/3722506b2cbfd3902a8618d1145697b44633b692))
+* Improve `time_interval` and `model_interval` of Domain type ([#100](https://github.com/open-meteo/mapbox-layer/issues/100)) ([5d383a1](https://github.com/open-meteo/mapbox-layer/commit/5d383a176e33113d2b7e2e196bf25266ab50d7f2))
+* Rework colorscales ([#79](https://github.com/open-meteo/mapbox-layer/issues/79)) ([f9a75f4](https://github.com/open-meteo/mapbox-layer/commit/f9a75f42340f351708fcac17840169d429fac5bb)) ([#110](https://github.com/open-meteo/mapbox-layer/issues/110)) ([248950a](https://github.com/open-meteo/mapbox-layer/commit/248950a5d6d5fea43941b3d03c5b030a63827009))
+
+
+### Bug Fixes
+
+* Await `ensureData` before `getTileJson` ([#113](https://github.com/open-meteo/mapbox-layer/issues/113)) ([12a12e1](https://github.com/open-meteo/mapbox-layer/commit/12a12e18558a1dfa9c2c1d0223dd18b692783bef))
+* Bump tsx from 4.20.6 to 4.21.0 in the openmeteo group ([#106](https://github.com/open-meteo/mapbox-layer/issues/106)) ([a398cdf](https://github.com/open-meteo/mapbox-layer/commit/a398cdfbc3a188ab3c43e85cf9d1351ad369031a))
+* Change readme examples to capture api ([7c0b06a](https://github.com/open-meteo/mapbox-layer/commit/7c0b06af6930aa1142a8bbc4f527f3fb57857dce))
+
 ## [0.0.8](https://github.com/open-meteo/mapbox-layer/compare/v0.0.7...v0.0.8) (2025-12-02)
 
 
