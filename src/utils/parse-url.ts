@@ -1,22 +1,16 @@
 import { pad } from '.';
 import { domainOptions } from '../domains';
 
+import {
+	DOMAIN_REGEX,
+	OM_PREFIX_REGEX,
+	RENDERING_ONLY_PARAMS,
+	TILE_SUFFIX_REGEX,
+	TIME_STEP_REGEX,
+	VALID_OM_URL_REGEX
+} from './constants';
+
 import { ParsedUrlComponents, TileIndex } from '../types';
-
-const OM_URL_REGEX = /^om:\/\/([^?]+)(?:\?(.*))?$/;
-// Match both regular and percent-encoded slashes
-const TILE_SUFFIX_REGEX = /(?:\/)(\d+)(?:\/)(\d+)(?:\/)(\d+)$/i;
-
-// Parameters that don't affect the data identity (only affect rendering)
-const RENDERING_ONLY_PARAMS = new Set([
-	'grid',
-	'arrows',
-	'contours',
-	'partial',
-	'tile-size', // TODO: tile_size ?
-	'resolution-factor', // TODO: resolution_factor ?
-	'interval'
-]);
 
 const parseTileIndex = (url: string): { tileIndex: TileIndex | null; remainingUrl: string } => {
 	const match = url.match(TILE_SUFFIX_REGEX);
@@ -47,7 +41,7 @@ const parseTileIndex = (url: string): { tileIndex: TileIndex | null; remainingUr
 export const parseUrlComponents = (url: string): ParsedUrlComponents => {
 	const { tileIndex, remainingUrl } = parseTileIndex(url);
 
-	const match = remainingUrl.match(OM_URL_REGEX);
+	const match = remainingUrl.match(OM_PREFIX_REGEX);
 	if (!match) {
 		throw new Error(`Invalid OM protocol URL: ${url}`);
 	}
@@ -68,12 +62,6 @@ export const parseUrlComponents = (url: string): ParsedUrlComponents => {
 
 	return { baseUrl, params, stateKey, tileIndex };
 };
-
-const VALID_OM_FILE_REGEX =
-	/(http|https):\/\/(?<uri>[\s\S]+)\/(?<domain>[\s\S]+)\/(?<runYear>[\s\S]+)?\/(?<runMonth>[\s\S]+)?\/(?<runDate>[\s\S]+)?\/(?<runTime>[\s\S]+)?\/(?<file>[\s\S]+)?\.(om|json)(?<params>[\s\S]+)?/;
-const DOMAIN_REGEX = /(http|https):\/\/(?<uri>[\s\S]+)\/(?<domain>[\s\S]+)\/(?<meta>[\s\S]+).json/;
-const TIME_STEP_REGEX =
-	/(?<capture>(current_time|valid_times))(_)?(?<modifier>(\+|-))?(?<amountAndUnit>.*)?/;
 
 /**
  * Returns positive amount if modifier is '+' or 'undefined', returns negative amount otherwise
@@ -157,7 +145,7 @@ export const parseMetaJson = async (omUrl: string) => {
 };
 
 export const assertOmUrlValid = (url: string) => {
-	const groups = url.match(VALID_OM_FILE_REGEX)?.groups;
+	const groups = url.match(VALID_OM_URL_REGEX)?.groups;
 	if (!groups) return false;
 
 	const { domain, runYear } = groups;

@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 	<head>
-		<title>Open-Meteo Mapbox Layer - Wind Arrows Example</title>
+		<title>Open-Meteo Mapbox Layer - Custom Contouring Interval Example</title>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.css" />
@@ -10,7 +10,7 @@
 		<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.8/dist/index.js"></script>
 		<!-- x-release-please-end -->
 		<!-- Local development -->
-		<!--<script src="../../dist/index.js"></script>-->
+		<!--<script src="../../../dist/index.js"></script>-->
 		<style>
 			html,
 			body,
@@ -28,7 +28,6 @@
 
 			const map = new maplibregl.Map({
 				container: 'map',
-				maxZoom: 12,
 				style: {
 					version: 8,
 					sources: {
@@ -46,13 +45,12 @@
 							type: 'raster',
 							source: 'osm'
 						}
-					],
-					glyphs: 'https://maptiler.servert.nl/fonts/{fontstack}/{range}.pbf'
+					]
 				},
 				hash: true
 			});
 
-			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=wind_u_component_10m`;
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m&contours=true&intervals=-5.2,0,3,7,10.5,12.3,17,20.8`;
 
 			map.on('load', () => {
 				map.addSource('omFileRasterSource', {
@@ -69,7 +67,7 @@
 				});
 
 				map.addSource('omFileVectorSource', {
-					url: 'om://' + omUrl + '&arrows=true',
+					url: 'om://' + omUrl,
 					type: 'vector'
 				});
 
@@ -77,33 +75,25 @@
 					id: 'omFileVectorLayer',
 					type: 'line',
 					source: 'omFileVectorSource',
-					'source-layer': 'wind-arrows',
+					'source-layer': 'contours',
 					paint: {
-						'line-color': [
-							'case',
-							['boolean', ['>', ['to-number', ['get', 'value']], 5], false],
-							'rgba(0,0,0, 0.6)',
-							[
-								'case',
-								['boolean', ['>', ['to-number', ['get', 'value']], 4], false],
-								'rgba(0,0,0, 0.5)',
-								[
-									'case',
-									['boolean', ['>', ['to-number', ['get', 'value']], 3], false],
-									'rgba(0,0,0, 0.4)',
-									[
-										'case',
-										['boolean', ['>', ['to-number', ['get', 'value']], 2], false],
-										'rgba(0,0,0, 0.3)',
-										'rgba(0,0,0, 0.2)'
-									]
-								]
-							]
-						],
-						'line-width': 2
-					},
+						'line-color': 'rgba(0,0,0,0.85)',
+						'line-width': 1
+					}
+				});
+
+				map.addLayer({
+					id: 'omFileVectorLayerLabels',
+					type: 'symbol',
+					source: 'omFileVectorSource',
+					'source-layer': 'contours',
 					layout: {
-						'line-cap': 'round'
+						'symbol-placement': 'line-center',
+						'symbol-spacing': 1,
+						'text-font': ['Noto Sans Regular'],
+						'text-field': ['to-string', ['get', 'value']],
+						'text-padding': 1,
+						'text-offset': [0, -0.6]
 					}
 				});
 			});

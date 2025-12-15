@@ -78,14 +78,14 @@ describe('URL Parsing', () => {
 
 		it('excludes rendering-only params from stateKey', async () => {
 			const url1 =
-				'om://https://example.com/data_spatial/domain1/file.om?variable=temp&tile-size=512';
+				'om://https://example.com/data_spatial/domain1/file.om?variable=temp&tile_size=512';
 			const url2 =
-				'om://https://example.com/data_spatial/domain1/file.om?variable=temp&tile-size=256';
+				'om://https://example.com/data_spatial/domain1/file.om?variable=temp&tile_size=256';
 
 			const components1 = parseUrlComponents(url1);
 			const components2 = parseUrlComponents(url2);
 
-			// Same stateKey despite different tile-size
+			// Same stateKey despite different tile_size
 			expect(components1.stateKey).toBe(components2.stateKey);
 		});
 

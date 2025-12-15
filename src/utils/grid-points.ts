@@ -1,5 +1,6 @@
 import Pbf from 'pbf';
 
+import { VECTOR_TILE_EXTENT } from './constants';
 import { lat2tile, lon2tile } from './math';
 import { command, writeLayer, zigzag } from './pbf';
 
@@ -13,7 +14,7 @@ export const generateGridPoints = (
 	x: number,
 	y: number,
 	z: number,
-	extent: number = 4096,
+	extent: number = VECTOR_TILE_EXTENT,
 	margin: number = 0
 ) => {
 	const features = [];

@@ -1,4 +1,5 @@
 export * from './utils/color-scales';
+export * from './utils/constants';
 export * from './utils/contours';
 export * from './utils/grid-points';
 export * from './utils/index';

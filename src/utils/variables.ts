@@ -116,7 +116,8 @@ export const variableOptions = [
 	{ value: 'surface_temperature', label: 'Surface Temperature' },
 	{ value: 'surface_temperature_anomaly_gt0', label: 'Surface Temperature Anomaly GT0' },
 
-	{ value: 'swell_wave_height', label: 'Swell Wave Height' },
+	{ value: 'swell_wave_height', label: 'Swell Wave Height & Direction' }, // combined
+	{ value: 'swell_wave_direction', label: 'Swell Wave Height & Direction' }, // combined
 	{ value: 'swell_wave_peak_period', label: 'Swell Wave Peak Period' },
 	{ value: 'swell_wave_period', label: 'Swell Wave Period' },
 
@@ -156,16 +157,17 @@ export const variableOptions = [
 
 	{ value: 'visibility', label: 'Visibility' },
 
-	{ value: 'wave_height', label: 'Wave Height & Direction' },
+	{ value: 'wave_height', label: 'Wave Height & Direction' }, // combined
+	{ value: 'wave_direction', label: 'Wave Height & Direction' }, // combined
 	{ value: 'wave_period', label: 'Wave Period' },
-	{ value: 'wave_direction', label: 'Wave Direction' },
 	{ value: 'wave_peak_period', label: 'Wave Peak Period' },
 
 	{ value: 'weather_code', label: 'Weather Codes' },
 
 	{ value: 'wind_gusts_10m', label: 'Wind Gusts (10m)' },
 
-	{ value: 'wind_wave_height', label: 'Wind Wave Height' },
+	{ value: 'wind_wave_height', label: 'Wind Wave Height & Direction' }, // combined
+	{ value: 'wind_wave_direction', label: 'Wind Wave Height & Direction' }, // combined
 	{ value: 'wind_wave_period', label: 'Wind Wave Period' },
 	{ value: 'wind_wave_peak_period', label: 'Wind Wave Peak Period' },
 	{ value: 'wind_u_component_10m_anomaly', label: 'Wind (10m) Anomaly' },

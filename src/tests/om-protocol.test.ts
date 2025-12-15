@@ -4,7 +4,13 @@ import { parseUrlComponents } from '../utils/parse-url';
 import { RequestParameters } from 'maplibre-gl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { DimensionRange, Domain, OmProtocolSettings, TileJSON } from '../types';
+import {
+	DimensionRange,
+	Domain,
+	OmProtocolSettings,
+	ResolvedBreakpointColorScale,
+	TileJSON
+} from '../types';
 
 const { mockReturnBuffer, mockReadVariableResult } = vi.hoisted(() => ({
 	mockReturnBuffer: { value: new ArrayBuffer(16) },
@@ -72,13 +78,13 @@ describe('Request Resolution', () => {
 			const settings = createTestSettings({ domainOptions });
 
 			const url =
-				'om://https://example.com/data_spatial/domain1/file.om?variable=temperature&dark=true&interval=2';
+				'om://https://example.com/data_spatial/domain1/file.om?variable=temperature&dark=true&intervals=2';
 			const components = parseUrlComponents(url);
 			const { dataOptions, renderOptions } = defaultResolveRequest(components, settings);
 
 			expect(dataOptions.domain.value).toBe('domain1');
 			expect(dataOptions.variable).toBe('temperature');
-			expect(renderOptions.interval).toBe(2);
+			expect(renderOptions.intervals).toStrictEqual([2]);
 		});
 
 		it('computes partial ranges when partial=true and bounds provided', async () => {
@@ -141,12 +147,14 @@ describe('Request Resolution', () => {
 			const components = parseUrlComponents(url);
 			const { renderOptions } = defaultResolveRequest(components, settings);
 
+			const colorScale = renderOptions.colorScale as ResolvedBreakpointColorScale;
+
 			expect(renderOptions.tileSize).toBe(256);
 			expect(renderOptions.resolutionFactor).toBe(1);
 			expect(renderOptions.drawGrid).toBe(false);
 			expect(renderOptions.drawArrows).toBe(false);
 			expect(renderOptions.drawContours).toBe(false);
-			expect(renderOptions.interval).toBe(0);
+			expect(renderOptions.intervals).toStrictEqual(colorScale.breakpoints);
 			expect(renderOptions.colorScale.colors.length).toBe(46);
 		});
 
@@ -155,7 +163,7 @@ describe('Request Resolution', () => {
 			const settings = createTestSettings({ domainOptions });
 
 			const url =
-				'om://https://example.com/data_spatial/domain1/file.om?variable=temp&tile-size=512&resolution-factor=2&grid=true&arrows=true&contours=true';
+				'om://https://example.com/data_spatial/domain1/file.om?variable=temp&tile_size=512&resolution_factor=2&grid=true&arrows=true&contours=true';
 			const components = parseUrlComponents(url);
 			const { renderOptions } = defaultResolveRequest(components, settings);
 
@@ -171,7 +179,7 @@ describe('Request Resolution', () => {
 			const settings = createTestSettings({ domainOptions });
 
 			const url =
-				'om://https://example.com/data_spatial/domain1/file.om?variable=temp&tile-size=999';
+				'om://https://example.com/data_spatial/domain1/file.om?variable=temp&tile_size=999';
 			const components = parseUrlComponents(url);
 
 			expect(() => defaultResolveRequest(components, settings)).toThrow('Invalid tile size');
@@ -182,7 +190,7 @@ describe('Request Resolution', () => {
 			const settings = createTestSettings({ domainOptions });
 
 			const url =
-				'om://https://example.com/data_spatial/domain1/file.om?variable=temp&resolution-factor=3';
+				'om://https://example.com/data_spatial/domain1/file.om?variable=temp&resolution_factor=3';
 			const components = parseUrlComponents(url);
 
 			expect(() => defaultResolveRequest(components, settings)).toThrow(
@@ -211,7 +219,7 @@ describe('Request Resolution', () => {
 					makeGrid: false,
 					makeArrows: false,
 					makeContours: false,
-					interval: 0,
+					interval: [2],
 					colorScale: {
 						min: 0,
 						max: 100,

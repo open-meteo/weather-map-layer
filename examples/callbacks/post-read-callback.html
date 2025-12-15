@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 	<head>
-		<title>Open-Meteo Mapbox Layer - Wind Example</title>
+		<title>Open-Meteo Mapbox Layer - Post Read Callback Colorscale</title>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.css" />
@@ -10,7 +10,7 @@
 		<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.8/dist/index.js"></script>
 		<!-- x-release-please-end -->
 		<!-- Local development -->
-		<!--<script src="../dist/index.js"></script>-->
+		<!--<script src="../../dist/index.js"></script>-->
 		<style>
 			html,
 			body,
@@ -24,7 +24,25 @@
 	<body>
 		<div id="map"></div>
 		<script>
-			maplibregl.addProtocol('om', OpenMeteoMapboxLayer.omProtocol);
+			// ECMWF IFS HRES Pressure Data is shown in MPa instead of HPa, scale the values down by 100 post read
+			const postReadCallback = (omFileReader, data, state) => {
+				if (
+					state.dataOptions.domain.value === 'ecmwf_ifs' &&
+					state.dataOptions.variable === 'pressure_msl'
+				) {
+					if (data.values) {
+						data.values = data.values?.map((value) => value / 100);
+					}
+				}
+			};
+
+			const omProtocolOptions = OpenMeteoMapboxLayer.defaultOmProtocolSettings;
+			omProtocolOptions.postReadCallback = postReadCallback;
+
+			// use the settings as argument for the protocol
+			maplibregl.addProtocol('om', (params) =>
+				OpenMeteoMapboxLayer.omProtocol(params, undefined, omProtocolOptions)
+			);
 
 			const map = new maplibregl.Map({
 				container: 'map',
@@ -50,7 +68,7 @@
 				hash: true
 			});
 
-			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=wind_u_component_10m`;
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/ecmwf_ifs/latest.json?time_step=current_time_1H&variable=pressure_msl`;
 
 			map.on('load', () => {
 				map.addSource('omFileSource', {

@@ -19,7 +19,7 @@ export interface RenderOptions {
 	drawGrid: boolean;
 	drawArrows: boolean;
 	drawContours: boolean;
-	interval: number;
+	intervals: number[];
 	colorScale: RenderableColorScale;
 }
 

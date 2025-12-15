@@ -13,19 +13,18 @@ import { TileRequest } from './types';
 self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 	const key = message.data.key;
 	const { z, x, y } = message.data.tileIndex;
+	const values = message.data.data.values;
 	const ranges = message.data.dataOptions.ranges;
 	const domain = message.data.dataOptions.domain;
-	const values = message.data.data.values;
+	const colorScale = message.data.renderOptions.colorScale;
+	const tileSize =
+		message.data.renderOptions.tileSize * message.data.renderOptions.resolutionFactor;
 
 	if (!values) {
 		throw new Error('No values provided');
 	}
 
 	if (message.data.type == 'getImage') {
-		const tileSize =
-			message.data.renderOptions.tileSize * message.data.renderOptions.resolutionFactor;
-		const colorScale = message.data.renderOptions.colorScale;
-
 		const pixels = tileSize * tileSize;
 		// Initialized with zeros
 		const rgba = new Uint8ClampedArray(pixels * 4);
@@ -68,9 +67,9 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 			generateArrows(pbf, values, directions, domain, ranges, x, y, z);
 		}
 		if (message.data.renderOptions.drawContours) {
-			const interval = message.data.renderOptions.interval;
+			const intervals = message.data.renderOptions.intervals;
 			const grid = GridFactory.create(domain.grid, ranges);
-			generateContours(pbf, values, grid, x, y, z, interval ? interval : 2);
+			generateContours(pbf, values, grid, x, y, z, tileSize, intervals);
 		}
 
 		const arrayBuffer = pbf.finish();

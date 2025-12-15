@@ -102,9 +102,6 @@ The repository contains an `examples` directory with ready-to-run demos:
 - `examples/precipitation.html` – displays precipitation using a similar setup.
 - `examples/wind.html` – displays wind values, for arrows overlay see [Vector sources](#vector-sources).
 - `examples/combined-variables.html` – shows multiple data sources on the same map.
-- `examples/colorscales/darkmode.html` – uses the `dark=true` url flag to select optimized color scales for dark background basemaps.
-- `examples/colorscales/custom-rgba.html` – shows how to use a color scale that scales linearly along an array of RGBA values.
-- `examples/colorscales/custom-breakpoint.html` – shows how to custom breakpoints in the color scale definitions.
 
 Run the examples by opening the corresponding `.html` file in a browser.
 
@@ -136,11 +133,45 @@ map.on('load', () => {
 
 For the vector source examples there is the `examples/vector` sub-directory with ready-to-run demos:
 
-- `examples/vector/contouring-pressure.html` – shows how to use contouring with a pressure map.
 - `examples/vector/grid-points.html` – displays all grid points for a model, with value data on each point.
 - `examples/vector/temperature-anomaly.html` – shows a seasonal forecast map with temperature anomalies.
 - `examples/vector/temperature-labels.html` – displays all grid points for a model, using value data to show temperature labels.
 - `examples/vector/wind-arrows.html` – displays wind map with directional arrows.
+
+### Contouring
+
+- `examples/vector/contouring/contouring-pressure.html` – shows how to use contouring with a pressure map.
+- `examples/vector/contouring/contouring-on-colorscale.html` – shows how to use contouring to follow the breakpoints in the colorscale.
+- `examples/vector/contouring/custom-contouring-interval.html` – shows how to use contouring a custom contouring interval.
+
+### Colors
+
+If you’re rendering tiles on a dark base‑map or simply want to experiment with alternative color schemes, the documentation includes several example pages that illustrate all the available color‑scale options:
+
+- `examples/colorscales/darkmode.html` – demonstrates the `dark=true` URL parameter, which automatically switches to palettes fine‑tuned for dark backgrounds.
+- `examples/colorscales/custom-rgba.html` – shows how to build a linear gradient from a user‑defined array of RGBA values.
+- `examples/colorscales/custom-breakpoint.html` – demonstrates how to insert your own breakpoints into the scale definitions.
+
+### Callbacks
+
+When you need to modify the data after it’s been loaded, the protocol now includes a post‑read callback. You can transform the data with code similar to the following:
+
+```ts
+const postReadCallback = (omFileReader, data, state) => {
+	if (data.values) {
+		data.values = data.values?.map((value) => value / 100);
+	}
+};
+
+const omProtocolOptions = OpenMeteoMapboxLayer.defaultOmProtocolSettings;
+omProtocolOptions.postReadCallback = postReadCallback;
+
+maplibregl.addProtocol('om', (params) =>
+	OpenMeteoMapboxLayer.omProtocol(params, undefined, omProtocolOptions)
+);
+```
+
+A sample implementation with a usefull case is available in the `examples/callbacks` sub-directory.
 
 ## Capture API
 

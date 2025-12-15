@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 	<head>
-		<title>Open-Meteo Mapbox Layer - Wind Arrows Example</title>
+		<title>Open-Meteo Mapbox Layer - Contouring Pressure Example</title>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.css" />
@@ -10,7 +10,7 @@
 		<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.8/dist/index.js"></script>
 		<!-- x-release-please-end -->
 		<!-- Local development -->
-		<!--<script src="../../dist/index.js"></script>-->
+		<!--<script src="../../../dist/index.js"></script>-->
 		<style>
 			html,
 			body,
@@ -52,7 +52,7 @@
 				hash: true
 			});
 
-			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=wind_u_component_10m`;
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=pressure_msl&intervals=2&contours=true`;
 
 			map.on('load', () => {
 				map.addSource('omFileRasterSource', {
@@ -69,7 +69,7 @@
 				});
 
 				map.addSource('omFileVectorSource', {
-					url: 'om://' + omUrl + '&arrows=true',
+					url: 'om://' + omUrl,
 					type: 'vector'
 				});
 
@@ -77,34 +77,70 @@
 					id: 'omFileVectorLayer',
 					type: 'line',
 					source: 'omFileVectorSource',
-					'source-layer': 'wind-arrows',
+					'source-layer': 'contours',
 					paint: {
-						'line-color': [
+						'line-color': ['case', ['boolean', ['feature-state', 'hover'], false], 'red', 'black'],
+						'line-width': [
 							'case',
-							['boolean', ['>', ['to-number', ['get', 'value']], 5], false],
-							'rgba(0,0,0, 0.6)',
+							['boolean', ['feature-state', 'hover'], false],
+							4,
 							[
 								'case',
-								['boolean', ['>', ['to-number', ['get', 'value']], 4], false],
-								'rgba(0,0,0, 0.5)',
+								['boolean', ['==', ['%', ['to-number', ['get', 'value']], 100], 0], false],
+								3,
 								[
 									'case',
-									['boolean', ['>', ['to-number', ['get', 'value']], 3], false],
-									'rgba(0,0,0, 0.4)',
+									['boolean', ['==', ['%', ['to-number', ['get', 'value']], 50], 0], false],
+									2,
 									[
 										'case',
-										['boolean', ['>', ['to-number', ['get', 'value']], 2], false],
-										'rgba(0,0,0, 0.3)',
-										'rgba(0,0,0, 0.2)'
+										['boolean', ['==', ['%', ['to-number', ['get', 'value']], 10], 0], false],
+										1.5,
+										1
 									]
 								]
 							]
-						],
-						'line-width': 2
-					},
-					layout: {
-						'line-cap': 'round'
+						]
 					}
+				});
+
+				map.addLayer({
+					id: 'omFileVectorLayerLabels',
+					type: 'symbol',
+					source: 'omFileVectorSource',
+					'source-layer': 'contours',
+					layout: {
+						'symbol-placement': 'line-center',
+						'symbol-spacing': 1,
+						'text-font': ['Noto Sans Regular'],
+						'text-field': ['to-string', ['get', 'value']],
+						'text-padding': 1,
+						'text-offset': [0, -0.6]
+						//'text-allow-overlap': true,
+						//'text-ignore-placement': true
+					},
+					paint: {
+						'text-color': ['case', ['boolean', ['feature-state', 'hover'], false], 'red', 'black']
+					}
+				});
+
+				let hoveredLevel = 0;
+				map.on('mouseenter', 'omFileVectorLayer', (e) => {
+					if (e.features.length > 0) {
+						hoveredLevel = e.features[0].id;
+						map.setFeatureState(
+							{ source: 'omFileVectorSource', id: hoveredLevel, sourceLayer: 'contours' },
+							{ hover: true }
+						);
+					}
+				});
+
+				map.on('mouseleave', 'omFileVectorLayer', () => {
+					map.setFeatureState(
+						{ source: 'omFileVectorSource', id: hoveredLevel, sourceLayer: 'contours' },
+						{ hover: false }
+					);
+					hoveredLevel = null;
 				});
 			});
 		</script>
