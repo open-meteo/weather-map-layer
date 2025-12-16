@@ -170,10 +170,10 @@ export const generateContours = (
 			}
 
 			for (const threshold of intervalList) {
-				const tl = tld > threshold;
-				const tr = trd > threshold;
-				const bl = bld > threshold;
-				const br = brd > threshold;
+				const tl = tld >= threshold;
+				const tr = trd >= threshold;
+				const bl = bld >= threshold;
+				const br = brd >= threshold;
 				for (const segment of CASES[(tl ? 8 : 0) | (tr ? 4 : 0) | (br ? 2 : 0) | (bl ? 1 : 0)]) {
 					let fragmentByStart = fragmentByStartByLevel.get(threshold);
 					if (!fragmentByStart)

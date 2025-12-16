@@ -1,3 +1,5 @@
+import { roundWithPrecision } from '../utils/math';
+
 import type { DimensionRange } from '../types';
 
 export const noInterpolation = (values: Float32Array, index: number): number => {
@@ -22,24 +24,24 @@ export const interpolateLinear = (
 		return NaN;
 	}
 
-	const p0 = Number(values[index]);
-	const p1 = Number(values[index + 1]);
-	const p2 = Number(values[index + nx]);
-	const p3 = Number(values[index + 1 + nx]);
+	const p0 = values[index];
+	const p1 = values[index + 1];
+	const p2 = values[index + nx];
+	const p3 = values[index + 1 + nx];
 
 	const w0 = (1 - xFraction) * (1 - yFraction);
 	const w1 = xFraction * (1 - yFraction);
 	const w2 = (1 - xFraction) * yFraction;
 	const w3 = xFraction * yFraction;
 
-	const n0 = Number.isNaN(p0);
-	const n1 = Number.isNaN(p1);
-	const n2 = Number.isNaN(p2);
-	const n3 = Number.isNaN(p3);
+	const n0 = !isFinite(p0);
+	const n1 = !isFinite(p1);
+	const n2 = !isFinite(p2);
+	const n3 = !isFinite(p3);
 
 	// If none are NaN → normal bilinear interpolation
 	if (!n0 && !n1 && !n2 && !n3) {
-		return p0 * w0 + p1 * w1 + p2 * w2 + p3 * w3;
+		return roundWithPrecision(p0 * w0 + p1 * w1 + p2 * w2 + p3 * w3);
 	}
 
 	// --- EXACTLY ONE POINT MISSING CASES ---
@@ -49,28 +51,28 @@ export const interpolateLinear = (
 	if (n0 && !n1 && !n2 && !n3) {
 		if (xFraction + yFraction < 1) return NaN; // Not in triangle
 		const ws = w1 + w2 + w3;
-		return (p1 * w1 + p2 * w2 + p3 * w3) / ws;
+		return roundWithPrecision((p1 * w1 + p2 * w2 + p3 * w3) / ws);
 	}
 
 	// p1 is missing → valid triangle = (p0, p2, p3)
 	if (!n0 && n1 && !n2 && !n3) {
 		if (1 - xFraction + yFraction < 1) return NaN; // Not in triangle
 		const ws = w0 + w2 + w3;
-		return (p0 * w0 + p2 * w2 + p3 * w3) / ws;
+		return roundWithPrecision((p0 * w0 + p2 * w2 + p3 * w3) / ws);
 	}
 
 	// p2 is missing → valid triangle = (p0, p1, p3)
 	if (!n0 && !n1 && n2 && !n3) {
 		if (xFraction + 1 - yFraction < 1) return NaN; // Not in triangle
 		const ws = w0 + w1 + w3;
-		return (p0 * w0 + p1 * w1 + p3 * w3) / ws;
+		return roundWithPrecision((p0 * w0 + p1 * w1 + p3 * w3) / ws);
 	}
 
 	// p3 is missing → valid triangle = (p0, p1, p2)
 	if (!n0 && !n1 && !n2 && n3) {
 		if (1 - xFraction + 1 - yFraction < 1) return NaN; // Not in triangle
 		const ws = w0 + w1 + w2;
-		return (p0 * w0 + p1 * w1 + p2 * w2) / ws;
+		return roundWithPrecision((p0 * w0 + p1 * w1 + p2 * w2) / ws);
 	}
 
 	// More than 1 point missing → no valid triangle

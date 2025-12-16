@@ -1,4 +1,4 @@
-import { modPositive } from '../utils/math';
+import { modPositive, roundWithPrecision } from '../utils/math';
 
 import { GridInterface } from './interface';
 
@@ -166,11 +166,11 @@ export class GaussianGrid implements GridInterface {
 		const p1 = values[integralLower + ((xLower0 + 1) % nxLower)];
 		const p2 = values[integralUpper + xUpper0];
 		const p3 = values[integralUpper + ((xUpper0 + 1) % nxUpper)];
-		return (
+		return roundWithPrecision(
 			p0 * (1 - xFractionLower) * (1 - yFraction) +
-			p1 * xFractionLower * (1 - yFraction) +
-			p2 * (1 - xFractionUpper) * yFraction +
-			p3 * xFractionUpper * yFraction
+				p1 * xFractionLower * (1 - yFraction) +
+				p2 * (1 - xFractionUpper) * yFraction +
+				p3 * xFractionUpper * yFraction
 		);
 	}
 

@@ -1,5 +1,9 @@
 const PI = Math.PI;
 
+export const roundWithPrecision = (value: number, precision: number = 1_000_000): number => {
+	return Math.round((value + Number.EPSILON) * precision) / precision;
+};
+
 export const degreesToRadians = (degree: number) => {
 	return degree * (PI / 180);
 };
