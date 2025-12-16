@@ -1,5 +1,6 @@
 # Open-Meteo Mapbox Layer
 
+[![codecov](https://codecov.io/gh/open-meteo/mapbox-layer/graph/badge.svg?token=E2WYHGJJHP)](https://codecov.io/gh/open-meteo/mapbox-layer)
 [![Linting & Tests](https://github.com/open-meteo/mapbox-layer/actions/workflows/ci.yml/badge.svg)](https://github.com/open-meteo/mapbox-layer/actions/workflows/ci.yml)
 [![GitHub license](https://img.shields.io/github/license/open-meteo/mapbox-layer)](https://github.com/open-meteo/mapbox-layer/blob/main/LICENSE)
 [![npm version](https://img.shields.io/npm/v/@openmeteo/mapbox-layer?label=@openmeteo/mapbox-layer)](https://www.npmjs.com/package/@openmeteo/mapbox-layer)

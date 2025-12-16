@@ -24,6 +24,7 @@
 		"dev": "vite build --watch",
 		"dev:umd": "vite build --config vite.config.umd.ts --watch",
 		"test": "vitest",
+		"coverage": "vitest run --coverage",
 		"lint": "prettier --check . && eslint .",
 		"generate:colorscales": "tsx scripts/generate-colorscales.ts && prettier --write src/utils/color-scales.ts",
 		"build:esm": "vite build",
