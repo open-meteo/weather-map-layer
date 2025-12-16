@@ -41,6 +41,7 @@
 		"@types/node": "^24.9.2",
 		"@typescript-eslint/eslint-plugin": "^8.46.2",
 		"@typescript-eslint/parser": "^8.46.2",
+		"@vitest/coverage-v8": "^4.0.15",
 		"d3-color": "^3.1.0",
 		"d3-interpolate": "^3.0.1",
 		"eslint": "^9.38.0",
