@@ -15,6 +15,7 @@ import type {
 	DataIdentityOptions,
 	OmProtocolSettings,
 	ParsedRequest,
+	RenderOptions,
 	TileJSON,
 	TilePromise
 } from './types';
@@ -98,9 +99,21 @@ const requestTile = async (
 	}
 
 	const key = buildTileKey(request);
+	const tileType = `get${capitalize(type)}` as 'getImage' | 'getArrayBuffer';
+
+	// early return if the worker will not return a tile
+	if (tileType === 'getArrayBuffer') {
+		if (
+			!drawsArrows(request.renderOptions, data) &&
+			!request.renderOptions.drawContours &&
+			!request.renderOptions.drawGrid
+		) {
+			return new ArrayBuffer(0);
+		}
+	}
 
 	return workerPool.requestTile({
-		type: `get${capitalize(type)}` as 'getImage' | 'getArrayBuffer',
+		type: tileType,
 		key,
 		tileIndex: request.tileIndex,
 		data,
@@ -125,4 +138,8 @@ const getTilejson = async (
 		maxzoom: 12,
 		bounds: bounds
 	};
+};
+
+const drawsArrows = (renderOptions: RenderOptions, data: Data): boolean => {
+	return renderOptions.drawArrows && data.directions !== undefined;
 };

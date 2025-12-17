@@ -277,7 +277,7 @@ describe('omProtocol', () => {
 	});
 
 	describe('tile requests', () => {
-		it('returns ArrayBuffer for arrayBuffer type', async () => {
+		it('early return for vector requests', async () => {
 			const { omProtocol } = await import('../om-protocol');
 
 			const params: RequestParameters = {
@@ -287,7 +287,7 @@ describe('omProtocol', () => {
 			const result = await omProtocol(params, undefined, defaultOmProtocolSettings);
 
 			expect(result.data).toBeInstanceOf(ArrayBuffer);
-			expect((result.data as ArrayBuffer).byteLength).toBe(16);
+			expect(result.data as ArrayBuffer).toEqual(new ArrayBuffer(0));
 		});
 
 		it('throws for tile request without coordinates', async () => {
