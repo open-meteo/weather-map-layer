@@ -48,7 +48,10 @@ map.on('load', () => {
 	map.addLayer({
 		id: 'omFileLayer',
 		type: 'raster',
-		source: 'omFileSource'
+		source: 'omFileSource',
+		paint: {
+			'raster-opacity': 0.75
+		}
 	});
 });
 ```
@@ -87,7 +90,10 @@ For a standalone example, see `examples/temperature.html`.
 		map.addLayer({
 			id: 'omFileLayer',
 			type: 'raster',
-			source: 'omFileSource'
+			source: 'omFileSource',
+			paint: {
+				'raster-opacity': 0.75
+			}
 		});
 	});
 </script>

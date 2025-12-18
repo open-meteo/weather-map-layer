@@ -27,7 +27,7 @@
 			const customColorScales = {
 				// use same key as variable name
 				temperature_2m: {
-					type: 'rgba',
+					type: 'rgba', // breakpoints is prefered, and computationally faster, please see other example
 					unit: '°C',
 					min: -40,
 					max: 60,
@@ -113,7 +113,10 @@
 				map.addLayer({
 					id: 'omFileLayer',
 					type: 'raster',
-					source: 'omFileSource'
+					source: 'omFileSource',
+					paint: {
+						'raster-opacity': 0.75
+					}
 				});
 			});
 		</script>

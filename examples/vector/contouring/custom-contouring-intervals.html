@@ -63,7 +63,10 @@
 				map.addLayer({
 					id: 'omFileRasterLayer',
 					type: 'raster',
-					source: 'omFileRasterSource'
+					source: 'omFileRasterSource',
+					paint: {
+						'raster-opacity': 0.75
+					}
 				});
 
 				map.addSource('omFileVectorSource', {

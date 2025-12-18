@@ -117,7 +117,10 @@
 				map.addLayer({
 					id: 'omFileLayer',
 					type: 'raster',
-					source: 'omFileSource'
+					source: 'omFileSource',
+					paint: {
+						'raster-opacity': 0.8
+					}
 				});
 			});
 		</script>

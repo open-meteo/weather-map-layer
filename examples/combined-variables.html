@@ -64,7 +64,10 @@
 				map.addLayer({
 					id: 'omCloudCoverLayer',
 					type: 'raster',
-					source: 'omCloudCoverSource'
+					source: 'omCloudCoverSource',
+					paint: {
+						'raster-opacity': 0.75
+					}
 				});
 
 				map.addSource('omPrecipitationSource', {
@@ -76,7 +79,10 @@
 				map.addLayer({
 					id: 'omPrecipitationLayer',
 					type: 'raster',
-					source: 'omPrecipitationSource'
+					source: 'omPrecipitationSource',
+					paint: {
+						'raster-opacity': 0.75
+					}
 				});
 			});
 		</script>
