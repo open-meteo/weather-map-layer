@@ -13,7 +13,7 @@ export const radiansToDegrees = (rad: number) => {
 };
 
 export const tile2lon = (x: number, z: number): number => {
-	return (x / Math.pow(2, z)) * 360 - 180;
+	return ((x / Math.pow(2, z)) * 360 + 540) % 360;
 };
 
 export const tile2lat = (y: number, z: number): number => {

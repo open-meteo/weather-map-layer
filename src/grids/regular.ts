@@ -11,6 +11,7 @@ export class RegularGrid implements GridInterface {
 	private dy: number;
 
 	private bounds: Bounds;
+	private longitudeWrap: boolean;
 	private center?: { lng: number; lat: number };
 
 	constructor(data: RegularGridData, ranges: DimensionRange[] | null = null) {
@@ -51,17 +52,23 @@ export class RegularGrid implements GridInterface {
 		const lonMax = data.lonMin + this.dx * ranges[1].end;
 		const latMax = data.latMin + this.dy * ranges[0].end;
 		this.bounds = [lonMin, latMin, lonMax, latMax];
+
+		this.longitudeWrap = lonMax - lonMin + this.dx >= 360 ? true : false;
 	}
 
 	getLinearInterpolatedValue(values: Float32Array, lat: number, lon: number): number {
-		if (
-			lat < this.bounds[1] ||
-			lat >= this.bounds[3] ||
-			lon < this.bounds[0] ||
-			lon >= this.bounds[2]
-		) {
+		// check longitude is within bounds
+		if (!this.longitudeWrap) {
+			if (lon < this.bounds[0] || lon > this.bounds[2]) {
+				return NaN;
+			}
+		}
+
+		// check latitude is within bounds
+		if (lat < this.bounds[1] || lat >= this.bounds[3]) {
 			return NaN;
 		}
+
 		const x = Math.floor((lon - this.bounds[0]) / this.dx);
 		const y = Math.floor((lat - this.bounds[1]) / this.dy);
 
@@ -69,7 +76,7 @@ export class RegularGrid implements GridInterface {
 		const yFraction = ((lat - this.bounds[1]) % this.dy) / this.dy;
 
 		const index = y * this.nx + x;
-		return interpolateLinear(values, index, xFraction, yFraction, this.nx);
+		return interpolateLinear(values, index, xFraction, yFraction, this.nx, this.longitudeWrap);
 	}
 
 	getBounds(): Bounds {
