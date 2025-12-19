@@ -162,16 +162,66 @@ export class GaussianGrid implements GridInterface {
 		const integralUpper = this.integral(yUpper);
 		const xFractionLower = modPositive(lon / dxLower, 1);
 		const xFractionUpper = modPositive(lon / dxUpper, 1);
+
+		//    yUpper    p2 ---- p3
+		//             /       /
+		//            /       /
+		//    yLower  p0 ---- p1
 		const p0 = values[integralLower + xLower0];
 		const p1 = values[integralLower + ((xLower0 + 1) % nxLower)];
 		const p2 = values[integralUpper + xUpper0];
 		const p3 = values[integralUpper + ((xUpper0 + 1) % nxUpper)];
-		return roundWithPrecision(
-			p0 * (1 - xFractionLower) * (1 - yFraction) +
-				p1 * xFractionLower * (1 - yFraction) +
-				p2 * (1 - xFractionUpper) * yFraction +
-				p3 * xFractionUpper * yFraction
-		);
+
+		const w0 = (1 - xFractionLower) * (1 - yFraction);
+		const w1 = xFractionLower * (1 - yFraction);
+		const w2 = (1 - xFractionUpper) * yFraction;
+		const w3 = xFractionUpper * yFraction;
+
+		const n0 = !isFinite(p0);
+		const n1 = !isFinite(p1);
+		const n2 = !isFinite(p2);
+		const n3 = !isFinite(p3);
+
+		// If none are NaN → normal bilinear interpolation
+		if (!n0 && !n1 && !n2 && !n3) {
+			return roundWithPrecision(p0 * w0 + p1 * w1 + p2 * w2 + p3 * w3);
+		}
+
+		const xFraction = (1 - yFraction) * xFractionLower + yFraction * xFractionUpper;
+
+		// --- EXACTLY ONE POINT MISSING CASES ---
+		// ------------------
+		// p0 is missing → valid triangle = (p1, p2, p3)
+		// ------------------
+		if (n0 && !n1 && !n2 && !n3) {
+			if (xFractionLower < xFractionUpper || xFraction + yFraction < 1) return NaN; // Not in triangle
+			const ws = w1 + w2 + w3;
+			return roundWithPrecision((p1 * w1 + p2 * w2 + p3 * w3) / ws);
+		}
+
+		// p1 is missing → valid triangle = (p0, p2, p3)
+		if (!n0 && n1 && !n2 && !n3) {
+			if (xFractionLower > xFractionUpper || xFraction + 1 - yFraction > 1) return NaN; // Not in triangle
+			const ws = w0 + w2 + w3;
+			return roundWithPrecision((p0 * w0 + p2 * w2 + p3 * w3) / ws);
+		}
+
+		// p2 is missing → valid triangle = (p0, p1, p3)
+		if (!n0 && !n1 && n2 && !n3) {
+			if (xFractionLower > xFractionUpper || xFraction + 1 - yFraction < 1) return NaN; // Not in triangle
+			const ws = w0 + w1 + w3;
+			return roundWithPrecision((p0 * w0 + p1 * w1 + p3 * w3) / ws);
+		}
+
+		// p3 is missing → valid triangle = (p0, p1, p2)
+		if (!n0 && !n1 && !n2 && n3) {
+			if (xFractionLower < xFractionUpper || xFraction + yFraction > 1) return NaN; // Not in triangle
+			const ws = w0 + w1 + w2;
+			return roundWithPrecision((p0 * w0 + p1 * w1 + p2 * w2) / ws);
+		}
+
+		// More than 1 point missing → no valid triangle
+		return NaN;
 	}
 
 	/// Values is the 1D array of all HRES values (6 million something values)
