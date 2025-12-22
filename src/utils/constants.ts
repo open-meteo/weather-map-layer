@@ -29,7 +29,9 @@ export const VALID_OM_URL_REGEX =
 export const TIME_SELECTED_REGEX = /([0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}00)/;
 
 /* Variables */
-export const DOMAIN_REGEX =
+export const RESOLVE_DOMAIN_REGEX = /data_spatial\/(?<domain>[^/]+)/;
+
+export const DOMAIN_META_REGEX =
 	/(http|https):\/\/(?<uri>[\s\S]+)\/(?<domain>[\s\S]+)\/(?<meta>[\s\S]+).json/;
 
 export const TIME_STEP_REGEX =

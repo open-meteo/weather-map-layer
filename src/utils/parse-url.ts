@@ -2,7 +2,7 @@ import { pad } from '.';
 import { domainOptions } from '../domains';
 
 import {
-	DOMAIN_REGEX,
+	DOMAIN_META_REGEX,
 	OM_PREFIX_REGEX,
 	RENDERING_ONLY_PARAMS,
 	TILE_SUFFIX_REGEX,
@@ -74,7 +74,7 @@ const getModifiedAmount = (amount: number, modifier = '+') => {
 export const parseMetaJson = async (omUrl: string) => {
 	let date = new Date();
 	const url = omUrl.replace('om://', '');
-	const { uri, domain, meta } = url.match(DOMAIN_REGEX)?.groups as {
+	const { uri, domain, meta } = url.match(DOMAIN_META_REGEX)?.groups as {
 		uri: string;
 		domain: string;
 		meta: string; // E.G. latest | in-progress
