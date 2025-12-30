@@ -1,5 +1,6 @@
 import { setupGlobalCache } from '@openmeteo/file-reader';
 
+import { normalizeLon } from './utils/math';
 import { parseUrlComponents } from './utils/parse-url';
 
 import { GridFactory } from './grids';
@@ -129,7 +130,7 @@ export const getValueFromLatLong = (
 	}
 
 	const grid = GridFactory.create(state.dataOptions.domain.grid, state.dataOptions.ranges);
-	const lonNormalized = ((lon + 540) % 360) - 180;
+	const lonNormalized = normalizeLon(lon);
 	const value = grid.getLinearInterpolatedValue(state.data.values, lat, lonNormalized);
 
 	return { value };

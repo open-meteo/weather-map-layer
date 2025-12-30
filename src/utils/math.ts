@@ -12,8 +12,13 @@ export const radiansToDegrees = (rad: number) => {
 	return rad * (180 / PI);
 };
 
+/** Normalize longitude to [-180, 180] */
+export const normalizeLon = (lon: number): number => {
+	return ((lon + 540) % 360) - 180;
+};
+
 export const tile2lon = (x: number, z: number): number => {
-	return ((x / Math.pow(2, z)) * 360 + 540) % 360;
+	return (((x / Math.pow(2, z)) * 360 + 360) % 360) - 180;
 };
 
 export const tile2lat = (y: number, z: number): number => {

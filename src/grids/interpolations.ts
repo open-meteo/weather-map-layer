@@ -22,7 +22,7 @@ export const interpolateLinear = (
 		index = index % (values.length - 1);
 	} else {
 		// Right border
-		if ((index + 1) % nx === 0) {
+		if (nextIndex % nx === 0) {
 			return NaN;
 		}
 	}
