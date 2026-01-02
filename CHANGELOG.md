@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.11](https://github.com/open-meteo/mapbox-layer/compare/v0.0.10...v0.0.11) (2025-12-30)
+
+
+### Bug Fixes
+
+* bump the openmeteo group with 4 updates ([#137](https://github.com/open-meteo/mapbox-layer/issues/137)) ([4b134bd](https://github.com/open-meteo/mapbox-layer/commit/4b134bd4a8de82e48fdba72b7757a9ec51a572ab))
+* Correctly normalize longitude values everywhere ([#138](https://github.com/open-meteo/mapbox-layer/issues/138)) ([f845bd8](https://github.com/open-meteo/mapbox-layer/commit/f845bd88575e5bb1927f164ddad27eedb392a515))
+
 ## [0.0.10](https://github.com/open-meteo/mapbox-layer/compare/v0.0.9...v0.0.10) (2025-12-22)
 
 
