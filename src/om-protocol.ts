@@ -41,7 +41,7 @@ export const omProtocol = async (
 ): Promise<GetResourceResponse<TileJSON | ImageBitmap | ArrayBuffer>> => {
 	const instance = getProtocolInstance(settings);
 
-	const url = await resolveJSONUrl(params.url);
+	const url = await normalizeUrl(params.url);
 	const request = parseRequest(url, settings);
 
 	const state = getOrCreateState(
@@ -72,9 +72,9 @@ export const omProtocol = async (
 	return { data: tile };
 };
 
-const resolveJSONUrl = async (url: string): Promise<string> => {
+const normalizeUrl = async (url: string): Promise<string> => {
 	let normalized = url;
-	if (normalized.includes('.json')) {
+	if (url.includes('.json')) {
 		normalized = await parseMetaJson(normalized);
 	}
 	assertOmUrlValid(normalized);

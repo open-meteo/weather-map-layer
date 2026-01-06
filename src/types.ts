@@ -334,7 +334,7 @@ export interface DimensionRange {
 	end: number;
 }
 
-export interface DomainMetaData {
+export interface DomainMetaDataJson {
 	completed: boolean;
 	last_modified_time: string;
 	reference_time: string;
