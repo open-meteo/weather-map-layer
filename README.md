@@ -63,7 +63,7 @@ For a standalone example, see `examples/temperature.html`.
 
 ```ts
 ...
-<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.11/dist/index.js"></script>
+<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.12/dist/index.js"></script>
 ...
 ```
 
