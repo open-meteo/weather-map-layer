@@ -31,17 +31,20 @@
 		"build:cjs": "vite build --config vite.config.cjs.ts",
 		"build:umd": "vite build --config vite.config.umd.ts",
 		"build": "npm run build:esm && npm run build:cjs && npm run build:umd",
-		"prepare": "npm run build"
+		"prepare": "npm run build",
+		"serve": "concurrently --kill-others \"npm run dev:umd\" \"serve\""
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.0.0",
 		"@eslint/js": "^9.38.0",
 		"@trivago/prettier-plugin-sort-imports": "^6.0.0",
 		"@types/d3-interpolate": "^3.0.4",
+		"@types/geojson": "^7946.0.16",
 		"@types/node": "^25.0.2",
 		"@typescript-eslint/eslint-plugin": "^8.46.2",
 		"@typescript-eslint/parser": "^8.46.2",
 		"@vitest/coverage-v8": "^4.0.15",
+		"concurrently": "^9.2.1",
 		"d3-color": "^3.1.0",
 		"d3-interpolate": "^3.0.1",
 		"eslint": "^9.38.0",
@@ -49,6 +52,7 @@
 		"globals": "^16.4.0",
 		"jiti": "^2.6.1",
 		"prettier": "^3.6.2",
+		"serve": "^14.2.5",
 		"tsx": "^4.20.6",
 		"typescript": "^5.9.3",
 		"typescript-eslint": "^8.46.2",
@@ -60,6 +64,7 @@
 		"@mapbox/vector-tile": "^2.0.4",
 		"@openmeteo/file-reader": "^0.0.13",
 		"maplibre-gl": "^5.9.0",
-		"pbf": "^4.0.1"
+		"pbf": "^4.0.1",
+		"point-in-polygon-hao": "^1.2.4"
 	}
 }

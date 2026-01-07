@@ -33,7 +33,8 @@ export const parseRequest = (url: string, settings: OmProtocolSettings): ParsedR
 		stateKey: urlComponents.stateKey,
 		tileIndex: urlComponents.tileIndex,
 		dataOptions,
-		renderOptions
+		renderOptions,
+		clippingOptions: settings.clippingOptions
 	};
 };
 

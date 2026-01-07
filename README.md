@@ -11,10 +11,9 @@
 
 ## Overview
 
-This repository demonstrates how to use the **Open-Meteo File Protocol** (`.om`) with Mapbox / MapLibre GL JS.
-The `.om` files are hosted on an S3 bucket and can be accessed directly via the `om` protocol:
+This repository serves as a demonstration of the **Open-Meteo File Protocol** (`om://`) with Mapbox / MapLibre GL JS. The `.om` files are hosted on an S3 bucket and can be accessed directly through the protocol handler.
 
-The actual weather API implementation lives in the [open-meteo/open-meteo](https://github.com/open-meteo/open-meteo) repository.
+The core weather data generation and API is hosted in the [open-meteo/open-meteo](https://github.com/open-meteo/open-meteo) repository.
 
 An interactive demo is available at [maps.open-meteo.com](https://maps.open-meteo.com/).
 
@@ -99,6 +98,16 @@ For a standalone example, see `examples/temperature.html`.
 </script>
 ```
 
+## Development
+
+The examples can be served locally, providing direct access to the bundled assets and data files. To launch the development server, execute:
+
+```bash
+npm run serve
+```
+
+This command initiates a lightweight static server, enabling the interactive demos to be viewed in a browser while reflecting any code changes in real time.
+
 ## Examples
 
 ### Raster sources
@@ -161,24 +170,40 @@ If you’re rendering tiles on a dark base‑map or simply want to experiment wi
 
 ### Callbacks
 
-When you need to modify the data after it’s been loaded, the protocol now includes a post‑read callback. You can transform the data with code similar to the following:
+In scenarios where post‑loading transformations of weather data is required, the protocol provides a post‑read callback. This callback is invoked immediately after the data has been parsed by `omFileReader`, allowing transformations before the data is forwarded to the rendering pipeline. A typical usage pattern is illustrated below:
 
 ```ts
-const postReadCallback = (omFileReader, data, state) => {
+const omProtocolOptions = OpenMeteoMapboxLayer.defaultOmProtocolSettings;
+omProtocolOptions.postReadCallback = (omFileReader, data, state) => {
 	if (data.values) {
 		data.values = data.values?.map((value) => value / 100);
 	}
 };
-
-const omProtocolOptions = OpenMeteoMapboxLayer.defaultOmProtocolSettings;
-omProtocolOptions.postReadCallback = postReadCallback;
 
 maplibregl.addProtocol('om', (params) =>
 	OpenMeteoMapboxLayer.omProtocol(params, undefined, omProtocolOptions)
 );
 ```
 
-A sample implementation with a usefull case is available in the `examples/callbacks` sub-directory.
+An example implementation with a usefull case is available in the `examples/callbacks` sub-directory.
+
+### Clipping
+
+To restrict weather data to a geometric boundary, the clipping parameters can be supplied during the instantiation of the omProtocol.
+
+```ts
+const omProtocolOptions = OpenMeteoMapboxLayer.defaultOmProtocolSettings;
+omProtocolOptions.clippingOptions = {
+	polygons: polygonList, // optionally clip raster / vector data to these polygons
+	bounds: clipBbox // optionally limit tile generation to these bbox bounds
+};
+...
+```
+
+- `examples/clipping/raster/clip-switzerland.html` – Demonstrates temperature raster data clipped to the geographical contour of Switzerland.
+- `examples/clipping/arrows/clip-italy.html` – Shows wind velocity raster and vector arrow fields clipped to the contour of Italy.
+- `examples/clipping/contours/clip-france.html` – Illustrates temperature and isocontour overlays confined to the French boundary.
+- `examples/clipping/oceans/clip-oceans.html` – Depicts the exclusion of oceanic regions from a global model, thereby hiding weather data on ocean surfaces.
 
 ## Capture API
 

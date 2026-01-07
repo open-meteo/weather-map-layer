@@ -8,3 +8,9 @@ CHANGELOG.md
 
 # Package Managers
 package-lock.json
+
+# Specific ignores
+examples/clipping/oceans/natural_earth_50m_land_10km_buffer.geojson
+examples/clipping/raster/swissBOUNDARIES3D_1_5_TLM_LANDESGEBIET.geojson
+examples/clipping/contours/regions.geojson
+examples/clipping/arrows/regions.geojson

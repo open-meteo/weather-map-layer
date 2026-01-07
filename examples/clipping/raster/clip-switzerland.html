@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Mapbox Layer - Clipping Raster Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.14.0/dist/maplibre-gl.css" />
+		<script src="https://unpkg.com/maplibre-gl@5.14.0/dist/maplibre-gl.js"></script>
+		<script src="https://unpkg.com/@turf/turf@7.3.1/turf.min.js"></script>
+		<!-- x-release-please-start-version -->
+		<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.11/dist/index.js"></script>
+		<!-- x-release-please-end -->
+		<!-- Local development -->
+		<!--<script src="../../../dist/index.js"></script>-->
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<script>
+			fetch('./swissBOUNDARIES3D_1_5_TLM_LANDESGEBIET.geojson')
+				.then((response) => response.json())
+				.then((geojson) => {
+					// optionally use turf to do some simplication and calculate bbox
+					const swissFlatten = turf.flatten(geojson);
+					const swissDissolve = turf.dissolve(swissFlatten, { propertyName: 'combine' });
+
+					const swissPolygon = swissDissolve.features[0];
+					const swissBbox = turf.bbox(swissPolygon);
+					const simplifiedSwissPolygon = turf.simplify(swissPolygon, {
+						tolerance: 0.00025,
+						highQuality: true
+					});
+
+					const omProtocolOptions = OpenMeteoMapboxLayer.defaultOmProtocolSettings;
+					omProtocolOptions.clippingOptions = {
+						polygons: [simplifiedSwissPolygon.geometry.coordinates],
+						bounds: swissBbox
+					};
+
+					// use the settings as argument for the protocol
+					maplibregl.addProtocol('om', (params) =>
+						OpenMeteoMapboxLayer.omProtocol(params, undefined, omProtocolOptions)
+					);
+
+					const map = new maplibregl.Map({
+						container: 'map',
+						style: {
+							version: 8,
+							sources: {
+								osm: {
+									type: 'raster',
+									tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+									tileSize: 256,
+									attribution:
+										'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+								}
+							},
+							layers: [
+								{
+									id: 'osm',
+									type: 'raster',
+									source: 'osm'
+								}
+							]
+						},
+						hash: true
+					});
+
+					const omUrl = `https://map-tiles.open-meteo.com/data_spatial/meteoswiss_icon_ch1/latest.json?time_step=current_time_1H&variable=temperature_2m&resolution_factor=0.5`;
+
+					map.on('load', () => {
+						map.addSource('omFileSource', {
+							url: 'om://' + omUrl,
+							type: 'raster',
+							tileSize: 256,
+							maxzoom: 12
+						});
+						map.addLayer({
+							id: 'omFileLayer',
+							type: 'raster',
+							source: 'omFileSource',
+							paint: {
+								'raster-opacity': 0.75
+							}
+						});
+					});
+				});
+		</script>
+	</body>
+</html>

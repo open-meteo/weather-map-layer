@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Mapbox Layer - Clipping Contours Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.14.0/dist/maplibre-gl.css" />
+		<script src="https://unpkg.com/maplibre-gl@5.14.0/dist/maplibre-gl.js"></script>
+		<script src="https://unpkg.com/@turf/turf@7.3.1/turf.min.js"></script>
+		<!-- x-release-please-start-version -->
+		<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.11/dist/index.js"></script>
+		<!-- x-release-please-end -->
+		<!-- Local development -->
+		<!--<script src="../../../dist/index.js"></script>-->
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<script>
+			fetch('./regions.geojson')
+				.then((response) => response.json())
+				.then((geojson) => {
+					// optionally use turf to do some simplication and calculate bbox
+					const franceFlatten = turf.flatten(geojson);
+					const franceDissolve = turf.dissolve(franceFlatten, { propertyName: 'combine' });
+					const francePolygon = turf.union(franceDissolve);
+
+					const franceBbox = turf.bbox(francePolygon);
+					const simplifiedFrancePolygon = turf.simplify(francePolygon, {
+						tolerance: 0.00025,
+						highQuality: true
+					});
+
+					let polygons = [];
+					for (let coords of simplifiedFrancePolygon.geometry.coordinates) {
+						polygons.push(...coords);
+					}
+
+					const omProtocolOptions = OpenMeteoMapboxLayer.defaultOmProtocolSettings;
+					omProtocolOptions.clippingOptions = {
+						polygons: [polygons],
+						bounds: franceBbox
+					};
+
+					// use the settings as argument for the protocol
+					maplibregl.addProtocol('om', (params) =>
+						OpenMeteoMapboxLayer.omProtocol(params, undefined, omProtocolOptions)
+					);
+
+					const map = new maplibregl.Map({
+						container: 'map',
+						style: {
+							version: 8,
+							sources: {
+								osm: {
+									type: 'raster',
+									tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+									tileSize: 256,
+									attribution:
+										'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+								}
+							},
+							layers: [
+								{
+									id: 'osm',
+									type: 'raster',
+									source: 'osm'
+								}
+							]
+						},
+						hash: true
+					});
+
+					const omUrl = `https://map-tiles.open-meteo.com/data_spatial/meteofrance_arome_france_hd/latest.json?time_step=current_time_1H&variable=temperature_2m&contours=true&tile_size=128&resolution_factor=0.5`;
+
+					map.on('load', () => {
+						map.addSource('omFileSource', {
+							url: 'om://' + omUrl,
+							type: 'raster',
+							tileSize: 256,
+							maxzoom: 12
+						});
+						map.addLayer({
+							id: 'omFileLayer',
+							type: 'raster',
+							source: 'omFileSource',
+							paint: {
+								'raster-opacity': 0.75
+							}
+						});
+
+						map.addSource('omFileVectorSource', {
+							url: 'om://' + omUrl + '&arrows=true',
+							type: 'vector'
+						});
+
+						map.addLayer({
+							id: 'omFileVectorContourLayer',
+							type: 'line',
+							source: 'omFileVectorSource',
+							'source-layer': 'contours',
+							paint: {
+								'line-color': [
+									'case',
+									['boolean', ['feature-state', 'hover'], false],
+									'red',
+									'black'
+								],
+								'line-width': [
+									'case',
+									['boolean', ['feature-state', 'hover'], false],
+									4,
+									[
+										'case',
+										['boolean', ['==', ['%', ['to-number', ['get', 'value']], 100], 0], false],
+										3,
+										[
+											'case',
+											['boolean', ['==', ['%', ['to-number', ['get', 'value']], 50], 0], false],
+											2,
+											[
+												'case',
+												['boolean', ['==', ['%', ['to-number', ['get', 'value']], 10], 0], false],
+												1.5,
+												1
+											]
+										]
+									]
+								]
+							}
+						});
+
+						map.addLayer({
+							id: 'omFileVectorLayerLabels',
+							type: 'symbol',
+							source: 'omFileVectorSource',
+							'source-layer': 'contours',
+							layout: {
+								'symbol-placement': 'line-center',
+								'symbol-spacing': 1,
+								'text-font': ['Noto Sans Regular'],
+								'text-field': ['to-string', ['get', 'value']],
+								'text-padding': 1,
+								'text-offset': [0, -0.6]
+							},
+							paint: {
+								'text-color': [
+									'case',
+									['boolean', ['feature-state', 'hover'], false],
+									'red',
+									'black'
+								]
+							}
+						});
+					});
+				});
+		</script>
+	</body>
+</html>
