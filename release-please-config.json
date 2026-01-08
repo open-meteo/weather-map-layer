@@ -24,9 +24,9 @@
 
 		"examples/callbacks/post-read-callback.html",
 
-		"examples/colorscales/custom-rgba.html",
-		"examples/colorscales/custom-alpha.html",
 		"examples/colorscales/custom-breakpoints.html",
+		"examples/colorscales/custom-rgba.html",
+		"examples/colorscales/darkmode.html",
 
 		"examples/clipping/arrows/clip-italy.html",
 		"examples/clipping/contours/clip-france.html",
