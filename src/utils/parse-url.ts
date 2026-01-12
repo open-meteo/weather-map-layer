@@ -2,9 +2,9 @@ import { pad } from '.';
 import { domainOptions } from '../domains';
 
 import {
+	DATA_RELEVANT_PARAMS,
 	DOMAIN_META_REGEX,
 	OM_PREFIX_REGEX,
-	RENDERING_ONLY_PARAMS,
 	TILE_SUFFIX_REGEX,
 	TIME_STEP_REGEX,
 	VALID_OM_URL_REGEX
@@ -52,15 +52,14 @@ export const parseUrlComponents = (url: string): ParsedUrlComponents => {
 	// Build state key from baseUrl + only data-affecting params
 	const dataParams = new URLSearchParams();
 	for (const [key, value] of params) {
-		if (!RENDERING_ONLY_PARAMS.has(key)) {
+		if (DATA_RELEVANT_PARAMS.has(key)) {
 			dataParams.set(key, value);
 		}
 	}
-	dataParams.sort();
 	const paramString = dataParams.toString();
-	const stateKey = paramString ? `${baseUrl}?${paramString}` : baseUrl;
+	const fileAndVariableKey = paramString ? `${baseUrl}?${paramString}` : baseUrl;
 
-	return { baseUrl, params, stateKey, tileIndex };
+	return { baseUrl, params, fileAndVariableKey, tileIndex };
 };
 
 /**

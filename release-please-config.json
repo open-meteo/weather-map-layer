@@ -16,6 +16,7 @@
 		"examples/temperature.html",
 		"examples/precipitation.html",
 		"examples/combined-variables.html",
+		"examples/partial-requests.html",
 
 		"examples/vector/grid-points.html",
 		"examples/vector/wind-arrows.html",

@@ -7,16 +7,8 @@ export const DEFAULT_RESOLUTION_FACTOR = 1;
 
 export const VECTOR_TILE_EXTENT = 4096;
 
-// Parameters that don't affect the data identity (only affect rendering)
-export const RENDERING_ONLY_PARAMS = new Set([
-	'grid',
-	'partial',
-	'arrows',
-	'intervals',
-	'tile_size',
-	'contours',
-	'resolution_factor'
-]);
+// Parameters affecting data identity
+export const DATA_RELEVANT_PARAMS = new Set(['variable']);
 
 /* OM URL */
 export const OM_PREFIX_REGEX = /^om:\/\/([^?]+)(?:\?(.*))?$/;

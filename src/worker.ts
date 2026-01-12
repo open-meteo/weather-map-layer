@@ -14,7 +14,7 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 	const key = message.data.key;
 	const { z, x, y } = message.data.tileIndex;
 	const values = message.data.data.values;
-	const ranges = message.data.dataOptions.ranges;
+	const ranges = message.data.ranges;
 	const tileSize =
 		message.data.renderOptions.tileSize * message.data.renderOptions.resolutionFactor;
 	const domain = message.data.dataOptions.domain;

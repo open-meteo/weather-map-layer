@@ -10,7 +10,7 @@ export interface OmProtocolInstance {
 export interface DataIdentityOptions {
 	domain: Domain;
 	variable: string;
-	ranges: DimensionRange[] | null;
+	bounds: Bounds | undefined;
 }
 
 export interface RenderOptions {
@@ -26,13 +26,13 @@ export interface RenderOptions {
 export interface ParsedUrlComponents {
 	baseUrl: string;
 	params: URLSearchParams;
-	stateKey: string;
+	fileAndVariableKey: string;
 	tileIndex: TileIndex | null;
 }
 
 export interface ParsedRequest {
 	baseUrl: string;
-	stateKey: string;
+	fileAndVariableKey: string;
 	tileIndex: TileIndex | null;
 	renderOptions: RenderOptions; // Only rendering-related params
 	dataOptions: DataIdentityOptions; // Only data-identity params,
@@ -41,6 +41,7 @@ export interface ParsedRequest {
 
 export interface OmUrlState {
 	dataOptions: DataIdentityOptions;
+	ranges: DimensionRange[];
 	omFileUrl: string;
 	data: Data | null;
 	dataPromise: Promise<Data> | null;
@@ -114,6 +115,7 @@ export interface TileRequest {
 	tileIndex: TileIndex;
 	renderOptions: RenderOptions;
 	dataOptions: DataIdentityOptions;
+	ranges: DimensionRange[];
 	clippingOptions: ClippingOptions;
 }
 

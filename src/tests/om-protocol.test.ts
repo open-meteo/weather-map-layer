@@ -106,33 +106,6 @@ describe('Request Resolution', () => {
 			}
 		});
 
-		it('computes partial ranges when partial=true and bounds provided', async () => {
-			const domainOptions = [createTestDomain('domain1')];
-			const settings = createTestSettings({ domainOptions });
-			const url =
-				'om://https://example.com/data_spatial/domain1/file.om?variable=temperature&partial=true&bounds=0,0,10,10';
-
-			const { dataOptions } = parseRequest(url, settings);
-			// Ranges should be computed based on bounds overlap with grid
-			expect(dataOptions.ranges).toEqual([
-				{ start: 0, end: 12 },
-				{ start: 0, end: 10 }
-			]);
-		});
-
-		it('uses full grid ranges when partial=false', async () => {
-			const domainOptions = [createTestDomain('domain1', { nx: 100, ny: 200 })];
-			const settings = createTestSettings({ domainOptions });
-			const url =
-				'om://https://example.com/data_spatial/domain1/file.om?variable=temperature&bounds=0,0,10,10';
-
-			const { dataOptions } = parseRequest(url, settings);
-			expect(dataOptions.ranges).toEqual([
-				{ start: 0, end: 200 },
-				{ start: 0, end: 100 }
-			]);
-		});
-
 		it('throws for invalid domain', async () => {
 			const settings = createTestSettings({ domainOptions: [] });
 			const url = 'om://https://example.com/data_spatial/unknown/file.om?variable=temp';
