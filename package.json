@@ -49,7 +49,7 @@
 		"d3-interpolate": "^3.0.1",
 		"eslint": "^9.38.0",
 		"eslint-config-prettier": "^10.1.8",
-		"globals": "^16.4.0",
+		"globals": "^17.0.0",
 		"jiti": "^2.6.1",
 		"prettier": "^3.6.2",
 		"serve": "^14.2.5",
