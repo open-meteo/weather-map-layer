@@ -8,19 +8,21 @@ export const noInterpolation = (values: Float32Array, index: number): number => 
 
 export const interpolateLinear = (
 	values: Float32Array,
-	index: number,
+	x: number,
+	y: number,
 	xFraction: number,
 	yFraction: number,
 	nx: number,
 	longitudeWrap: boolean = false
 ): number => {
-	let nextIndex = index + 1;
+	const index = y * nx + x;
 
+	let nextIndex: number;
 	if (longitudeWrap) {
 		// For global grids, data can wrap to the other side
-		nextIndex = nextIndex % (values.length - 1);
-		index = index % (values.length - 1);
+		nextIndex = y * nx + ((x + 1) % nx);
 	} else {
+		nextIndex = index + 1;
 		// Right border
 		if (nextIndex % nx === 0) {
 			return NaN;
@@ -32,9 +34,9 @@ export const interpolateLinear = (
 		return NaN;
 	}
 
-	// p0 ---- p1
-	// |       |
 	// p2 ---- p3
+	// |       |
+	// p0 ---- p1
 	const p0 = values[index];
 	const p1 = values[nextIndex];
 	const p2 = values[index + nx];

@@ -82,7 +82,7 @@ export class ProjectionGrid implements GridInterface {
 
 	getLinearInterpolatedValue(values: Float32Array, lat: number, lon: number): number {
 		const idx = this.findPointInterpolated(lat, lon);
-		return interpolateLinear(values, idx.index, idx.xFraction, idx.yFraction, this.nx);
+		return interpolateLinear(values, idx.x, idx.y, idx.xFraction, idx.yFraction, this.nx);
 	}
 
 	getBounds(): Bounds {
@@ -161,10 +161,9 @@ export class ProjectionGrid implements GridInterface {
 		const yFraction = y - Math.floor(y);
 
 		if (x < 0 || x >= this.nx || y < 0 || y >= this.ny) {
-			return { index: NaN, xFraction: 0, yFraction: 0 };
+			return { x: NaN, y: NaN, xFraction: 0, yFraction: 0 };
 		}
-		const index = Math.floor(y) * this.nx + Math.floor(x);
-		return { index, xFraction, yFraction };
+		return { x: Math.floor(x), y: Math.floor(y), xFraction, yFraction };
 	}
 
 	private getProjectedBorderPoints(): number[][] {
