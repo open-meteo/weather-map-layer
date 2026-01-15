@@ -1,13 +1,11 @@
 import { pad } from '.';
-import { domainOptions } from '../domains';
 
 import {
 	DATA_RELEVANT_PARAMS,
 	DOMAIN_META_REGEX,
 	OM_PREFIX_REGEX,
 	TILE_SUFFIX_REGEX,
-	TIME_STEP_REGEX,
-	VALID_OM_URL_REGEX
+	TIME_STEP_REGEX
 } from './constants';
 
 import { DomainMetaDataJson, ParsedUrlComponents, TileIndex } from '../types';
@@ -153,16 +151,4 @@ export const parseMetaJson = async (omUrl: string) => {
 				`${modelRun.getUTCFullYear()}/${pad(modelRun.getUTCMonth() + 1)}/${pad(modelRun.getUTCDate())}/${pad(modelRun.getUTCHours())}00Z/${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}T${pad(date.getUTCHours())}00.om`
 			)
 	);
-};
-
-export const assertOmUrlValid = (url: string) => {
-	const groups = url.match(VALID_OM_URL_REGEX)?.groups;
-	if (!groups) return false;
-
-	const { domain, runYear } = groups;
-
-	if (!domainOptions.find((d) => d.value == domain)) throw new Error('Invalid Domain');
-	if (Number(runYear) < 2025) throw new Error('Model run too far in the past');
-
-	return true;
 };

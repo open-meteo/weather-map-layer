@@ -2,7 +2,7 @@ import { type GetResourceResponse, type RequestParameters } from 'maplibre-gl';
 
 import { clipBounds } from './utils/math';
 import { defaultResolveRequest, parseRequest } from './utils/parse-request';
-import { assertOmUrlValid, parseMetaJson } from './utils/parse-url';
+import { parseMetaJson } from './utils/parse-url';
 import { COLOR_SCALES_WITH_ALIASES as defaultColorScales } from './utils/styling';
 
 import { domainOptions as defaultDomainOptions } from './domains';
@@ -81,7 +81,6 @@ const normalizeUrl = async (url: string): Promise<string> => {
 	if (url.includes('.json')) {
 		normalized = await parseMetaJson(normalized);
 	}
-	assertOmUrlValid(normalized);
 	return normalized;
 };
 
