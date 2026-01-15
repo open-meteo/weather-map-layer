@@ -4,7 +4,7 @@
 	"main": "dist/index.cjs",
 	"types": "dist/index.d.ts",
 	"author": "Open-Meteo <info@open-meteo.com>",
-	"version": "0.0.12",
+	"version": "0.0.13",
 	"module": "dist/index.mjs",
 	"repository": {
 		"type": "git",

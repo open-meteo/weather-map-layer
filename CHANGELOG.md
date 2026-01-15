@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.0.13](https://github.com/open-meteo/mapbox-layer/compare/v0.0.12...v0.0.13) (2026-01-15)
+
+
+### Features
+
+* Automatic partial requests via updateCurrentBounds hook ([#146](https://github.com/open-meteo/mapbox-layer/issues/146)) ([e833243](https://github.com/open-meteo/mapbox-layer/commit/e8332430d1fdab19e9615f4f2863ceba2ef1f227))
+
+
+### Bug Fixes
+
+* bump the openmeteo group with 4 updates ([#151](https://github.com/open-meteo/mapbox-layer/issues/151)) ([323da34](https://github.com/open-meteo/mapbox-layer/commit/323da34ed37ae493eeae0f160e29f36567a24f17))
+* Interpolation across dateline ([#148](https://github.com/open-meteo/mapbox-layer/issues/148)) ([6ad0355](https://github.com/open-meteo/mapbox-layer/commit/6ad03559d80258d9ef5709ad6e62402a0b6ae959))
+* remove assertion for valid om urls ([#153](https://github.com/open-meteo/mapbox-layer/issues/153)) ([bd46b31](https://github.com/open-meteo/mapbox-layer/commit/bd46b31eff97568f2b03f6e016336bbfcae71854))
+
 ## [0.0.12](https://github.com/open-meteo/mapbox-layer/compare/v0.0.11...v0.0.12) (2026-01-07)
 
 
