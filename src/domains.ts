@@ -177,6 +177,54 @@ export const domainOptions: Array<Domain> = [
 		model_interval: '6_hourly'
 	},
 	{
+		value: 'ncep_gfs_graphcast025',
+		label: 'GFS GraphCast 0.25°',
+		grid: {
+			type: 'regular',
+			nx: 1440,
+			ny: 721,
+			latMin: -90,
+			lonMin: -180,
+			dx: 0.25,
+			dy: 0.25,
+			zoom: 1
+		},
+		time_interval: '6_hourly',
+		model_interval: '6_hourly'
+	},
+	{
+		value: 'ncep_aigfs025',
+		label: 'GFS AIGFS 0.25°',
+		grid: {
+			type: 'regular',
+			nx: 1440,
+			ny: 721,
+			latMin: -90,
+			lonMin: -180,
+			dx: 0.25,
+			dy: 0.25,
+			zoom: 1
+		},
+		time_interval: '6_hourly',
+		model_interval: '6_hourly'
+	},
+	{
+		value: 'ncep_hgefs025_ensemble_mean',
+		label: 'GFS HGEFS 0.25° Ensemble Mean',
+		grid: {
+			type: 'regular',
+			nx: 1440,
+			ny: 721,
+			latMin: -90,
+			lonMin: -180,
+			dx: 0.25,
+			dy: 0.25,
+			zoom: 1
+		},
+		time_interval: '6_hourly',
+		model_interval: '6_hourly'
+	},
+	{
 		value: 'ncep_hrrr_conus',
 		label: 'GFS HRRR Conus',
 		grid: {
