@@ -249,6 +249,23 @@ const colorScaleDefinitions: Record<string, ColorScaleDefinition> = {
 			{ range: [0.95, 30], opacity: [0.8, 1], easing: 'power-inverse', exponent: 2 }
 		]
 	},
+	precipitation_probability: {
+		unit: '%',
+		breakpoints: [0.1, 0.2, 0.3, 0.6, 1, 3, 6, 9, 15, 22, 30, 45, 60, 75, 100],
+		colorSegments: [
+			{ range: [0, 0.5], colors: ['#000000', '#87CEFA'] },
+			{ range: [0.5, 10], colors: ['#87CEFA', '#5b95e6'] },
+			{ range: [10, 33], colors: ['#5b95e6', '#FFDD00'] },
+			{ range: [33, 100], colors: ['#FFDD00', '#ff0000'] }
+		],
+		opacitySegments: [
+			{ range: [0, 1], opacity: [0, 0.2], easing: 'linear' },
+			{ range: [1, 3], opacity: [0.2, 0.3], easing: 'linear' },
+			{ range: [3, 10], opacity: [0.3, 0.5], easing: 'linear' },
+			{ range: [10, 25], opacity: [0.5, 0.8], easing: 'linear' },
+			{ range: [10, 100], opacity: [0.6, 1], easing: 'power-inverse', exponent: 2 }
+		]
+	},
 	pressure: {
 		unit: 'hPa',
 		breakpoints: [

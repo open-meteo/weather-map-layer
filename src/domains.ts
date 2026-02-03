@@ -1,7 +1,9 @@
 import type { Domain } from './types';
 
 export const domainGroups = [
-	//'bom',
+	// { value: 'bom', label: 'BOM Australia' },
+	{ value: 'cams', label: 'CAMS' },
+	{ value: 'cma', label: 'CMA China' },
 	{ value: 'dmi', label: 'DMI Denmark' },
 	{ value: 'dwd', label: 'DWD Germany' },
 	{ value: 'ecmwf', label: 'ECMWF' },
@@ -34,6 +36,74 @@ export const domainOptions: Array<Domain> = [
 	// 	},
 	// 	time_interval: 'hourly',
 	// },
+
+	// CAMS
+	{
+		value: 'cams_global',
+		label: 'CAMS Global',
+		grid: {
+			type: 'regular',
+			nx: 900,
+			ny: 451,
+			latMin: -90,
+			lonMin: -180,
+			dx: 0.4,
+			dy: 0.4,
+			zoom: 1
+		},
+		time_interval: 'hourly', // not all variables, some are 'hourly', some are '3_hourly'
+		model_interval: '12_hourly'
+	},
+	{
+		value: 'cams_global_greenhouse_gases',
+		label: 'CAMS Global Greenhouse Gases',
+		grid: {
+			type: 'regular',
+			nx: 3600,
+			ny: 1801,
+			latMin: -90,
+			lonMin: -180,
+			dx: 0.1,
+			dy: 0.1,
+			zoom: 1
+		},
+		time_interval: '3_hourly',
+		model_interval: 'daily'
+	},
+	// {
+	// 	value: 'cams_europe',
+	// 	label: 'CAMS Europe',
+	// 	grid: {
+	// 		type: 'regular',
+	// 		nx: 700,
+	// 		ny: 420,
+	// 		latMin: 71.95,
+	// 		lonMin: -24.95,
+	// 		dx: 0.1,
+	// 		dy: -0.1, // IMPORTANT: GRID is flipped! Therefore dy negative!
+	// 		zoom: 2
+	// 	},
+	// 	time_interval: 'hourly',
+	// 	model_interval: 'daily'
+	// },
+
+	// CMA
+	{
+		value: 'cma_grapes_global',
+		label: 'CMA GRAPES Global',
+		grid: {
+			type: 'regular',
+			nx: 2880,
+			ny: 1440,
+			latMin: -89.9375,
+			lonMin: -180,
+			dx: 0.125,
+			dy: 0.125,
+			zoom: 1
+		},
+		time_interval: '3_hourly',
+		model_interval: '6_hourly'
+	},
 
 	// DMI
 	{
@@ -110,6 +180,23 @@ export const domainOptions: Array<Domain> = [
 		time_interval: 'hourly',
 		model_interval: '3_hourly'
 	},
+	// Not availabe yet
+	// {
+	// 	value: 'dwd_icon_d2_15min',
+	// 	label: 'DWD ICON D2 15min',
+	// 	grid: {
+	// 		type: 'regular',
+	// 		nx: 1215,
+	// 		ny: 746,
+	// 		latMin: 43.18,
+	// 		lonMin: -3.94,
+	// 		dx: 0.02,
+	// 		dy: 0.02,
+	// 		zoom: 5.2
+	// 	},
+	// 	time_interval: '15_minute',
+	// 	model_interval: '3_hourly'
+	// },
 	{
 		value: 'dwd_gwam',
 		label: 'DWD GWAM',
@@ -141,6 +228,54 @@ export const domainOptions: Array<Domain> = [
 		},
 		time_interval: 'hourly',
 		model_interval: '12_hourly'
+	},
+	{
+		value: 'dwd_icon_eps',
+		label: 'DWD ICON EPS',
+		grid: {
+			type: 'regular',
+			nx: 1439,
+			ny: 721,
+			latMin: -90,
+			lonMin: -180,
+			dx: 0.25,
+			dy: 0.25,
+			zoom: 1
+		},
+		time_interval: 'hourly',
+		model_interval: '12_hourly'
+	},
+	{
+		value: 'dwd_icon_eu_eps',
+		label: 'DWD ICON EU EPS',
+		grid: {
+			type: 'regular',
+			nx: 689,
+			ny: 329,
+			latMin: 29.5,
+			lonMin: -23.5,
+			dx: 0.125,
+			dy: 0.125,
+			zoom: 3.2
+		},
+		time_interval: 'hourly',
+		model_interval: '6_hourly'
+	},
+	{
+		value: 'dwd_icon_d2_eps',
+		label: 'DWD ICON D2 EPS',
+		grid: {
+			type: 'regular',
+			nx: 1214, // Note: -1px difference to use the same weights as official
+			ny: 745, // Note: -1px difference to use the same weights as official
+			latMin: 43.18,
+			lonMin: -3.94,
+			dx: 0.02,
+			dy: 0.02,
+			zoom: 5.2
+		},
+		time_interval: 'hourly',
+		model_interval: '6_hourly'
 	},
 
 	// GFS
@@ -174,6 +309,38 @@ export const domainOptions: Array<Domain> = [
 			zoom: 1
 		},
 		time_interval: 'hourly',
+		model_interval: '6_hourly'
+	},
+	{
+		value: 'ncep_gefs05',
+		label: 'GEFS 0.5°',
+		grid: {
+			type: 'regular',
+			nx: 720,
+			ny: 361,
+			latMin: -90,
+			lonMin: -180,
+			dx: 0.5,
+			dy: 0.5,
+			zoom: 1
+		},
+		time_interval: '6_hourly',
+		model_interval: '6_hourly'
+	},
+	{
+		value: 'ncep_gefs025',
+		label: 'GEFS 0.25°',
+		grid: {
+			type: 'regular',
+			nx: 1440,
+			ny: 721,
+			latMin: -90,
+			lonMin: -180,
+			dx: 0.25,
+			dy: 0.25,
+			zoom: 1
+		},
+		time_interval: '6_hourly',
 		model_interval: '6_hourly'
 	},
 	{
@@ -243,6 +410,27 @@ export const domainOptions: Array<Domain> = [
 			}
 		},
 		time_interval: 'hourly',
+		model_interval: 'hourly'
+	},
+	{
+		value: 'ncep_hrrr_conus_15min',
+		label: 'GFS HRRR Conus 15min',
+		grid: {
+			type: 'projectedFromBounds',
+			nx: 1799,
+			ny: 1059,
+			latitudeBounds: [21.138, 47.8424],
+			longitudeBounds: [-122.72, -60.918],
+			zoom: 3.5,
+			projection: {
+				λ0: -97.5,
+				ϕ0: 0,
+				ϕ1: 38.5,
+				ϕ2: 38.5,
+				name: 'LambertConformalConicProjection'
+			}
+		},
+		time_interval: '15_minute',
 		model_interval: 'hourly'
 	},
 	{
@@ -341,8 +529,40 @@ export const domainOptions: Array<Domain> = [
 		model_interval: '6_hourly'
 	},
 	{
+		value: 'ecmwf_ifs025_ensemble',
+		label: 'ECMWF IFS 0.25° Ensemble',
+		grid: {
+			type: 'regular',
+			nx: 1440,
+			ny: 721,
+			latMin: -90,
+			lonMin: -180,
+			dx: 360 / 1440,
+			dy: 180 / (721 - 1),
+			zoom: 1
+		},
+		time_interval: '6_hourly',
+		model_interval: '6_hourly'
+	},
+	{
 		value: 'ecmwf_aifs025_single',
 		label: 'ECMWF AIFS 0.25° Single ',
+		grid: {
+			type: 'regular',
+			nx: 1440,
+			ny: 721,
+			latMin: -90,
+			lonMin: -180,
+			dx: 360 / 1440,
+			dy: 180 / (721 - 1),
+			zoom: 1
+		},
+		time_interval: '6_hourly',
+		model_interval: '6_hourly'
+	},
+	{
+		value: 'ecmwf_aifs025_ensemble',
+		label: 'ECMWF AIFS 0.25° Ensemble',
 		grid: {
 			type: 'regular',
 			nx: 1440,
@@ -411,9 +631,36 @@ export const domainOptions: Array<Domain> = [
 		time_interval: 'monthly',
 		model_interval: 'monthly'
 	},
+	// Ensemble
+	// {
+	// 	value: 'ecmwf_ec46',
+	// 	label: 'ECMWF EC46',
+	// 	grid: {
+	// 		type: 'gaussian',
+	// 		nx: 421120,
+	// 		ny: 1,
+	// 		zoom: 3.2,
+	// 		gaussianGridLatitudeLines: 320
+	// 	},
+	// 	time_interval: 'daily',
+	// 	model_interval: 'daily'
+	// },
+	{
+		value: 'ecmwf_ec46_ensemble_mean',
+		label: 'ECMWF EC46 Ensemble Mean',
+		grid: {
+			type: 'gaussian',
+			nx: 421120,
+			ny: 1,
+			zoom: 3.2,
+			gaussianGridLatitudeLines: 320
+		},
+		time_interval: 'daily',
+		model_interval: 'daily'
+	},
 	{
 		value: 'ecmwf_ec46_weekly',
-		label: 'ECMWF EC46',
+		label: 'ECMWF EC46 Weekly',
 		grid: {
 			type: 'gaussian',
 			nx: 421120,
@@ -502,6 +749,22 @@ export const domainOptions: Array<Domain> = [
 		time_interval: 'hourly',
 		model_interval: '6_hourly'
 	},
+	{
+		value: 'cmc_gem_geps',
+		label: 'GEM Global Ensemble',
+		grid: {
+			type: 'regular',
+			nx: 720,
+			ny: 361,
+			latMin: -90,
+			lonMin: -180,
+			dx: 0.5,
+			dy: 0.5,
+			zoom: 1
+		},
+		time_interval: '6_hourly',
+		model_interval: '12_hourly'
+	},
 
 	// ItaliaMeteo
 	{
@@ -549,6 +812,22 @@ export const domainOptions: Array<Domain> = [
 			lonMin: 120,
 			dx: 0.0625,
 			dy: 0.05,
+			zoom: 1
+		},
+		time_interval: 'hourly',
+		model_interval: '3_hourly'
+	},
+	{
+		value: 'jma_msm_upper_level',
+		label: 'JMA MSM Upper Level',
+		grid: {
+			type: 'regular',
+			nx: 241,
+			ny: 253,
+			latMin: 22.4,
+			lonMin: 120,
+			dx: 0.125,
+			dy: 0.1,
 			zoom: 1
 		},
 		time_interval: 'hourly',
@@ -604,6 +883,22 @@ export const domainOptions: Array<Domain> = [
 		time_interval: 'hourly',
 		model_interval: '3_hourly'
 	},
+	{
+		value: 'meteofrance_arome_france0025_15min',
+		label: 'MF AROME France 15min',
+		grid: {
+			type: 'regular',
+			nx: 1121,
+			ny: 717,
+			latMin: 37.5,
+			lonMin: -12,
+			dx: 0.025,
+			dy: 0.025,
+			zoom: 5.2
+		},
+		time_interval: '15_minute',
+		model_interval: 'hourly'
+	},
 
 	{
 		value: 'meteofrance_arome_france_hd',
@@ -653,6 +948,38 @@ export const domainOptions: Array<Domain> = [
 		time_interval: 'hourly',
 		model_interval: '3_hourly'
 	},
+	{
+		value: 'meteofrance_currents',
+		label: 'MF Currents',
+		grid: {
+			type: 'regular',
+			nx: 4320,
+			ny: 2041,
+			latMin: -80 + 1 / 24,
+			lonMin: -180 + 1 / 24,
+			dx: 1 / 12,
+			dy: 1 / 12,
+			zoom: 1
+		},
+		time_interval: 'hourly',
+		model_interval: 'daily'
+	},
+	{
+		value: 'meteofrance_sea_surface_temperature',
+		label: 'MF Sea Surface Temperature',
+		grid: {
+			type: 'regular',
+			nx: 4320,
+			ny: 2041,
+			latMin: -80 + 1 / 24,
+			lonMin: -180 + 1 / 24,
+			dx: 1 / 12,
+			dy: 1 / 12,
+			zoom: 1
+		},
+		time_interval: '6_hourly',
+		model_interval: 'daily'
+	},
 
 	// MetNo
 	{
@@ -694,30 +1021,31 @@ export const domainOptions: Array<Domain> = [
 		time_interval: 'hourly',
 		model_interval: '3_hourly'
 	},
-	{
-		value: 'kma_ldps',
-		label: 'KMA LDPS 1.5km',
-		grid: {
-			type: 'projectedFromGeographicOrigin',
-			nx: 602,
-			ny: 781,
-			latitude: 32.2569,
-			longitude: 121.834,
-			dx: 1500,
-			dy: 1500,
-			zoom: 5.5,
-			projection: {
-				λ0: 126,
-				ϕ0: 38,
-				ϕ1: 30,
-				ϕ2: 60,
-				radius: 6371229,
-				name: 'LambertConformalConicProjection'
-			}
-		},
-		time_interval: 'hourly',
-		model_interval: '3_hourly'
-	},
+	// Currently not available
+	// {
+	// 	value: 'kma_ldps',
+	// 	label: 'KMA LDPS 1.5km',
+	// 	grid: {
+	// 		type: 'projectedFromGeographicOrigin',
+	// 		nx: 602,
+	// 		ny: 781,
+	// 		latitude: 32.2569,
+	// 		longitude: 121.834,
+	// 		dx: 1500,
+	// 		dy: 1500,
+	// 		zoom: 5.5,
+	// 		projection: {
+	// 			λ0: 126,
+	// 			ϕ0: 38,
+	// 			ϕ1: 30,
+	// 			ϕ2: 60,
+	// 			radius: 6371229,
+	// 			name: 'LambertConformalConicProjection'
+	// 		}
+	// 	},
+	// 	time_interval: 'hourly',
+	// 	model_interval: '3_hourly'
+	// },
 
 	// KNMI
 	{
@@ -779,6 +1107,27 @@ export const domainOptions: Array<Domain> = [
 		model_interval: '3_hourly'
 	},
 	{
+		value: 'meteoswiss_icon_ch1_ensemble',
+		label: 'MeteoSwiss ICON CH1 Ensemble',
+		grid: {
+			type: 'projectedFromProjectedOrigin',
+			nx: 1089,
+			ny: 705,
+			projectedLatitudeOrigin: -4.06,
+			projectedLongitudeOrigin: -6.46,
+			dx: 0.01,
+			dy: 0.01,
+			zoom: 5.2,
+			projection: {
+				rotatedLat: 43.0,
+				rotatedLon: 190.0,
+				name: 'RotatedLatLonProjection'
+			}
+		},
+		time_interval: '6_hourly',
+		model_interval: '12_hourly'
+	},
+	{
 		value: 'meteoswiss_icon_ch2',
 		label: 'MeteoSwiss ICON CH2',
 		grid: {
@@ -798,6 +1147,27 @@ export const domainOptions: Array<Domain> = [
 		},
 		time_interval: 'hourly',
 		model_interval: '3_hourly'
+	},
+	{
+		value: 'meteoswiss_icon_ch2_ensemble',
+		label: 'MeteoSwiss ICON CH2 Ensemble',
+		grid: {
+			type: 'projectedFromProjectedOrigin',
+			nx: 545,
+			ny: 353,
+			projectedLatitudeOrigin: -4.06,
+			projectedLongitudeOrigin: -6.46,
+			dx: 0.02,
+			dy: 0.02,
+			zoom: 5.2,
+			projection: {
+				rotatedLat: 43.0,
+				rotatedLon: 190.0,
+				name: 'RotatedLatLonProjection'
+			}
+		},
+		time_interval: '6_hourly',
+		model_interval: '12_hourly'
 	},
 
 	// UKMO

@@ -11,39 +11,62 @@ const heights = [
 ];
 
 export const variableOptions = [
+	{ value: 'aerosol_optical_depth', label: 'Aerosol Optical Depth' },
 	{ value: 'albedo', label: 'Albedo' },
+	{ value: 'alder_pollen', label: 'Alder Pollen' },
+
+	{ value: 'ammonia', label: 'Ammonia' },
+
+	{ value: 'birch_pollen', label: 'Birch Pollen' },
 
 	{ value: 'boundary_layer_height', label: 'Boundary Layer Height' },
 
 	{ value: 'cape', label: 'CAPE' },
 
+	{ value: 'carbon_dioxide', label: 'Carbon Dioxide' },
+	{ value: 'carbon_monoxide', label: 'Carbon Monoxide' },
+
 	{ value: 'categorical_freezing_rain', label: 'Categorical Freezing Rain' },
 
 	{ value: 'cloud_base', label: 'Cloud Base' },
 	{ value: 'cloud_cover', label: 'Cloud Cover' },
-	{ value: 'cloud_cover_2m', label: 'Cloud Cover (2m)' },
 	{ value: 'cloud_cover_anomaly', label: 'Cloud Cover Anomaly' },
 	{ value: 'cloud_cover_high', label: 'Cloud Cover High' },
 	{ value: 'cloud_cover_low', label: 'Cloud Cover Low' },
 	{ value: 'cloud_cover_mean', label: 'Cloud Cover Mean' },
 	{ value: 'cloud_cover_mid', label: 'Cloud Cover Mid' },
+	{ value: 'cloud_cover_spread', label: 'Cloud Cover Spread' },
 	{ value: 'cloud_top', label: 'Cloud Top' },
 
 	{ value: 'convective_cloud_base', label: 'Convective Cloud Base' },
 	{ value: 'convective_cloud_top', label: 'Convective Cloud Top' },
 	{ value: 'convective_inhibition', label: 'Convective Inhibition' },
 
+	{ value: 'dew_point', label: 'Dew Point' },
 	{ value: 'dew_point_2m', label: 'Dew Point (2m)' },
 	{ value: 'dew_point_2m_anomaly', label: 'Dew Point (2m) Anomaly' },
 	{ value: 'dew_point_2m_mean', label: 'Dew Point (2m) Mean' },
+	{ value: 'dew_point_2m_spread', label: 'Dew Point (2m) Spread' },
 
 	{ value: 'diffuse_radiation', label: 'Diffuse Radiation' },
 	{ value: 'direct_radiation', label: 'Direct Radiation' },
+	{ value: 'direct_radiation_spread', label: 'Direct Radiation Spread' },
+
+	{ value: 'dust', label: 'Dust' },
 
 	{ value: 'freezing_level_height', label: 'Freezing Level Height' },
 	{ value: 'freezing_rain_probability', label: 'Freezing Rain Probability' },
 
+	{ value: 'formaldehyde', label: 'Formaldehyde' },
+
+	{ value: 'grass_pollen', label: 'Grass Pollen' },
+	{ value: 'glyoxal', label: 'Glyoxal' },
+
+	{ value: 'hail', label: 'Hail' },
+
 	{ value: 'ice_pellets_probability', label: 'Ice Pellets Probability' },
+
+	{ value: 'invert_barometer_height', label: 'Invert Barometer Height' },
 
 	{ value: 'k_index', label: 'k Index' },
 
@@ -54,9 +77,31 @@ export const variableOptions = [
 	{ value: 'lightning_density', label: 'Lightning Density' },
 	{ value: 'lightning_potential', label: 'Lightning Potential' },
 
-	{ value: 'mass_density_8m', label: 'Mass Density (8m)' },
+	{ value: 'mass_density', label: 'Mass Density' },
+
+	{ value: 'methane', label: 'Methane' },
+
+	{ value: 'mugwort_pollen', label: 'Mugwort Pollen' },
+
+	{ value: 'nitrogen_dioxide', label: 'Nitrogen Dioxide' },
+	{ value: 'nitrogen_monoxide', label: 'Nitrogen Monoxide' },
+	{
+		value: 'non_methane_volatile_organic_compounds',
+		label: 'Non Methane Volatile Organic Compounds'
+	},
 
 	{ value: 'ocean_u_current', label: 'Ocean Current' },
+	// { value: 'ocean_v_current', label: 'Ocean Current' },
+	{ value: 'olive_pollen', label: 'Olive Pollen' },
+
+	{ value: 'ozone', label: 'Ozone' },
+
+	{ value: 'peroxyacyl_nitrates', label: 'Peroxyacyl Nitrates' },
+
+	{ value: 'pm10_wildfires', label: 'PM10 Wildfires' },
+	{ value: 'pm2_5', label: 'PM2.5' },
+	{ value: 'pm2_5_total_organic_matter', label: 'PM2.5 Total Organic Matter' },
+	{ value: 'pm10', label: 'PM10' },
 
 	{ value: 'potential_evapotranspiration', label: 'Potential Evapotranspiration' },
 
@@ -69,37 +114,49 @@ export const variableOptions = [
 	{ value: 'precipitation_mean', label: 'Precipitation Mean' },
 	{ value: 'precipitation_probability', label: 'Precipitation Probability' },
 	{ value: 'precipitation_sot90', label: 'Precipitation SOT90' },
+	{ value: 'precipitation_spread', label: 'Precipitation Spread' },
 	{ value: 'precipitation_type', label: 'Precipitation Type' },
 
 	{ value: 'pressure_msl', label: 'Pressure Mean Sea Level' },
 	{ value: 'pressure_msl_anomaly', label: 'Pressure Mean Sea Level Anomaly' },
 	{ value: 'pressure_msl_anomaly_gt0', label: 'Pressure Mean Sea Level Anomaly GT0' },
 	{ value: 'pressure_msl_mean', label: 'Pressure Mean Sea Level Mean' },
+	{ value: 'pressure_msl_spread', label: 'Pressure Mean Sea Level Spread' },
+
+	{ value: 'ragweed_pollen', label: 'Ragweed Pollen' },
 
 	{ value: 'rain', label: 'Rain' },
 	{ value: 'rain_probability', label: 'Rain Probability' },
 
 	{ value: 'roughness_length', label: 'Roughness Length' },
 
+	{ value: 'residential_elementary_carbon', label: 'Residential Elementary Carbon' },
+
 	{ value: 'runoff', label: 'Runoff' },
 
 	{ value: 'sea_ice_thickness', label: 'Sea Ice Thickness' },
 	{ value: 'sea_level_height_msl', label: 'Sea Level Height Mean Sea Level' },
+	{ value: 'sea_salt_aerosol', label: 'Sea Salt Aerosol' },
+	{ value: 'sea_surface_temperature', label: 'Sea Surface Temperature' },
 	{ value: 'sea_surface_temperature_anomaly', label: 'Sea Surface Temperature Anomaly' },
 	{ value: 'sea_surface_temperature_mean', label: 'Sea Surface Temperature Mean' },
+	{ value: 'sea_surface_temperature_spread', label: 'Sea Surface Temperature Spread' },
 
 	{ value: 'sensible_heat_flux', label: 'Sensible Heat Flux' },
 
 	{ value: 'secondary_swell_wave_height', label: 'Secondary Swell Wave Height & Direction' },
 	{ value: 'secondary_swell_wave_period', label: 'Secondary Swell Wave Period' },
+	{ value: 'secondary_inorganic_aerosol', label: 'Secondary Inorganic Aerosol' },
+
 	{ value: 'secondary_swell_wave_direction', label: 'Secondary Swell Wave Direction' },
 
 	{ value: 'showers', label: 'Showers' },
 	{ value: 'showers_mean', label: 'Showers Mean' },
+	{ value: 'showers_spread', label: 'Showers Spread' },
 
 	{ value: 'shortwave_radiation', label: 'Shortwave Solar Radiation' },
+	{ value: 'shortwave_radiation_spread', label: 'Shortwave Solar Radiation Spread' },
 
-	{ value: 'snow', label: 'Snow' },
 	{ value: 'snow_depth', label: 'Snow Depth' },
 	{ value: 'snow_depth_water_equivalent', label: 'Snow Depth Water Equivalent' },
 	{ value: 'snow_depth_water_equivalent_anomaly', label: 'Snow Depth Water Equivalent Anomaly' },
@@ -114,13 +171,19 @@ export const variableOptions = [
 	{ value: 'snowfall_water_equivalent', label: 'Snowfall Water Equivalent' },
 	{ value: 'snowfall_water_equivalent_anomaly', label: 'Snowfall Water Equivalent Anomaly' },
 	{ value: 'snowfall_water_equivalent_mean', label: 'Snowfall Water Equivalent Mean' },
+	{ value: 'snowfall_water_equivalent_spread', label: 'Snowfall Water Equivalent Spread' },
 
 	{ value: 'sunshine_duration', label: 'Sunshine Duration' },
 	{ value: 'sunshine_duration_anomaly', label: 'Sunshine Duration Anomaly' },
 	{ value: 'sunshine_duration_mean', label: 'Sunshine Duration Mean' },
+	{ value: 'sunshine_duration_spread', label: 'Sunshine Duration Spread' },
+
+	{ value: 'sulphur_dioxide', label: 'Sulphur Dioxide' },
 
 	{ value: 'surface_temperature', label: 'Surface Temperature' },
 	{ value: 'surface_temperature_anomaly_gt0', label: 'Surface Temperature Anomaly GT0' },
+
+	{ value: 'temperature_2m', label: 'Temperature (2m)' },
 
 	{ value: 'swell_wave_height', label: 'Swell Wave Height & Direction' }, // combined
 	{ value: 'swell_wave_direction', label: 'Swell Wave Height & Direction' }, // combined
@@ -131,24 +194,27 @@ export const variableOptions = [
 	{ value: 'temperature_2m_anomaly_gt0', label: 'Temperature (2m) Anomaly GT0' },
 	{ value: 'temperature_2m_anomaly_gt1', label: 'Temperature (2m) Anomaly GT1' },
 	{ value: 'temperature_2m_anomaly_gt2', label: 'Temperature (2m) Anomaly GT2' },
-	{ value: 'temperature_2m_anomaly_ltm0', label: 'Temperature (2m) Anomaly LTM0' },
 	{ value: 'temperature_2m_anomaly_ltm1', label: 'Temperature (2m) Anomaly LTM1' },
 	{ value: 'temperature_2m_anomaly_ltm2', label: 'Temperature (2m) Anomaly LTM2' },
 	{ value: 'temperature_2m_efi', label: 'Temperature (2m) EFI' },
 	{ value: 'temperature_2m_mean', label: 'Temperature (2m) Mean' },
 	{ value: 'temperature_2m_min', label: 'Temperature (2m) Min' },
+	{ value: 'temperature_2m_min_spread', label: 'Temperature (2m) Min Spread' },
 	{ value: 'temperature_2m_max', label: 'Temperature (2m) Max' },
+	{ value: 'temperature_2m_max_spread', label: 'Temperature (2m) Max Spread' },
 	{ value: 'temperature_2m_sot10', label: 'Temperature (2m) SOT10' },
 	{ value: 'temperature_2m_sot90', label: 'Temperature (2m) SOT90' },
+	{ value: 'temperature_2m_spread', label: 'Temperature (2m) Spread' },
 	{ value: 'temperature_max6h_2m_anomaly', label: 'Temperature Max 6h (2m) Anomaly' },
 	{ value: 'temperature_max6h_2m_mean', label: 'Temperature Max 6h (2m) Mean' },
 	{ value: 'temperature_min6h_2m_anomaly', label: 'Temperature Min 6h (2m) Anomaly' },
 	{ value: 'temperature_min6h_2m_mean', label: 'Temperature Min 6h (2m) Mean' },
 
+	{ value: 'tertiary_swell_wave_direction', label: 'Tertiary Swell Wave Direction' },
 	{ value: 'tertiary_swell_wave_height', label: 'Tertiary Swell Wave Height & Direction' },
 	{ value: 'tertiary_swell_wave_period', label: 'Tertiary Swell Wave Period' },
 
-	{ value: 'thunderstorm_probability', label: 'Thunderstorm Probability' },
+	{ value: 'total_elementary_carbon', label: 'Total Elementary Carbon' },
 
 	{ value: 'total_column_integrated_water_vapour', label: 'Total Column Integrated Water Vapour' },
 	{
@@ -167,21 +233,37 @@ export const variableOptions = [
 
 	{ value: 'wave_height', label: 'Wave Height & Direction' }, // combined
 	{ value: 'wave_direction', label: 'Wave Height & Direction' }, // combined
+	{ value: 'wave_direction_spread', label: 'Wave Height & Direction Spread' },
+	{ value: 'wave_height_spread', label: 'Wave Height & Direction Spread' },
 	{ value: 'wave_period', label: 'Wave Period' },
+	{ value: 'wave_period_spread', label: 'Wave Period Spread' },
 	{ value: 'wave_peak_period', label: 'Wave Peak Period' },
+	{ value: 'wave_peak_period_spread', label: 'Wave Peak Period Spread' },
 
 	{ value: 'weather_code', label: 'Weather Codes' },
 
+	{ value: 'wind_direction', label: 'Wind Direction' },
+	{ value: 'wind_gusts', label: 'Wind Gusts' },
 	{ value: 'wind_gusts_10m', label: 'Wind Gusts (10m)' },
+	{ value: 'wind_gusts_10m_spread', label: 'Wind Gusts (10m) Spread' },
+	{ value: 'wind_speed', label: 'Wind Speed' },
+	{ value: 'wind_u_component', label: 'Wind U Component' },
+	{ value: 'wind_u_component_10m_anomaly', label: 'Wind (10m) Anomaly' },
+	{ value: 'wind_u_component_10m_mean', label: 'Wind (10m) Mean' },
+	{ value: 'wind_u_component_100m_anomaly', label: 'Wind (100m) Anomaly' },
+	{ value: 'wind_u_component_100m_mean', label: 'Wind (100m) Mean' },
+	{ value: 'wind_u_component_200m', label: 'Wind (200m)' },
+	{ value: 'wind_v_component', label: 'Wind V Component' },
+	{ value: 'wind_v_component_10m_anomaly', label: 'Wind V Component (10m) Anomaly' },
+	{ value: 'wind_v_component_10m_mean', label: 'Wind V Component (10m) Mean' },
+	{ value: 'wind_v_component_100m_anomaly', label: 'Wind V Component (100m) Anomaly' },
+	{ value: 'wind_v_component_100m_mean', label: 'Wind V Component (100m) Mean' },
+	{ value: 'wind_v_component_200m', label: 'Wind V Component (200m)' },
 
 	{ value: 'wind_wave_height', label: 'Wind Wave Height & Direction' }, // combined
 	{ value: 'wind_wave_direction', label: 'Wind Wave Height & Direction' }, // combined
 	{ value: 'wind_wave_period', label: 'Wind Wave Period' },
 	{ value: 'wind_wave_peak_period', label: 'Wind Wave Peak Period' },
-	{ value: 'wind_u_component_10m_anomaly', label: 'Wind (10m) Anomaly' },
-	{ value: 'wind_u_component_10m_mean', label: 'Wind (10m) Mean' },
-	{ value: 'wind_u_component_100m_anomaly', label: 'Wind (100m) Anomaly' },
-	{ value: 'wind_u_component_100m_mean', label: 'Wind (100m) Mean' },
 
 	{ value: 'updraft', label: 'Updraft' },
 
@@ -190,27 +272,109 @@ export const variableOptions = [
 	{ value: 'soil_temperature_18cm', label: 'Soil Temperature (18 cm)' },
 	{ value: 'soil_temperature_54cm', label: 'Soil Temperature (54 cm)' },
 	{ value: 'soil_temperature_162cm', label: 'Soil Temperature (162 cm)' },
-	{ value: 'soil_temperature_468cm', label: 'Soil Temperature (486 cm)' },
+	{ value: 'soil_temperature_486cm', label: 'Soil Temperature (486 cm)' },
 	{ value: 'soil_temperature_1458cm', label: 'Soil Temperature (1458 cm)' },
 
 	{ value: 'soil_temperature_0_to_7cm', label: 'Soil Temperature (0-7 cm)' },
+	{ value: 'soil_temperature_0_to_7cm_anomaly', label: 'Soil Temperature (0-7 cm) Anomaly' },
+	{ value: 'soil_temperature_0_to_7cm_mean', label: 'Soil Temperature (0-7 cm) Mean' },
+	{ value: 'soil_temperature_0_to_7cm_spread', label: 'Soil Temperature (0-7 cm) Spread' },
 	{ value: 'soil_temperature_0_to_10cm', label: 'Soil Temperature (0-10 cm)' },
 	{ value: 'soil_temperature_7_to_28cm', label: 'Soil Temperature (7-28 cm)' },
+	{ value: 'soil_temperature_7_to_28cm_spread', label: 'Soil Temperature (7-28 cm) Spread' },
 	{ value: 'soil_temperature_10_to_40cm', label: 'Soil Temperature (10-40 cm)' },
+	{ value: 'soil_temperature_28_to_100cm', label: 'Soil Temperature (28-100 cm)' },
+	{ value: 'soil_temperature_28_to_100cm_spread', label: 'Soil Temperature (28-100 cm) Spread' },
 	{ value: 'soil_temperature_40_to_100cm', label: 'Soil Temperature (40-100 cm)' },
 	{ value: 'soil_temperature_100_to_200cm', label: 'Soil Temperature (100-200 cm)' },
+	{ value: 'soil_temperature_100_to_255cm', label: 'Soil Temperature (100-255 cm)' },
+	{ value: 'soil_temperature_100_to_255cm_spread', label: 'Soil Temperature (100-255 cm) Spread' },
 
 	{ value: 'soil_moisture_0_to_1cm', label: 'Soil Moisture (0-1 cm)' },
 	{ value: 'soil_moisture_0_to_7cm', label: 'Soil Moisture (0-7 cm)' },
+	{ value: 'soil_moisture_0_to_7cm_spread', label: 'Soil Moisture (0-7 cm) Spread' },
+	{ value: 'soil_moisture_0_to_10cm', label: 'Soil Moisture (0-10 cm)' },
 	{ value: 'soil_moisture_1_to_3cm', label: 'Soil Moisture (1-3 cm)' },
 	{ value: 'soil_moisture_3_to_9cm', label: 'Soil Moisture (3-9 cm)' },
-	{ value: 'soil_moisture_0_to_10cm', label: 'Soil Moisture (0-10 cm)' },
 	{ value: 'soil_moisture_7_to_28cm', label: 'Soil Moisture (7-28 cm)' },
+	{ value: 'soil_moisture_7_to_28cm_spread', label: 'Soil Moisture (7-28 cm) Spread' },
 	{ value: 'soil_moisture_9_to_27cm', label: 'Soil Moisture (9-27 cm)' },
 	{ value: 'soil_moisture_10_to_40cm', label: 'Soil Moisture (10-40 cm)' },
 	{ value: 'soil_moisture_27_to_81cm', label: 'Soil Moisture (27-81 cm)' },
 	{ value: 'soil_moisture_40_to_100cm', label: 'Soil Moisture (40-100 cm)' },
 	{ value: 'soil_moisture_100_to_200cm', label: 'Soil Moisture (100-200 cm)' },
+	{ value: 'soil_moisture_100_to_255cm', label: 'Soil Moisture (100-255 cm)' },
+	{ value: 'soil_moisture_100_to_255cm_spread', label: 'Soil Moisture (100-255 cm) Spread' },
+	{ value: 'soil_moisture_28_to_100cm', label: 'Soil Moisture (28-100 cm)' },
+	{ value: 'soil_moisture_28_to_100cm_spread', label: 'Soil Moisture (28-100 cm) Spread' },
+	{ value: 'soil_moisture_243_to_729cm', label: 'Soil Moisture (243-729 cm)' },
+	{ value: 'soil_moisture_729_to_2187cm', label: 'Soil Moisture (729-2187 cm)' },
+	{ value: 'soil_moisture_81_to_243cm', label: 'Soil Moisture (81-243 cm)' },
+
+	// spreads
+	{ value: 'geopotential_height_50hPa_spread', label: 'Geopotential Height (50hPa) Spread' },
+	{ value: 'geopotential_height_100hPa_spread', label: 'Geopotential Height (100hPa) Spread' },
+	{ value: 'geopotential_height_150hPa_spread', label: 'Geopotential Height (150hPa) Spread' },
+	{ value: 'geopotential_height_200hPa_spread', label: 'Geopotential Height (200hPa) Spread' },
+	{ value: 'geopotential_height_250hPa_spread', label: 'Geopotential Height (250hPa) Spread' },
+	{ value: 'geopotential_height_300hPa_spread', label: 'Geopotential Height (300hPa) Spread' },
+	{ value: 'geopotential_height_400hPa_spread', label: 'Geopotential Height (400hPa) Spread' },
+	{ value: 'geopotential_height_500hPa_spread', label: 'Geopotential Height (500hPa) Spread' },
+	{ value: 'geopotential_height_600hPa_spread', label: 'Geopotential Height (600hPa) Spread' },
+	{ value: 'geopotential_height_700hPa_spread', label: 'Geopotential Height (700hPa) Spread' },
+	{ value: 'geopotential_height_850hPa_spread', label: 'Geopotential Height (850hPa) Spread' },
+	{ value: 'geopotential_height_925hPa_spread', label: 'Geopotential Height (925hPa) Spread' },
+	{ value: 'geopotential_height_1000hPa_spread', label: 'Geopotential Height (1000hPa) Spread' },
+
+	{ value: 'temperature_50hPa_spread', label: 'Temperature (50hPa) Spread' },
+	{ value: 'temperature_100hPa_spread', label: 'Temperature (100hPa) Spread' },
+	{ value: 'temperature_150hPa_spread', label: 'Temperature (150hPa) Spread' },
+	{ value: 'temperature_200hPa_spread', label: 'Temperature (200hPa) Spread' },
+	{ value: 'temperature_250hPa_spread', label: 'Temperature (250hPa) Spread' },
+	{ value: 'temperature_300hPa_spread', label: 'Temperature (300hPa) Spread' },
+	{ value: 'temperature_400hPa_spread', label: 'Temperature (400hPa) Spread' },
+	{ value: 'temperature_500hPa_spread', label: 'Temperature (500hPa) Spread' },
+	{ value: 'temperature_600hPa_spread', label: 'Temperature (600hPa) Spread' },
+	{ value: 'temperature_700hPa_spread', label: 'Temperature (700hPa) Spread' },
+	{ value: 'temperature_850hPa_spread', label: 'Temperature (850hPa) Spread' },
+	{ value: 'temperature_925hPa_spread', label: 'Temperature (925hPa) Spread' },
+	{ value: 'temperature_1000hPa_spread', label: 'Temperature (1000hPa) Spread' },
+
+	{ value: 'wind_u_component_10m_spread', label: 'Wind (10m) Spread' },
+	{ value: 'wind_u_component_100m_spread', label: 'Wind (100m) Spread' },
+	{ value: 'wind_u_component_200m_spread', label: 'Wind (200m) Spread' },
+
+	{ value: 'wind_v_component_10m_spread', label: 'Wind V Component (10m) Spread' },
+	{ value: 'wind_v_component_100m_spread', label: 'Wind V Component (100m) Spread' },
+	{ value: 'wind_v_component_200m_spread', label: 'Wind V Component (200m) Spread' },
+
+	{ value: 'wind_u_component_50hPa_spread', label: 'Wind (50hPa) Spread' },
+	{ value: 'wind_u_component_100hPa_spread', label: 'Wind (100hPa) Spread' },
+	{ value: 'wind_u_component_150hPa_spread', label: 'Wind (150hPa) Spread' },
+	{ value: 'wind_u_component_200hPa_spread', label: 'Wind (200hPa) Spread' },
+	{ value: 'wind_u_component_250hPa_spread', label: 'Wind (250hPa) Spread' },
+	{ value: 'wind_u_component_300hPa_spread', label: 'Wind (300hPa) Spread' },
+	{ value: 'wind_u_component_400hPa_spread', label: 'Wind (400hPa) Spread' },
+	{ value: 'wind_u_component_500hPa_spread', label: 'Wind (500hPa) Spread' },
+	{ value: 'wind_u_component_600hPa_spread', label: 'Wind (600hPa) Spread' },
+	{ value: 'wind_u_component_700hPa_spread', label: 'Wind (700hPa) Spread' },
+	{ value: 'wind_u_component_850hPa_spread', label: 'Wind (850hPa) Spread' },
+	{ value: 'wind_u_component_925hPa_spread', label: 'Wind (925hPa) Spread' },
+	{ value: 'wind_u_component_1000hPa_spread', label: 'Wind (1000hPa) Spread' },
+
+	{ value: 'wind_v_component_50hPa_spread', label: 'Wind V Component (50hPa) Spread' },
+	{ value: 'wind_v_component_100hPa_spread', label: 'Wind V Component (100hPa) Spread' },
+	{ value: 'wind_v_component_150hPa_spread', label: 'Wind V Component (150hPa) Spread' },
+	{ value: 'wind_v_component_200hPa_spread', label: 'Wind V Component (200hPa) Spread' },
+	{ value: 'wind_v_component_250hPa_spread', label: 'Wind V Component (250hPa) Spread' },
+	{ value: 'wind_v_component_300hPa_spread', label: 'Wind V Component (300hPa) Spread' },
+	{ value: 'wind_v_component_400hPa_spread', label: 'Wind V Component (400hPa) Spread' },
+	{ value: 'wind_v_component_500hPa_spread', label: 'Wind V Component (500hPa) Spread' },
+	{ value: 'wind_v_component_600hPa_spread', label: 'Wind V Component (600hPa) Spread' },
+	{ value: 'wind_v_component_700hPa_spread', label: 'Wind V Component (700hPa) Spread' },
+	{ value: 'wind_v_component_850hPa_spread', label: 'Wind V Component (850hPa) Spread' },
+	{ value: 'wind_v_component_925hPa_spread', label: 'Wind V Component (925hPa) Spread' },
+	{ value: 'wind_v_component_1000hPa_spread', label: 'Wind V Component (1000hPa) Spread' },
 
 	// level groups
 	{ value: 'geopotential_height', label: 'Geopotential Height' },
@@ -250,6 +414,7 @@ for (const pl of pressureLevels) {
 	});
 	variableOptions.push({ value: `wind_${pl}hPa`, label: `Wind (${pl}hPa)` });
 	variableOptions.push({ value: `wind_u_component_${pl}hPa`, label: `Wind (${pl}hPa)` });
+	variableOptions.push({ value: `wind_v_component_${pl}hPa`, label: `Wind (${pl}hPa)` });
 	variableOptions.push({ value: `wind_speed_${pl}hPa`, label: `Wind (${pl}hPa)` });
 }
 for (const height of heights) {
@@ -260,6 +425,7 @@ for (const height of heights) {
 	variableOptions.push({ value: `temperature_${height}m`, label: `Temperature (${height}m)` });
 	variableOptions.push({ value: `wind_${height}m`, label: `Wind (${height}m)` });
 	variableOptions.push({ value: `wind_u_component_${height}m`, label: `Wind (${height}m)` });
+	variableOptions.push({ value: `wind_v_component_${height}m`, label: `Wind (${height}m)` });
 	variableOptions.push({ value: `wind_speed_${height}m`, label: `Wind (${height}m)` });
 }
 
