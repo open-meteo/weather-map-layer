@@ -71,7 +71,7 @@ export const omProtocol = async (
 		throw new Error(`Tile coordinates required for ${params.type} request`);
 	}
 
-	const tile = await requestTile(request, data, state.ranges, params.type);
+	const tile = await requestTile(url, request, data, state.ranges, params.type);
 
 	return { data: tile };
 };
@@ -84,15 +84,8 @@ const normalizeUrl = async (url: string): Promise<string> => {
 	return normalized;
 };
 
-const buildTileKey = (request: ParsedRequest): string => {
-	const { baseUrl, tileIndex } = request;
-	if (!tileIndex) {
-		throw new Error('Cannot build tile key without tile index');
-	}
-	return `${baseUrl}/${tileIndex.z}/${tileIndex.x}/${tileIndex.y}`;
-};
-
 const requestTile = async (
+	url: string,
 	request: ParsedRequest,
 	data: Data,
 	ranges: DimensionRange[],
@@ -102,7 +95,7 @@ const requestTile = async (
 		throw new Error('Tile coordinates required for tile request');
 	}
 
-	const key = buildTileKey(request);
+	const key = `${type}:${url}`;
 	const tileType = `get${capitalize(type)}` as 'getImage' | 'getArrayBuffer';
 
 	// early return if the worker will not return a tile
