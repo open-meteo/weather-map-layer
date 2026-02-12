@@ -1,8 +1,9 @@
 import { CustomLayerInterface, CustomRenderMethodInput, Map } from 'maplibre-gl';
 
+import { GridFactory } from './grids';
 import { WeatherMapLayerFileReader } from './om-file-reader';
 
-import { Domain, RegularGridData } from './types';
+import { Domain } from './types';
 
 export class WebGLRasterLayer implements CustomLayerInterface {
 	id: string;
@@ -281,12 +282,9 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 			return;
 		}
 
-		const grid = this.domain.grid as RegularGridData;
+		const grid = GridFactory.create(this.domain.grid);
 
-		const minLat = grid.latMin;
-		const maxLat = grid.latMin + grid.ny * grid.dy;
-		const minLon = grid.lonMin;
-		const maxLon = grid.lonMin + grid.nx * grid.dx;
+		const [minLon, minLat, maxLon, maxLat] = grid.getBounds();
 
 		// Handle world wrapping
 		const map = this.map!;

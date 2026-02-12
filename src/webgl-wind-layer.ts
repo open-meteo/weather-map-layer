@@ -1,8 +1,9 @@
 import { CustomLayerInterface, CustomRenderMethodInput, Map } from 'maplibre-gl';
 
+import { GridFactory } from './grids';
 import { WeatherMapLayerFileReader } from './om-file-reader';
 
-import { Domain, RegularGridData } from './types';
+import { Domain } from './types';
 
 export class WebGLWindLayer implements CustomLayerInterface {
 	id: string;
@@ -40,17 +41,12 @@ export class WebGLWindLayer implements CustomLayerInterface {
 		this.domain = domain;
 		this.variable = variable;
 		this.omUrl = omUrl;
-		this.omFileReader = new WeatherMapLayerFileReader({});
+		this.omFileReader = new WeatherMapLayerFileReader();
 	}
 
 	private getBounds() {
-		const grid = this.domain.grid as RegularGridData;
-		return {
-			minLat: grid.latMin,
-			maxLat: grid.latMin + grid.ny * grid.dy,
-			minLon: grid.lonMin,
-			maxLon: grid.lonMin + grid.nx * grid.dx
-		};
+		const grid = GridFactory.create(this.domain.grid);
+		return grid.getBounds();
 	}
 
 	private createBackgroundMesh(resolution: number = 50): {
@@ -359,10 +355,10 @@ export class WebGLWindLayer implements CustomLayerInterface {
 		const bounds = this.getBounds();
 		gl.uniform4f(
 			gl.getUniformLocation(this.program!, 'u_bounds'),
-			bounds.minLon,
-			bounds.minLat,
-			bounds.maxLon,
-			bounds.maxLat
+			bounds[0],
+			bounds[1],
+			bounds[2],
+			bounds[3]
 		);
 		const params = this.getZoomAdjustedParameters();
 		gl.uniform1f(gl.getUniformLocation(this.program!, 'u_drop_rate'), params.dropRate);
@@ -410,10 +406,10 @@ export class WebGLWindLayer implements CustomLayerInterface {
 		const bounds = this.getBounds();
 		gl.uniform4f(
 			gl.getUniformLocation(renderProgram, 'u_bounds'),
-			bounds.minLon,
-			bounds.minLat,
-			bounds.maxLon,
-			bounds.maxLat
+			bounds[0],
+			bounds[1],
+			bounds[2],
+			bounds[3]
 		);
 
 		// Bind particle state texture
