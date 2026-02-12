@@ -59,45 +59,60 @@
 
 			const map = new maplibregl.Map({
 				container: 'map',
-				style: {
-					version: 8,
-					sources: {
-						osm: {
-							type: 'raster',
-							tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-							tileSize: 256,
-							attribution:
-								'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-						}
-					},
-					layers: [
-						{
-							id: 'osm',
-							type: 'raster',
-							source: 'osm'
-						}
-					]
-				},
+				style: 'https://public.open-meteo.com/styles/minimal-planet-maps.json', // replace with your own style sheet
 				hash: true
 			});
 
 			let dark = false;
 			const baseOmUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=cloud_cover`;
 
-			function setDarkMode(dark) {
-				// update UI style
-				const wrapper = document.getElementById('toggle');
-				if (dark) {
-					wrapper.classList.add('dark');
-				} else {
-					wrapper.classList.remove('dark');
-				}
-
-				const omUrl = baseOmUrl + (dark ? '&dark=true' : '');
-
+			function ensureOmLayer(omUrl) {
 				const omFileSource = map.getSource('omFileSource');
 				if (omFileSource) {
 					omFileSource.setUrl('om://' + omUrl);
+				} else {
+					map.addSource('omFileSource', {
+						url: 'om://' + omUrl,
+						type: 'raster',
+						tileSize: 256,
+						maxzoom: 12
+					});
+				}
+
+				if (!map.getLayer('omFileLayer')) {
+					map.addLayer(
+						{
+							id: 'omFileLayer',
+							type: 'raster',
+							source: 'omFileSource',
+							paint: {
+								'raster-opacity': 0.8
+							}
+						},
+						'waterway-tunnel'
+					);
+				} else {
+					map.moveLayer('omFileLayer', 'waterway-tunnel');
+				}
+			}
+
+			function setDarkMode(dark) {
+				// update UI style
+				const wrapper = document.getElementById('toggle');
+				const omUrl = baseOmUrl + (dark ? '&dark=true' : '');
+
+				if (dark) {
+					wrapper.classList.add('dark');
+					map.setStyle('https://public.open-meteo.com/styles/minimal-planet-maps-dark.json');
+					map.once('styledata', () => {
+						ensureOmLayer(omUrl);
+					});
+				} else {
+					wrapper.classList.remove('dark');
+					map.setStyle('https://public.open-meteo.com/styles/minimal-planet-maps.json');
+					map.once('styledata', () => {
+						ensureOmLayer(omUrl);
+					});
 				}
 			}
 
@@ -107,21 +122,7 @@
 			});
 
 			map.on('load', () => {
-				map.addSource('omFileSource', {
-					url: 'om://' + baseOmUrl,
-					type: 'raster',
-					tileSize: 256,
-					maxzoom: 12
-				});
-
-				map.addLayer({
-					id: 'omFileLayer',
-					type: 'raster',
-					source: 'omFileSource',
-					paint: {
-						'raster-opacity': 0.8
-					}
-				});
+				ensureOmLayer(baseOmUrl);
 			});
 		</script>
 	</body>
