@@ -42,32 +42,38 @@
 					maxzoom: 12
 				});
 
-				map.addLayer({
-					id: 'omFileRasterLayer',
-					type: 'raster',
-					source: 'omFileRasterSource',
-					paint: {
-						'raster-opacity': 0.75
-					}
-				});
+				map.addLayer(
+					{
+						id: 'omFileRasterLayer',
+						type: 'raster',
+						source: 'omFileRasterSource',
+						paint: {
+							'raster-opacity': 0.75
+						}
+					},
+					'waterway-tunnel'
+				);
 
 				map.addSource('omFileGridSource', {
 					url: 'om://' + omUrl + '&grid=true',
 					type: 'vector'
 				});
 
-				map.addLayer({
-					id: 'omFileGridLabels',
-					type: 'symbol',
-					source: 'omFileGridSource',
-					'source-layer': 'grid',
-					layout: {
-						'symbol-placement': 'point',
-						'text-font': ['Noto Sans Regular'],
-						'text-field': ['to-string', ['get', 'value']],
-						'text-size': 16
-					}
-				});
+				map.addLayer(
+					{
+						id: 'omFileGridLabels',
+						type: 'symbol',
+						source: 'omFileGridSource',
+						'source-layer': 'grid',
+						layout: {
+							'symbol-placement': 'point',
+							'text-font': ['Noto Sans Regular'],
+							'text-field': ['to-string', ['get', 'value']],
+							'text-size': 16
+						}
+					},
+					'place_label_other'
+				);
 			});
 		</script>
 	</body>

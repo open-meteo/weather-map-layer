@@ -49,14 +49,17 @@
 					tileSize: 256,
 					maxzoom: 12
 				});
-				map.addLayer({
-					id: 'omFileLayer',
-					type: 'raster',
-					source: 'omFileSource',
-					paint: {
-						'raster-opacity': 0.75
-					}
-				});
+				map.addLayer(
+					{
+						id: 'omFileLayer',
+						type: 'raster',
+						source: 'omFileSource',
+						paint: {
+							'raster-opacity': 0.75
+						}
+					},
+					'waterway-tunnel'
+				);
 			});
 		</script>
 	</body>

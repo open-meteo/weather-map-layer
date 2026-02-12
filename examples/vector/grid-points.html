@@ -42,41 +42,47 @@
 					maxzoom: 12
 				});
 
-				map.addLayer({
-					id: 'omFileRasterLayer',
-					type: 'raster',
-					source: 'omFileRasterSource',
-					paint: {
-						'raster-opacity': 0.75
-					}
-				});
+				map.addLayer(
+					{
+						id: 'omFileRasterLayer',
+						type: 'raster',
+						source: 'omFileRasterSource',
+						paint: {
+							'raster-opacity': 0.75
+						}
+					},
+					'waterway-tunnel'
+				);
 
 				map.addSource('omFileGridSource', {
 					url: 'om://' + omUrl + '?grid=true',
 					type: 'vector'
 				});
 
-				map.addLayer({
-					id: 'omFileGridPoints',
-					type: 'circle',
-					source: 'omFileGridSource',
-					'source-layer': 'grid',
-					layout: {},
-					paint: {
-						'circle-radius': [
-							'interpolate',
-							['exponential', 1.5],
-							['zoom'],
-							// zoom is 0 -> circle radius will be 1px
-							0,
-							1,
-							// zoom is 12 (or greater) -> circle radius will be 20px
-							12,
-							20
-						],
-						'circle-color': '#007cbf'
-					}
-				});
+				map.addLayer(
+					{
+						id: 'omFileGridPoints',
+						type: 'circle',
+						source: 'omFileGridSource',
+						'source-layer': 'grid',
+						layout: {},
+						paint: {
+							'circle-radius': [
+								'interpolate',
+								['exponential', 1.5],
+								['zoom'],
+								// zoom is 0 -> circle radius will be 1px
+								0,
+								1,
+								// zoom is 12 (or greater) -> circle radius will be 20px
+								12,
+								20
+							],
+							'circle-color': '#007cbf'
+						}
+					},
+					'place_label_other'
+				);
 			});
 		</script>
 	</body>

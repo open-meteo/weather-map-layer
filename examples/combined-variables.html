@@ -43,14 +43,17 @@
 					tileSize: 256,
 					maxzoom: 12
 				});
-				map.addLayer({
-					id: 'omCloudCoverLayer',
-					type: 'raster',
-					source: 'omCloudCoverSource',
-					paint: {
-						'raster-opacity': 0.75
-					}
-				});
+				map.addLayer(
+					{
+						id: 'omCloudCoverLayer',
+						type: 'raster',
+						source: 'omCloudCoverSource',
+						paint: {
+							'raster-opacity': 0.75
+						}
+					},
+					'waterway-tunnel'
+				);
 
 				map.addSource('omPrecipitationSource', {
 					url: 'om://' + omPrecipitationUrl,
@@ -58,14 +61,17 @@
 					tileSize: 256,
 					maxzoom: 12
 				});
-				map.addLayer({
-					id: 'omPrecipitationLayer',
-					type: 'raster',
-					source: 'omPrecipitationSource',
-					paint: {
-						'raster-opacity': 0.75
-					}
-				});
+				map.addLayer(
+					{
+						id: 'omPrecipitationLayer',
+						type: 'raster',
+						source: 'omPrecipitationSource',
+						paint: {
+							'raster-opacity': 0.75
+						}
+					},
+					'waterway-tunnel'
+				);
 			});
 		</script>
 	</body>

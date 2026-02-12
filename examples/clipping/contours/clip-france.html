@@ -70,78 +70,87 @@
 							tileSize: 256,
 							maxzoom: 12
 						});
-						map.addLayer({
-							id: 'omFileLayer',
-							type: 'raster',
-							source: 'omFileSource',
-							paint: {
-								'raster-opacity': 0.75
-							}
-						});
+						map.addLayer(
+							{
+								id: 'omFileLayer',
+								type: 'raster',
+								source: 'omFileSource',
+								paint: {
+									'raster-opacity': 0.75
+								}
+							},
+							'waterway-tunnel'
+						);
 
 						map.addSource('omFileVectorSource', {
 							url: 'om://' + omUrl + '&arrows=true',
 							type: 'vector'
 						});
 
-						map.addLayer({
-							id: 'omFileVectorContourLayer',
-							type: 'line',
-							source: 'omFileVectorSource',
-							'source-layer': 'contours',
-							paint: {
-								'line-color': [
-									'case',
-									['boolean', ['feature-state', 'hover'], false],
-									'red',
-									'black'
-								],
-								'line-width': [
-									'case',
-									['boolean', ['feature-state', 'hover'], false],
-									4,
-									[
+						map.addLayer(
+							{
+								id: 'omFileVectorContourLayer',
+								type: 'line',
+								source: 'omFileVectorSource',
+								'source-layer': 'contours',
+								paint: {
+									'line-color': [
 										'case',
-										['boolean', ['==', ['%', ['to-number', ['get', 'value']], 100], 0], false],
-										3,
+										['boolean', ['feature-state', 'hover'], false],
+										'red',
+										'black'
+									],
+									'line-width': [
+										'case',
+										['boolean', ['feature-state', 'hover'], false],
+										4,
 										[
 											'case',
-											['boolean', ['==', ['%', ['to-number', ['get', 'value']], 50], 0], false],
-											2,
+											['boolean', ['==', ['%', ['to-number', ['get', 'value']], 100], 0], false],
+											3,
 											[
 												'case',
-												['boolean', ['==', ['%', ['to-number', ['get', 'value']], 10], 0], false],
-												1.5,
-												1
+												['boolean', ['==', ['%', ['to-number', ['get', 'value']], 50], 0], false],
+												2,
+												[
+													'case',
+													['boolean', ['==', ['%', ['to-number', ['get', 'value']], 10], 0], false],
+													1.5,
+													1
+												]
 											]
 										]
 									]
-								]
-							}
-						});
-
-						map.addLayer({
-							id: 'omFileVectorLayerLabels',
-							type: 'symbol',
-							source: 'omFileVectorSource',
-							'source-layer': 'contours',
-							layout: {
-								'symbol-placement': 'line-center',
-								'symbol-spacing': 1,
-								'text-font': ['Noto Sans Regular'],
-								'text-field': ['to-string', ['get', 'value']],
-								'text-padding': 1,
-								'text-offset': [0, -0.6]
+								}
 							},
-							paint: {
-								'text-color': [
-									'case',
-									['boolean', ['feature-state', 'hover'], false],
-									'red',
-									'black'
-								]
-							}
-						});
+							'place_label_other'
+						);
+
+						map.addLayer(
+							{
+								id: 'omFileVectorLayerLabels',
+								type: 'symbol',
+								source: 'omFileVectorSource',
+								'source-layer': 'contours',
+								layout: {
+									'symbol-placement': 'line-center',
+									'symbol-spacing': 1,
+									'text-font': ['Noto Sans Regular'],
+									'text-field': ['to-string', ['get', 'value']],
+									'text-padding': 1,
+									'text-offset': [0, -0.6]
+								},
+								paint: {
+									'text-color': [
+										'case',
+										['boolean', ['feature-state', 'hover'], false],
+										'red',
+										'black'
+									]
+								}
+							},
+							'place_label_other'
+						);
 					});
 				});
 		</script>
