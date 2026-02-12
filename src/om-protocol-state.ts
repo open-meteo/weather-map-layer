@@ -1,16 +1,16 @@
-import { setupGlobalCache } from '@openmeteo/file-reader';
-
 import { boundsIncluded } from './utils/bounds';
 import { normalizeLon } from './utils/math';
 import { parseUrlComponents } from './utils/parse-url';
 
 import { GridFactory } from './grids';
-import { OMapsFileReader } from './om-file-reader';
+import { MapboxLayerFileReader } from './om-file-reader';
 
 import type {
+	Bounds,
 	Data,
 	DataIdentityOptions,
 	DimensionRange,
+	GridData,
 	OmProtocolInstance,
 	OmProtocolSettings,
 	OmUrlState,
@@ -28,12 +28,11 @@ const STALE_THRESHOLD_MS = 1 * 60 * 1000;
 
 // THIS is shared global state. The protocol can be added only once with different settings!
 let omProtocolInstance: OmProtocolInstance | undefined = undefined;
-setupGlobalCache();
 
 export const getProtocolInstance = (settings: OmProtocolSettings): OmProtocolInstance => {
 	if (omProtocolInstance) {
 		// Warn if critical settings differ from initial configuration
-		if (settings.useSAB !== omProtocolInstance.omFileReader.config.useSAB) {
+		if (settings.fileReaderConfig.useSAB !== omProtocolInstance.omFileReader.config.useSAB) {
 			throw new Error(
 				'omProtocol: useSAB setting differs from initial configuration. ' +
 					'The protocol instance is shared and uses the first settings provided.'
@@ -43,11 +42,23 @@ export const getProtocolInstance = (settings: OmProtocolSettings): OmProtocolIns
 	}
 
 	const instance = {
-		omFileReader: new OMapsFileReader({ useSAB: settings.useSAB }),
+		omFileReader: new MapboxLayerFileReader(settings.fileReaderConfig),
 		stateByKey: new Map()
 	};
 	omProtocolInstance = instance;
 	return instance;
+};
+
+export const getRanges = (gridData: GridData, bounds: Bounds | undefined): DimensionRange[] => {
+	if (bounds) {
+		const gridGetter = GridFactory.create(gridData, null);
+		return gridGetter.getCoveringRanges(bounds[1], bounds[0], bounds[3], bounds[2]);
+	} else {
+		return [
+			{ start: 0, end: gridData.ny },
+			{ start: 0, end: gridData.nx }
+		];
+	}
 };
 
 export const getOrCreateState = (
@@ -72,22 +83,7 @@ export const getOrCreateState = (
 
 	evictStaleStates(stateByKey, stateKey);
 
-	let ranges: DimensionRange[];
-	if (dataOptions.bounds) {
-		const gridGetter = GridFactory.create(dataOptions.domain.grid, null);
-		ranges = gridGetter.getCoveringRanges(
-			dataOptions.bounds[1],
-			dataOptions.bounds[0],
-			dataOptions.bounds[3],
-			dataOptions.bounds[2]
-		);
-	} else {
-		ranges = [
-			{ start: 0, end: dataOptions.domain.grid.ny },
-			{ start: 0, end: dataOptions.domain.grid.nx }
-		];
-	}
-
+	const ranges = getRanges(dataOptions.domain.grid, dataOptions.bounds);
 	const state: OmUrlState = {
 		dataOptions,
 		ranges,
@@ -103,7 +99,7 @@ export const getOrCreateState = (
 
 export const ensureData = async (
 	state: OmUrlState,
-	omFileReader: OMapsFileReader,
+	omFileReader: MapboxLayerFileReader,
 	postReadCallback: PostReadCallback
 ): Promise<Data> => {
 	if (state.data) return state.data;

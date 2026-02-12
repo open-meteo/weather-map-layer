@@ -1,4 +1,6 @@
 import {
+	BlockCache,
+	LruBlockCache,
 	OmDataType,
 	OmFileReadOptions,
 	type OmFileReader,
@@ -10,69 +12,63 @@ import { fastAtan2, radiansToDegrees } from './utils/math';
 import type { Data, DimensionRange } from './types';
 
 /**
- * Configuration options for the OMapsFileReader.
+ * Configuration options for the MapboxLayerFileReader.
  */
-interface FileReaderConfig {
+export interface FileReaderConfig {
 	/** Whether to use SharedArrayBuffer for data reading. @default false */
 	useSAB?: boolean;
-	/** Maximum number of cached HTTP backends. @default 50 */
-	maxCachedFiles?: number;
 	/** Number of retry attempts for failed requests. @default 2 */
 	retries?: number;
 	/** Whether to validate ETags for cache coherency. @default false */
 	eTagValidation?: boolean;
+
+	/**
+	 * Block cache implementation to use.
+	 * In the browser, pass a `BrowserBlockCache`.
+	 * In Node, pass an `LruBlockCache` or any other `BlockCache<string>`.
+	 * If omitted, falls back to an in-memory LruBlockCache.
+	 */
+	cache?: BlockCache<string | bigint>;
 }
+
+export const defaultFileReaderConfig: Required<Omit<FileReaderConfig, 'cache'>> = {
+	useSAB: false,
+	retries: 2,
+	eTagValidation: false
+};
 
 /**
  * Convenience class for reading from OM-files implementing some utility conversions during reading.
  *
  * Caches the backend of recently accessed files.
  */
-export class OMapsFileReader {
-	private static readonly s3BackendCache = new Map<string, OmHttpBackend>();
-
+export class MapboxLayerFileReader {
 	private reader?: OmFileReader;
-	readonly config: Required<FileReaderConfig>;
+	private cache: BlockCache;
+	readonly config: Required<Omit<FileReaderConfig, 'cache'>>;
 	private readonly allDerivationRules: VariableDerivationRule[];
 
 	constructor(config: FileReaderConfig = {}) {
 		this.config = {
-			useSAB: false,
-			maxCachedFiles: 50,
-			retries: 2,
-			eTagValidation: false,
+			...defaultFileReaderConfig,
 			...config
 		};
 
 		// TODO: This could be a combination of user-defined and default derivation rules
 		this.allDerivationRules = DEFAULT_DERIVATION_RULES;
+
+		// Use the injected cache, or fall back to an in-memory LRU cache
+		this.cache = config.cache ?? new LruBlockCache(64 * 1024, 128);
 	}
 
 	async setToOmFile(omUrl: string): Promise<void> {
 		this.dispose();
-
-		let s3Backend = OMapsFileReader.s3BackendCache.get(omUrl);
-		if (!s3Backend) {
-			s3Backend = new OmHttpBackend({
-				url: omUrl,
-				eTagValidation: this.config.eTagValidation,
-				retries: this.config.retries
-			});
-			this.setCachedBackend(omUrl, s3Backend);
-		}
-		this.reader = await s3Backend.asCachedReader();
-	}
-
-	private setCachedBackend(url: string, backend: OmHttpBackend): void {
-		// Implement LRU-like cache management
-		if (OMapsFileReader.s3BackendCache.size >= this.config.maxCachedFiles) {
-			const firstKey = OMapsFileReader.s3BackendCache.keys().next().value;
-			if (firstKey) {
-				OMapsFileReader.s3BackendCache.delete(firstKey);
-			}
-		}
-
-		OMapsFileReader.s3BackendCache.set(url, backend);
+		const s3Backend = new OmHttpBackend({
+			url: omUrl,
+			eTagValidation: this.config.eTagValidation,
+			retries: this.config.retries
+		});
+		this.reader = await s3Backend.asCachedReader(this.cache);
 	}
 
 	private getRanges(ranges: DimensionRange[] | null, dimensions: number[]): DimensionRange[] {
@@ -183,12 +179,32 @@ export class OMapsFileReader {
 		}
 	}
 
-	hasFileOpen(omFileUrl: string) {
-		if (OMapsFileReader.s3BackendCache.get(omFileUrl)) {
-			return true;
-		} else {
-			return false;
-		}
+	/**
+	 * Prefetch data for a specific variable and range into the local cache.
+	 * This is useful for warming up the cache for anticipated map movements.
+	 */
+	async prefetchVariable(variable: string, ranges: DimensionRange[] | null = null): Promise<void> {
+		if (!this.reader) return;
+
+		const derivationRule = this.findDerivationRule(variable);
+		const varsToPrefetch = derivationRule ? derivationRule.getSourceVars(variable) : [variable];
+
+		await Promise.all(
+			varsToPrefetch.map(async (v) => {
+				const variableReader = await this.reader!.getChildByName(v);
+				if (!variableReader) return;
+
+				const dimensions = variableReader.getDimensions();
+				const readRanges = this.getRanges(ranges, dimensions);
+
+				// readPrefetch warms up the backend cache by requesting the necessary
+				// data blocks without decoding them or copying them to a TypedArray.
+				await variableReader.readPrefetch({
+					prefetchConcurrency: 1000, // concurrency limiting on requests is executed via the BlockCache
+					ranges: readRanges
+				});
+			})
+		);
 	}
 
 	dispose() {

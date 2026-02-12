@@ -16,20 +16,24 @@ const { mockReturnBuffer, mockReadVariableResult } = vi.hoisted(() => ({
 	mockReadVariableResult: { value: null as { values: Float32Array; directions: undefined } | null }
 }));
 
-vi.mock('../om-file-reader', () => ({
-	OMapsFileReader: class {
-		config = { useSAB: false };
-		async setToOmFile() {}
-		async readVariable(_variable: string, ranges: DimensionRange[]) {
-			if (mockReadVariableResult.value) {
-				return mockReadVariableResult.value;
+vi.mock('../om-file-reader', async () => {
+	const actual = await vi.importActual('../om-file-reader');
+	return {
+		...actual,
+		MapboxLayerFileReader: class {
+			config = {};
+			async setToOmFile() {}
+			async readVariable(_variable: string, ranges: DimensionRange[]) {
+				if (mockReadVariableResult.value) {
+					return mockReadVariableResult.value;
+				}
+				const totalValues =
+					ranges?.reduce((acc, range) => acc * (range.end - range.start + 1), 1) || 0;
+				return { values: new Float32Array(totalValues), directions: undefined };
 			}
-			const totalValues =
-				ranges?.reduce((acc, range) => acc * (range.end - range.start + 1), 1) || 0;
-			return { values: new Float32Array(totalValues), directions: undefined };
 		}
-	}
-}));
+	};
+});
 
 vi.mock('../worker-pool', () => ({
 	WorkerPool: class {

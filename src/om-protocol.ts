@@ -7,6 +7,7 @@ import { COLOR_SCALES_WITH_ALIASES as defaultColorScales } from './utils/styling
 
 import { domainOptions as defaultDomainOptions } from './domains';
 import { GridFactory } from './grids/index';
+import { defaultFileReaderConfig } from './om-file-reader';
 import { ensureData, getOrCreateState, getProtocolInstance } from './om-protocol-state';
 import { capitalize } from './utils';
 import { WorkerPool } from './worker-pool';
@@ -27,7 +28,7 @@ const workerPool = new WorkerPool();
 
 export const defaultOmProtocolSettings: OmProtocolSettings = {
 	// static
-	useSAB: false,
+	fileReaderConfig: defaultFileReaderConfig,
 
 	// dynamic
 	clippingOptions: undefined,
