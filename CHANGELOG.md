@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.0.14](https://github.com/open-meteo/mapbox-layer/compare/v0.0.13...v0.0.14) (2026-02-18)
+
+
+### Features
+
+* Add GraphCast AIGFS and HGEFS ([#159](https://github.com/open-meteo/mapbox-layer/issues/159)) ([c93abc5](https://github.com/open-meteo/mapbox-layer/commit/c93abc52d06c9b762429201459cce88a72974d9d))
+* Add missing domains, and variables ([#162](https://github.com/open-meteo/mapbox-layer/issues/162)) ([4b640b7](https://github.com/open-meteo/mapbox-layer/commit/4b640b7d54f9fa4013ef2349305fb69afb5d9b15))
+* Cache adaptions ([#167](https://github.com/open-meteo/mapbox-layer/issues/167)) ([50e71de](https://github.com/open-meteo/mapbox-layer/commit/50e71de6e04925f14971241eeb11fc7eb864071c))
+* Change background styles to OM tiles endpoint ([#171](https://github.com/open-meteo/mapbox-layer/issues/171)) ([4d1fccf](https://github.com/open-meteo/mapbox-layer/commit/4d1fccf3b5048afa6ed8fd09bdaf6c5c43e8048a))
+* HMR ([#181](https://github.com/open-meteo/mapbox-layer/issues/181)) ([6c47f14](https://github.com/open-meteo/mapbox-layer/commit/6c47f14a79fbc7536574da6fe19ef85ba401f3bf))
+* Implement AbortController ([#96](https://github.com/open-meteo/mapbox-layer/issues/96)) ([5769052](https://github.com/open-meteo/mapbox-layer/commit/576905283015f28ba389ae3768724929924f173d))
+
+
+### Bug Fixes
+
+* bump globals from 17.0.0 to 17.1.0 in the openmeteo group ([#163](https://github.com/open-meteo/mapbox-layer/issues/163)) ([5814260](https://github.com/open-meteo/mapbox-layer/commit/58142603ead1a3461da713aa7cd81258ad22a0aa))
+* bump openmeteo/file-reader ([1a36289](https://github.com/open-meteo/mapbox-layer/commit/1a3628915cf22141b9272206d184bb6d514242db))
+* bump the openmeteo group across 1 directory with 5 updates ([#156](https://github.com/open-meteo/mapbox-layer/issues/156)) ([0bd4a39](https://github.com/open-meteo/mapbox-layer/commit/0bd4a399f575f4e34a6b8bd77c84b7eb712eedaf))
+* bump the openmeteo group with 6 updates ([#164](https://github.com/open-meteo/mapbox-layer/issues/164)) ([585d378](https://github.com/open-meteo/mapbox-layer/commit/585d3788a37d5768437d21d80a1550dd39eae8e6))
+* Correct attribution ([#175](https://github.com/open-meteo/mapbox-layer/issues/175)) ([684af9b](https://github.com/open-meteo/mapbox-layer/commit/684af9b487aa94309c96d98d8a2f30c71278ef44))
+* liveserver is dev dependency ([928f948](https://github.com/open-meteo/mapbox-layer/commit/928f9482b7ff3e86e89fac9cf8d807955cee0cc2))
+* Remove resolution option ([#179](https://github.com/open-meteo/mapbox-layer/issues/179)) ([08f3ee1](https://github.com/open-meteo/mapbox-layer/commit/08f3ee145c368c8aa0af5da19ef8f14073ff7c38))
+* remove separate tile key ([#168](https://github.com/open-meteo/mapbox-layer/issues/168)) ([2d668e8](https://github.com/open-meteo/mapbox-layer/commit/2d668e88e1f698fc676f3473bc5c1e2b010b8fc0))
+* Update packages in examples ([#176](https://github.com/open-meteo/mapbox-layer/issues/176)) ([f9a0ad6](https://github.com/open-meteo/mapbox-layer/commit/f9a0ad6fa6eb106d7b37007afce1092fcd4666ef))
+
 ## [0.0.13](https://github.com/open-meteo/mapbox-layer/compare/v0.0.12...v0.0.13) (2026-01-15)
 
 
