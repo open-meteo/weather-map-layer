@@ -21,7 +21,8 @@ import type {
 	ParsedRequest,
 	RenderOptions,
 	TileJSON,
-	TilePromise
+	TilePromise,
+	TileResult
 } from './types';
 
 const workerPool = new WorkerPool();
@@ -39,11 +40,20 @@ export const defaultOmProtocolSettings: OmProtocolSettings = {
 	postReadCallback: undefined
 };
 
+const ABORT_RESULT: GetResourceResponse<null> = { data: null };
+
 export const omProtocol = async (
 	params: RequestParameters,
-	abortController?: AbortController,
+	abortController: AbortController,
 	settings = defaultOmProtocolSettings
-): Promise<GetResourceResponse<TileJSON | ImageBitmap | ArrayBuffer>> => {
+): Promise<GetResourceResponse<TileJSON | ImageBitmap | ArrayBuffer | null>> => {
+	const signal = abortController.signal;
+
+	// Check if already aborted
+	if (signal.aborted) {
+		return ABORT_RESULT;
+	}
+
 	const instance = getProtocolInstance(settings);
 
 	const url = await normalizeUrl(params.url);
@@ -56,7 +66,12 @@ export const omProtocol = async (
 		request.baseUrl
 	);
 
-	const data = await ensureData(state, instance.omFileReader, settings.postReadCallback);
+	// Check abort status before proceeding
+	if (signal.aborted) {
+		return ABORT_RESULT;
+	}
+
+	const data = await ensureData(state, instance.omFileReader, settings.postReadCallback, signal);
 
 	// Handle TileJSON request
 	if (params.type == 'json') {
@@ -72,9 +87,20 @@ export const omProtocol = async (
 		throw new Error(`Tile coordinates required for ${params.type} request`);
 	}
 
-	const tile = await requestTile(url, request, data, state.ranges, params.type);
+	const { data: tileData, cancelled } = await requestTile(
+		url,
+		request,
+		data,
+		state.ranges,
+		params.type,
+		signal
+	);
 
-	return { data: tile };
+	if (cancelled) {
+		return ABORT_RESULT;
+	} else {
+		return { data: tileData! };
+	}
 };
 
 const normalizeUrl = async (url: string): Promise<string> => {
@@ -85,15 +111,23 @@ const normalizeUrl = async (url: string): Promise<string> => {
 	return normalized;
 };
 
+const TILE_ABORTED_RESPONSE: TileResult = { data: undefined, cancelled: true };
+const EMPTY_VECTOR_LAYER_RESPONSE: TileResult = { data: new ArrayBuffer(0), cancelled: false };
+
 const requestTile = async (
 	url: string,
 	request: ParsedRequest,
 	data: Data,
 	ranges: DimensionRange[],
-	type: 'image' | 'arrayBuffer'
+	type: 'image' | 'arrayBuffer',
+	signal?: AbortSignal
 ): TilePromise => {
 	if (!request.tileIndex) {
 		throw new Error('Tile coordinates required for tile request');
+	}
+
+	if (signal?.aborted) {
+		return TILE_ABORTED_RESPONSE;
 	}
 
 	const key = `${type}:${url}`;
@@ -106,7 +140,7 @@ const requestTile = async (
 			!request.renderOptions.drawContours &&
 			!request.renderOptions.drawGrid
 		) {
-			return new ArrayBuffer(0);
+			return EMPTY_VECTOR_LAYER_RESPONSE;
 		}
 	}
 
@@ -118,7 +152,8 @@ const requestTile = async (
 		ranges,
 		dataOptions: request.dataOptions,
 		renderOptions: request.renderOptions,
-		clippingOptions: request.clippingOptions
+		clippingOptions: request.clippingOptions,
+		signal
 	});
 };
 

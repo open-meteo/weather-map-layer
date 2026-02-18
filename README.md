@@ -178,8 +178,8 @@ omProtocolOptions.postReadCallback = (omFileReader, data, state) => {
 	}
 };
 
-maplibregl.addProtocol('om', (params) =>
-	OpenMeteoMapboxLayer.omProtocol(params, undefined, omProtocolOptions)
+maplibregl.addProtocol('om', (params, abortController) =>
+	OpenMeteoMapboxLayer.omProtocol(params, abortController, omProtocolOptions)
 );
 ```
 

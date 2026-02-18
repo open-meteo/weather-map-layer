@@ -39,8 +39,6 @@ export const defaultFileReaderConfig: Required<Omit<FileReaderConfig, 'cache'>> 
 
 /**
  * Convenience class for reading from OM-files implementing some utility conversions during reading.
- *
- * Caches the backend of recently accessed files.
  */
 export class MapboxLayerFileReader {
 	private reader?: OmFileReader;
@@ -97,7 +95,8 @@ export class MapboxLayerFileReader {
 	private async readWithDerivationRule(
 		variable: string,
 		rule: VariableDerivationRule,
-		ranges: DimensionRange[] | null
+		ranges: DimensionRange[] | null,
+		signal?: AbortSignal
 	): Promise<Data> {
 		if (!this.reader) {
 			throw new Error('Reader not initialized. Call setToOmFile() first.');
@@ -122,7 +121,8 @@ export class MapboxLayerFileReader {
 		const readOptions: OmFileReadOptions<OmDataType.FloatArray> = {
 			type: OmDataType.FloatArray,
 			ranges: readRanges,
-			intoSAB: this.config.useSAB
+			intoSAB: this.config.useSAB,
+			signal
 		};
 
 		const primaryPromise = primaryReader.read(readOptions);
@@ -138,7 +138,8 @@ export class MapboxLayerFileReader {
 	 */
 	private async readSimpleVariable(
 		variable: string,
-		ranges: DimensionRange[] | null
+		ranges: DimensionRange[] | null,
+		signal?: AbortSignal
 	): Promise<Data> {
 		if (!this.reader) {
 			throw new Error('Reader not initialized. Call setToOmFile() first.');
@@ -155,7 +156,8 @@ export class MapboxLayerFileReader {
 		const values = (await variableReader.read({
 			type: OmDataType.FloatArray,
 			ranges: readRanges,
-			intoSAB: this.config.useSAB
+			intoSAB: this.config.useSAB,
+			signal
 		})) as Float32Array;
 
 		return { values, directions: undefined };
@@ -167,15 +169,20 @@ export class MapboxLayerFileReader {
 	 *
 	 * @param variable The variable to read.
 	 * @param ranges The ranges to read. If null, all dimensions are read.
+	 * @param signal Optional AbortSignal
 	 * @returns Promise resolving to data object containing values and optional directions
 	 */
-	async readVariable(variable: string, ranges: DimensionRange[] | null = null): Promise<Data> {
+	async readVariable(
+		variable: string,
+		ranges: DimensionRange[] | null = null,
+		signal?: AbortSignal
+	): Promise<Data> {
 		const derivationRule = this.findDerivationRule(variable);
 
 		if (derivationRule) {
-			return this.readWithDerivationRule(variable, derivationRule, ranges);
+			return this.readWithDerivationRule(variable, derivationRule, ranges, signal);
 		} else {
-			return this.readSimpleVariable(variable, ranges);
+			return this.readSimpleVariable(variable, ranges, signal);
 		}
 	}
 
@@ -183,7 +190,11 @@ export class MapboxLayerFileReader {
 	 * Prefetch data for a specific variable and range into the local cache.
 	 * This is useful for warming up the cache for anticipated map movements.
 	 */
-	async prefetchVariable(variable: string, ranges: DimensionRange[] | null = null): Promise<void> {
+	async prefetchVariable(
+		variable: string,
+		ranges: DimensionRange[] | null = null,
+		signal?: AbortSignal
+	): Promise<void> {
 		if (!this.reader) return;
 
 		const derivationRule = this.findDerivationRule(variable);
@@ -201,7 +212,8 @@ export class MapboxLayerFileReader {
 				// data blocks without decoding them or copying them to a TypedArray.
 				await variableReader.readPrefetch({
 					prefetchConcurrency: 1000, // concurrency limiting on requests is executed via the BlockCache
-					ranges: readRanges
+					ranges: readRanges,
+					signal
 				});
 			})
 		);

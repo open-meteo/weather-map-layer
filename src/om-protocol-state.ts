@@ -17,6 +17,13 @@ import type {
 	PostReadCallback
 } from './types';
 
+interface InflightRequest {
+	controller: AbortController;
+	subscriberCount: number;
+}
+
+const inflightRequests = new WeakMap<OmUrlState, InflightRequest>();
+
 // Configuration constants - could be made configurable via OmProtocolSettings
 /** Max states that keep data loaded.
  *
@@ -97,35 +104,85 @@ export const getOrCreateState = (
 	return state;
 };
 
+/**
+ * Ensures that data for a given state is loaded.
+ * Handles multiple concurrent requests for the same data by sharing a promise.
+ * Correctly handles AbortSignals by tracking all active subscribers and
+ * only cancelling the underlying fetch if all subscribers have aborted.
+ */
 export const ensureData = async (
 	state: OmUrlState,
 	omFileReader: MapboxLayerFileReader,
-	postReadCallback: PostReadCallback
+	postReadCallback: PostReadCallback,
+	signal?: AbortSignal
 ): Promise<Data> => {
 	if (state.data) return state.data;
-	if (state.dataPromise) return state.dataPromise;
+	if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
-	const promise = (async () => {
-		try {
-			await omFileReader.setToOmFile(state.omFileUrl);
-			const data = await omFileReader.readVariable(state.dataOptions.variable, state.ranges);
+	const inflight = inflightRequests.get(state);
+	const subscriberCount = (inflight?.subscriberCount ?? 0) + 1;
 
-			if (postReadCallback) {
-				postReadCallback(omFileReader, data, state);
-			}
+	if (inflight) {
+		inflight.subscriberCount = subscriberCount;
+	}
 
-			state.data = data;
-			state.dataPromise = null;
+	let finished = false;
+	const cleanup = () => {
+		if (finished) return;
+		finished = true;
 
-			return data;
-		} catch (error) {
-			state.dataPromise = null; // Clear promise so retry is possible
-			throw error;
+		const current = inflightRequests.get(state);
+		if (!current) return;
+
+		if (current.subscriberCount <= 1) {
+			inflightRequests.delete(state);
+			current.controller.abort();
+		} else {
+			current.subscriberCount -= 1;
 		}
-	})();
+	};
 
-	state.dataPromise = promise;
-	return promise;
+	if (signal) {
+		signal.addEventListener('abort', cleanup, { once: true });
+	}
+
+	try {
+		if (state.dataPromise) {
+			return await state.dataPromise;
+		}
+
+		const controller = new AbortController();
+		inflightRequests.set(state, { controller, subscriberCount });
+
+		state.dataPromise = (async () => {
+			try {
+				await omFileReader.setToOmFile(state.omFileUrl);
+
+				const data = await omFileReader.readVariable(
+					state.dataOptions.variable,
+					state.ranges,
+					controller.signal
+				);
+
+				if (postReadCallback) {
+					postReadCallback(omFileReader, data, state);
+				}
+
+				state.data = data;
+				return data;
+			} finally {
+				state.dataPromise = null;
+				inflightRequests.delete(state);
+			}
+		})();
+
+		return await state.dataPromise;
+	} finally {
+		if (signal) {
+			signal.removeEventListener('abort', cleanup);
+		}
+		cleanup();
+	}
 };
 
 export const getValueFromLatLong = (
