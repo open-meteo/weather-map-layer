@@ -14,8 +14,7 @@ export interface DataIdentityOptions {
 }
 
 export interface RenderOptions {
-	tileSize: 64 | 128 | 256 | 512 | 1024;
-	resolutionFactor: 0.5 | 1 | 2;
+	tileSize: 64 | 128 | 256 | 512 | 1024 | 2048;
 	drawGrid: boolean;
 	drawArrows: boolean;
 	drawContours: boolean;

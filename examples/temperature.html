@@ -10,7 +10,7 @@
 		<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.13/dist/index.js"></script>
 		<!-- x-release-please-end -->
 		<!-- Local development -->
-		<!--<script src="../dist/index.js"></script>-->
+		<!-- <script src="../dist/index.js"></script> -->
 		<style>
 			html,
 			body,
@@ -41,7 +41,6 @@
 				map.addSource('omFileSource', {
 					url: 'om://' + omUrl,
 					type: 'raster',
-					tileSize: 256,
 					maxzoom: 12
 				});
 				map.addLayer(

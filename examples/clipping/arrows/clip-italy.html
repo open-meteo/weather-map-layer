@@ -61,13 +61,13 @@
 						hash: true
 					});
 
-					const omUrl = `https://map-tiles.open-meteo.com/data_spatial/italia_meteo_arpae_icon_2i/latest.json?time_step=current_time_1H&variable=wind_speed_10m&tile_size=128&resolution_factor=0.5`;
+					// setting tile_size=128 reduces each tile to 1/4 the width and height of the default 512px. Without it, each tile would contain 4x4 = 16 times as many pixels to compute.
+					const omUrl = `https://map-tiles.open-meteo.com/data_spatial/italia_meteo_arpae_icon_2i/latest.json?time_step=current_time_1H&variable=wind_speed_10m&tile_size=128`;
 
 					map.on('load', () => {
 						map.addSource('omFileSource', {
 							url: 'om://' + omUrl,
 							type: 'raster',
-							tileSize: 256,
 							maxzoom: 12
 						});
 						map.addLayer(

@@ -74,7 +74,7 @@ const createTestSettings = (overrides: Partial<OmProtocolSettings> = {}): OmProt
 	...overrides
 });
 
-describe('Request Resolution', () => {
+describe('Request Options', () => {
 	describe('parseRequest', () => {
 		it('resolves data identity and render options from URL', async () => {
 			const domainOptions = [createTestDomain('domain1')];
@@ -134,8 +134,7 @@ describe('Request Resolution', () => {
 
 			const colorScale = renderOptions.colorScale as ResolvedBreakpointColorScale;
 
-			expect(renderOptions.tileSize).toBe(256);
-			expect(renderOptions.resolutionFactor).toBe(1);
+			expect(renderOptions.tileSize).toBe(512);
 			expect(renderOptions.drawGrid).toBe(false);
 			expect(renderOptions.drawArrows).toBe(false);
 			expect(renderOptions.drawContours).toBe(false);
@@ -148,11 +147,10 @@ describe('Request Resolution', () => {
 			const settings = createTestSettings({ domainOptions });
 
 			const url =
-				'om://https://example.com/data_spatial/domain1/file.om?variable=temp&tile_size=512&resolution_factor=2&grid=true&arrows=true&contours=true';
+				'om://https://example.com/data_spatial/domain1/file.om?variable=temp&tile_size=1024&grid=true&arrows=true&contours=true';
 			const { renderOptions } = parseRequest(url, settings);
 
-			expect(renderOptions.tileSize).toBe(512);
-			expect(renderOptions.resolutionFactor).toBe(2);
+			expect(renderOptions.tileSize).toBe(1024);
 			expect(renderOptions.drawGrid).toBe(true);
 			expect(renderOptions.drawArrows).toBe(true);
 			expect(renderOptions.drawContours).toBe(true);
@@ -166,16 +164,6 @@ describe('Request Resolution', () => {
 				'om://https://example.com/data_spatial/domain1/file.om?variable=temp&tile_size=999';
 
 			expect(() => parseRequest(url, settings)).toThrow('Invalid tile size');
-		});
-
-		it('throws for invalid resolution factor', async () => {
-			const domainOptions = [createTestDomain('domain1')];
-			const settings = createTestSettings({ domainOptions });
-
-			const url =
-				'om://https://example.com/data_spatial/domain1/file.om?variable=temp&resolution_factor=3';
-
-			expect(() => parseRequest(url, settings)).toThrow('Invalid resolution factor');
 		});
 	});
 
@@ -195,7 +183,6 @@ describe('Request Resolution', () => {
 				renderOptions: {
 					dark: true,
 					tileSize: 512,
-					resolutionFactor: 1,
 					makeGrid: false,
 					makeArrows: false,
 					makeContours: false,
