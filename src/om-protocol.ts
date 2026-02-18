@@ -40,7 +40,9 @@ export const defaultOmProtocolSettings: OmProtocolSettings = {
 	postReadCallback: undefined
 };
 
-const ABORT_RESULT: GetResourceResponse<null> = { data: null };
+const makeAbortResult = (): GetResourceResponse<null> => {
+	return { data: null };
+};
 
 export const omProtocol = async (
 	params: RequestParameters,
@@ -51,7 +53,7 @@ export const omProtocol = async (
 
 	// Check if already aborted
 	if (signal.aborted) {
-		return ABORT_RESULT;
+		return makeAbortResult();
 	}
 
 	const instance = getProtocolInstance(settings);
@@ -68,7 +70,7 @@ export const omProtocol = async (
 
 	// Check abort status before proceeding
 	if (signal.aborted) {
-		return ABORT_RESULT;
+		return makeAbortResult();
 	}
 
 	const data = await ensureData(state, instance.omFileReader, settings.postReadCallback, signal);
@@ -97,7 +99,7 @@ export const omProtocol = async (
 	);
 
 	if (cancelled) {
-		return ABORT_RESULT;
+		return makeAbortResult();
 	} else {
 		return { data: tileData! };
 	}
@@ -111,8 +113,12 @@ const normalizeUrl = async (url: string): Promise<string> => {
 	return normalized;
 };
 
-const TILE_ABORTED_RESPONSE: TileResult = { data: undefined, cancelled: true };
-const EMPTY_VECTOR_LAYER_RESPONSE: TileResult = { data: new ArrayBuffer(0), cancelled: false };
+const makeTileAbortedResponse = (): TileResult => {
+	return { data: undefined, cancelled: true };
+};
+const makeEmptyVectorLayResponse = (): TileResult => {
+	return { data: new ArrayBuffer(0), cancelled: false };
+};
 
 const requestTile = async (
 	url: string,
@@ -127,7 +133,7 @@ const requestTile = async (
 	}
 
 	if (signal?.aborted) {
-		return TILE_ABORTED_RESPONSE;
+		return makeTileAbortedResponse();
 	}
 
 	const key = `${type}:${url}`;
@@ -140,7 +146,7 @@ const requestTile = async (
 			!request.renderOptions.drawContours &&
 			!request.renderOptions.drawGrid
 		) {
-			return EMPTY_VECTOR_LAYER_RESPONSE;
+			return makeEmptyVectorLayResponse();
 		}
 	}
 
