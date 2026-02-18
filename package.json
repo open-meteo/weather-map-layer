@@ -57,13 +57,13 @@
 		"typescript-eslint": "^8.46.2",
 		"unplugin-dts": "^1.0.0-beta.6",
 		"vite": "^7.1.11",
-		"vitest": "^4.0.4"
+		"vitest": "^4.0.4",
+		"live-server": "^1.2.2"
 	},
 	"dependencies": {
 		"@mapbox/tilebelt": "^2.0.3",
 		"@mapbox/vector-tile": "^2.0.4",
 		"@openmeteo/file-reader": "^0.0.15",
-		"live-server": "^1.2.2",
 		"maplibre-gl": "^5.9.0",
 		"pbf": "^4.0.1",
 		"point-in-polygon-hao": "^1.2.4"
