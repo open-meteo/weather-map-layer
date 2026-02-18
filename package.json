@@ -32,7 +32,7 @@
 		"build:umd": "vite build --config vite.config.umd.ts",
 		"build": "npm run build:esm && npm run build:cjs && npm run build:umd",
 		"prepare": "npm run build",
-		"serve": "concurrently --kill-others \"npm run dev:umd\" \"serve\""
+		"serve": "concurrently --kill-others \"npm run dev:umd\" \"live-server --port=3000 --host=localhost --ignore=**/src/** --open=./examples/\""
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.0.0",
@@ -52,7 +52,6 @@
 		"globals": "^17.0.0",
 		"jiti": "^2.6.1",
 		"prettier": "^3.6.2",
-		"serve": "^14.2.5",
 		"tsx": "^4.20.6",
 		"typescript": "^5.9.3",
 		"typescript-eslint": "^8.46.2",
@@ -64,6 +63,7 @@
 		"@mapbox/tilebelt": "^2.0.3",
 		"@mapbox/vector-tile": "^2.0.4",
 		"@openmeteo/file-reader": "^0.0.15",
+		"live-server": "^1.2.2",
 		"maplibre-gl": "^5.9.0",
 		"pbf": "^4.0.1",
 		"point-in-polygon-hao": "^1.2.4"
