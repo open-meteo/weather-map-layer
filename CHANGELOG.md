@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.15](https://github.com/open-meteo/mapbox-layer/compare/v0.0.14...v0.0.15) (2026-02-18)
+
+
+### Bug Fixes
+
+* detached array buffer ([5c2dfa0](https://github.com/open-meteo/mapbox-layer/commit/5c2dfa01e43ee2d6746f67f09ebb8857d0e029e6))
+
 ## [0.0.14](https://github.com/open-meteo/mapbox-layer/compare/v0.0.13...v0.0.14) (2026-02-18)
 
 
