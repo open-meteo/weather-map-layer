@@ -132,25 +132,6 @@ export type WorkerResponse = {
 	key: string;
 };
 
-export type Bbox = [number, number, number, number];
-
-export type Location = {
-	latitude: number;
-	longitude: number;
-};
-
-export type LatLonZoom = {
-	zoom: number;
-	latitude: number;
-	longitude: number;
-};
-
-export type TilePixel = {
-	row: number;
-	column: number;
-	tileIndex: TileIndex;
-};
-
 // Simple RGB color
 export type RGB = [number, number, number];
 export type RGBA = [number, number, number, number];
@@ -194,14 +175,6 @@ export type RenderableColorScale = RGBAColorScale | ResolvedBreakpointColorScale
 
 // Dictionary of color scales
 export type ColorScales = Record<string, ColorScale>;
-
-export type Interpolator = (
-	values: Float32Array<ArrayBufferLike>,
-	index: number,
-	xFraction: number,
-	yFraction: number,
-	ranges: DimensionRange[]
-) => number;
 
 interface BaseGridData {
 	nx: number;
@@ -350,7 +323,5 @@ export interface DomainMetaDataJson {
 	valid_times: string[];
 	variables: string[];
 }
-
-export type ZoomLevel = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 
 export type ClippingOptions = { polygons: [number, number][][][]; bounds: Bounds } | undefined;
