@@ -587,7 +587,7 @@ export const domainOptions: Array<Domain> = [
 			gaussianGridLatitudeLines: 1280
 		},
 		time_interval: 'hourly',
-		model_interval: '3_hourly'
+		model_interval: '6_hourly'
 	},
 	{
 		value: 'ecmwf_wam025',
