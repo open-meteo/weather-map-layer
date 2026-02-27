@@ -63,7 +63,7 @@
 
 			const map = new maplibregl.Map({
 				container: 'map',
-				style: 'https://public.open-meteo.com/styles/minimal-planet-maps.json', // replace with your own style sheet
+				style: 'https://map-assets.open-meteo.com/styles/minimal-planet-maps.json', // replace with your own style sheet
 				hash: true
 			});
 
@@ -106,13 +106,13 @@
 
 				if (dark) {
 					wrapper.classList.add('dark');
-					map.setStyle('https://public.open-meteo.com/styles/minimal-planet-maps-dark.json');
+					map.setStyle('https://map-assets.open-meteo.com/styles/minimal-planet-maps-dark.json');
 					map.once('styledata', () => {
 						ensureOmLayer(omUrl);
 					});
 				} else {
 					wrapper.classList.remove('dark');
-					map.setStyle('https://public.open-meteo.com/styles/minimal-planet-maps.json');
+					map.setStyle('https://map-assets.open-meteo.com/styles/minimal-planet-maps.json');
 					map.once('styledata', () => {
 						ensureOmLayer(omUrl);
 					});
