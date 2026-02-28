@@ -43,7 +43,10 @@
 			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m`;
 
 			map.on('dataloading', () => {
-				OpenMeteoMapboxLayer.updateCurrentBounds(map.getBounds());
+				const bounds = map.getBounds();
+				const [minLng, minLat] = bounds.getSouthWest().toArray();
+				const [maxLng, maxLat] = bounds.getNorthEast().toArray();
+				OpenMeteoMapboxLayer.updateCurrentBounds([minLng, minLat, maxLng, maxLat]);
 			});
 
 			map.on('load', () => {

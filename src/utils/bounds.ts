@@ -1,16 +1,11 @@
 import { bboxToTile, tileToBBOX } from '@mapbox/tilebelt';
-import { LngLatBounds } from 'maplibre-gl';
 
 import { Bounds } from '../types';
 
 export let currentBounds: Bounds | undefined = undefined;
 
-export const updateCurrentBounds = (bounds: LngLatBounds) => {
-	const [minLng, minLat] = bounds.getSouthWest().toArray();
-	const [maxLng, maxLat] = bounds.getNorthEast().toArray();
-
-	const bbox = tileToBBOX(bboxToTile([minLng, minLat, maxLng, maxLat]));
-
+export const updateCurrentBounds = (bounds: Bounds) => {
+	const bbox = tileToBBOX(bboxToTile([bounds[0], bounds[1], bounds[2], bounds[3]]));
 	currentBounds = [bbox[0], bbox[1], bbox[2], bbox[3]];
 };
 
