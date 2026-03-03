@@ -1,15 +1,10 @@
-import { includeIgnoreFile } from '@eslint/compat';
-import js from '@eslint/js';
 import prettier from 'eslint-config-prettier';
+import { defineConfig, globalIgnores } from 'eslint/config';
 import globals from 'globals';
-import { fileURLToPath } from 'node:url';
 import ts from 'typescript-eslint';
 
-const gitignorePath = fileURLToPath(new URL('./.gitignore', import.meta.url));
-
-export default ts.config(
-	includeIgnoreFile(gitignorePath),
-	js.configs.recommended,
+export default defineConfig([
+	globalIgnores(['node_modules', 'dist', 'coverage', '.vscode', '.gitignore']),
 	...ts.configs.recommended,
 	prettier,
 	{
@@ -23,16 +18,22 @@ export default ts.config(
 				sourceType: 'module'
 			}
 		},
-		files: ['**/*.{js,ts,mjs,cjs}'],
+		files: ['**/*.{js,ts,mjs,cjs}']
+	},
+	{
 		rules: {
-			// Add project-specific rules here
 			'@typescript-eslint/no-unused-vars': [
 				'error',
 				{
+					args: 'all',
 					argsIgnorePattern: '^_',
-					varsIgnorePattern: '^_'
+					caughtErrors: 'all',
+					caughtErrorsIgnorePattern: '^_',
+					destructuredArrayIgnorePattern: '^_',
+					varsIgnorePattern: '^_',
+					ignoreRestSiblings: true
 				}
 			]
 		}
 	}
-);
+]);
