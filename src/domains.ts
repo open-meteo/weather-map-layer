@@ -71,22 +71,22 @@ export const domainOptions: Array<Domain> = [
 		time_interval: '3_hourly',
 		model_interval: 'daily'
 	},
-	// {
-	// 	value: 'cams_europe',
-	// 	label: 'CAMS Europe',
-	// 	grid: {
-	// 		type: 'regular',
-	// 		nx: 700,
-	// 		ny: 420,
-	// 		latMin: 71.95,
-	// 		lonMin: -24.95,
-	// 		dx: 0.1,
-	// 		dy: -0.1, // IMPORTANT: GRID is flipped! Therefore dy negative!
-	// 		zoom: 2
-	// 	},
-	// 	time_interval: 'hourly',
-	// 	model_interval: 'daily'
-	// },
+	{
+		value: 'cams_europe',
+		label: 'CAMS Europe',
+		grid: {
+			type: 'regular',
+			nx: 700,
+			ny: 420,
+			latMin: 71.95,
+			lonMin: -24.95,
+			dx: 0.1,
+			dy: -0.1, // IMPORTANT: GRID is flipped! Therefore dy negative!
+			zoom: 2
+		},
+		time_interval: 'hourly',
+		model_interval: 'daily'
+	},
 
 	// CMA
 	{

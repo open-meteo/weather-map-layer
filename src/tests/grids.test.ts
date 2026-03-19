@@ -55,6 +55,18 @@ const gridData: RegularGridData = {
 	dy: 2
 };
 
+// Same geographic area as gridData, but with negative dy (north-to-south row order)
+// Row 0 is at lat 56 (top), row 1 at lat 54, row 2 at lat 52 (bottom)
+const gridDataNegDy: RegularGridData = {
+	type: 'regular',
+	nx: 10,
+	ny: 3,
+	lonMin: 10,
+	latMin: 56,
+	dx: 1,
+	dy: -2
+};
+
 const projectedGridData: ProjectionGridFromGeographicOrigin = {
 	type: 'projectedFromGeographicOrigin',
 	nx: 10,
@@ -125,6 +137,114 @@ describe('RegularGrid', () => {
 		const grid = new RegularGrid(gridData);
 		const values = new Float32Array(Array.from({ length: 30 }, (_, index) => index));
 		expect(grid.getLinearInterpolatedValue(values, 100, 100)).toBeNaN();
+	});
+
+	describe('RegularGrid with negative dy', () => {
+		test('constructs and computes bounds (normalized min <= max)', () => {
+			const grid = new RegularGrid(gridDataNegDy);
+			// Bounds should be normalized: [minLon, minLat, maxLon, maxLat]
+			expect(grid.getBounds()).toEqual([10, 50, 20, 56]);
+		});
+
+		test('construct a new partial grid with negative dy', () => {
+			const ranges: DimensionRange[] = [
+				{ start: 0, end: 3 },
+				{ start: 0, end: 4 }
+			];
+			const grid = new RegularGrid(gridDataNegDy, ranges);
+			expect(grid.getBounds()).toEqual([10, 50, 14, 56]);
+		});
+
+		test('computes center with negative dy', () => {
+			const grid = new RegularGrid(gridDataNegDy);
+			const center = grid.getCenter();
+			expect(center.lng).toBe(15);
+			expect(center.lat).toBe(53);
+		});
+
+		test('computes center on partial grid with negative dy', () => {
+			const ranges: DimensionRange[] = [
+				{ start: 0, end: 3 },
+				{ start: 0, end: 4 }
+			];
+			const grid = new RegularGrid(gridDataNegDy, ranges);
+			const center = grid.getCenter();
+			expect(center.lng).toBe(12);
+			expect(center.lat).toBe(53);
+		});
+
+		test('linear interpolation at grid point with negative dy', () => {
+			const grid = new RegularGrid(gridDataNegDy);
+			const values = new Float32Array(Array.from({ length: 30 }, (_, index) => index));
+			// With negative dy: row 0 at lat=56, row 1 at lat=54, row 2 at lat=52
+			// At (lat=54, lon=11): row 1, col 1 => index 11, value 11
+			expect(grid.getLinearInterpolatedValue(values, 54, 11)).toBe(11);
+		});
+
+		test('linear interpolation between grid points with negative dy', () => {
+			const grid = new RegularGrid(gridDataNegDy);
+			const values = new Float32Array(Array.from({ length: 30 }, (_, index) => index));
+			// Between lat=54 (row 1) and lat=52 (row 2), at lon=11.5 (between col 1 and 2)
+			// yRaw = (53 - 56) / (-2) = 1.5, xRaw = (11.5 - 10) / 1 = 1.5
+			// Bilinear interpolation of values 11, 12, 21, 22 with both fractions 0.5
+			const interpolated = grid.getLinearInterpolatedValue(values, 53, 11.5);
+			expect(interpolated).toBeCloseTo(16.5);
+		});
+
+		test('linear interpolation in x only with negative dy', () => {
+			const grid = new RegularGrid(gridDataNegDy);
+			const values = new Float32Array(Array.from({ length: 30 }, (_, index) => index));
+			// At lat=54 (exactly row 1), between lon=11 and lon=12
+			const interpolated = grid.getLinearInterpolatedValue(values, 54, 11.5);
+			expect(interpolated).toBeCloseTo(11.5);
+		});
+
+		test('returns NaN for out-of-bounds with negative dy', () => {
+			const grid = new RegularGrid(gridDataNegDy);
+			const values = new Float32Array(Array.from({ length: 30 }, (_, index) => index));
+			// Above the grid (lat > 56)
+			expect(grid.getLinearInterpolatedValue(values, 57, 15)).toBeNaN();
+			// Below the grid (lat < 50)
+			expect(grid.getLinearInterpolatedValue(values, 49, 15)).toBeNaN();
+			// Left of the grid (lon < 10)
+			expect(grid.getLinearInterpolatedValue(values, 54, 9)).toBeNaN();
+			// Right of the grid (lon > 20)
+			expect(grid.getLinearInterpolatedValue(values, 54, 21)).toBeNaN();
+		});
+
+		test('getCoveringRanges with negative dy returns correct ranges', () => {
+			const grid = new RegularGrid(gridDataNegDy);
+			const ranges = grid.getCoveringRanges(52, 12, 55, 12.5);
+			// south=52, north=55 → yFromSouth = (52-56)/(-2) = 2, yFromNorth = (55-56)/(-2) = 0.5
+			// minY = max(floor(0.5) - 1, 0) = 0, maxY = min(ceil(2) + 1, 3) = 3
+			expect(ranges[0].start).toBe(0);
+			expect(ranges[0].end).toBe(gridDataNegDy.ny);
+			// west=12, east=12.5 → same x calculation as positive dy
+			expect(ranges[1].start).toBe(1);
+			expect(ranges[1].end).toBe(4);
+		});
+
+		test('negative dy grid produces same interpolated values as positive dy for matching coordinates', () => {
+			const gridPos = new RegularGrid(gridData);
+			const gridNeg = new RegularGrid(gridDataNegDy);
+			// Positive dy: row 0=lat50, row 1=lat52, row 2=lat54
+			const valuesPos = new Float32Array(Array.from({ length: 30 }, (_, index) => index));
+			// Negative dy: row 0=lat56, row 1=lat54, row 2=lat52
+			// Geographic lat=54 is pos row 2, neg row 1
+			// Geographic lat=52 is pos row 1, neg row 2
+			// So neg row 1 should have pos row 2 values, neg row 2 should have pos row 1 values
+			const valuesNeg = new Float32Array([
+				...Array.from({ length: 10 }, (_, i) => 100 + i), // row 0 (lat=56) — no pos equivalent
+				...Array.from({ length: 10 }, (_, i) => 20 + i), // row 1 (lat=54) = pos row 2
+				...Array.from({ length: 10 }, (_, i) => 10 + i) // row 2 (lat=52) = pos row 1
+			]);
+			// Test at lat=52.5, lon=11.5 (interpolates between neg rows 1&2 / pos rows 1&2)
+			const lat = 52.5;
+			const lon = 11.5;
+			const resultPos = gridPos.getLinearInterpolatedValue(valuesPos, lat, lon);
+			const resultNeg = gridNeg.getLinearInterpolatedValue(valuesNeg, lat, lon);
+			expect(resultPos).toBeCloseTo(resultNeg);
+		});
 	});
 
 	test('getCoveringRanges returns correct ranges', () => {
