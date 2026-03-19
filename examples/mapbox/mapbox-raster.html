@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Mapbox Layer - Mapbox GL Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/mapbox-gl@3.19.0/dist/mapbox-gl.css" />
+		<script src="https://unpkg.com/mapbox-gl@3.19.0/dist/mapbox-gl.js"></script>
+		<!-- x-release-please-start-version -->
+		<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.15/dist/index.js"></script>
+		<!-- x-release-please-end -->
+		<!-- Local development -->
+		<script>
+			if (location.hostname === 'localhost' || location.href.startsWith('file://')) {
+				document.write('<script src="../../dist/index.js"><\/script>');
+			}
+		</script>
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<script>
+			mapboxgl.accessToken = 'XXX'; // replace with your Mapbox access token
+
+			// This builds the custom source type class that intercepts "om://" requests and routes them through omProtocol.
+			const mapboxAdapter = OpenMeteoMapboxLayer.addMapboxProtocolSupport(mapboxgl);
+
+			// Register the 'om' protocol handler (same as MapLibre's addProtocol).
+			mapboxAdapter.addProtocol('om', OpenMeteoMapboxLayer.omProtocol);
+
+			const map = new mapboxgl.Map({
+				container: 'map',
+				style: 'https://map-assets.open-meteo.com/styles/minimal-planet-maps.json', // replace with your own style sheet
+				hash: true
+			});
+
+			// Register the custom source type with the map instance. Sources using this protocol must declare  type: 'raster-om'  instead of 'raster'.
+			map.addSourceType(
+				'raster-om',
+				mapboxAdapter.rasterSourceType,
+				(e) => e && console.error('Failed to register raster-om source type', e)
+			);
+
+			map.on('dataloading', () => {
+				const bounds = map.getBounds();
+				const [minLng, minLat] = bounds.getSouthWest().toArray();
+				const [maxLng, maxLat] = bounds.getNorthEast().toArray();
+				OpenMeteoMapboxLayer.updateCurrentBounds([minLng, minLat, maxLng, maxLat]);
+			});
+
+			// below url is used to request 'latest.json' and get the nearest timestep to "current local time" + 1 hour
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m`;
+			// example of an actual omUrl:
+			// const omUrl = `om://https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/06/06/1200Z/2025-06-06T1200.om?variable=temperature_2m`;
+
+			map.on('load', () => {
+				map.addSource('omFileSource', {
+					// Use 'raster-om' (the custom type registered above) - NOT plain 'raster'.
+					url: 'om://' + omUrl,
+					type: 'raster-om',
+					maxzoom: 12
+				});
+				map.addLayer(
+					{
+						id: 'omFileLayer',
+						type: 'raster',
+						source: 'omFileSource',
+						paint: {
+							'raster-opacity': 0.75
+						}
+					},
+					'waterway-tunnel'
+				);
+			});
+		</script>
+	</body>
+</html>

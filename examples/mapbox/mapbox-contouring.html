@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Mapbox Layer - Mapbox GL Contouring on Colorscale Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/mapbox-gl@3.19.0/dist/mapbox-gl.css" />
+		<script src="https://unpkg.com/mapbox-gl@3.19.0/dist/mapbox-gl.js"></script>
+		<!-- x-release-please-start-version -->
+		<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.15/dist/index.js"></script>
+		<!-- x-release-please-end -->
+		<!-- Local development -->
+		<script>
+			if (location.hostname === 'localhost' || location.href.startsWith('file://')) {
+				document.write('<script src="../../dist/index.js"><\/script>');
+			}
+		</script>
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<script>
+			mapboxgl.accessToken = 'XXX'; // replace with your Mapbox access token
+
+			const mapboxAdapter = OpenMeteoMapboxLayer.addMapboxProtocolSupport(mapboxgl);
+			mapboxAdapter.addProtocol('om', OpenMeteoMapboxLayer.omProtocol);
+
+			const map = new mapboxgl.Map({
+				container: 'map',
+				style: 'https://map-assets.open-meteo.com/styles/minimal-planet-maps.json', // replace with your own style sheet
+				hash: true
+			});
+
+			map.addSourceType(
+				'raster-om',
+				mapboxAdapter.rasterSourceType,
+				(e) => e && console.error('Failed to register raster-om source type', e)
+			);
+
+			map.addSourceType(
+				'vector-om',
+				mapboxAdapter.vectorSourceType,
+				(e) => e && console.error('Failed to register vector-om source type', e)
+			);
+
+			map.on('dataloading', () => {
+				const bounds = map.getBounds();
+				const [minLng, minLat] = bounds.getSouthWest().toArray();
+				const [maxLng, maxLat] = bounds.getNorthEast().toArray();
+				OpenMeteoMapboxLayer.updateCurrentBounds([minLng, minLat, maxLng, maxLat]);
+			});
+
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=precipitation&contours=true`;
+
+			map.on('load', () => {
+				map.addSource('omFileRasterSource', {
+					url: 'om://' + omUrl,
+					type: 'raster-om',
+					maxzoom: 12
+				});
+
+				map.addLayer(
+					{
+						id: 'omFileRasterLayer',
+						type: 'raster',
+						source: 'omFileRasterSource',
+						paint: {
+							'raster-opacity': 0.75
+						}
+					},
+					'waterway-tunnel'
+				);
+
+				map.addSource('omFileVectorSource', {
+					url: 'om://' + omUrl,
+					type: 'vector-om'
+				});
+
+				map.addLayer(
+					{
+						id: 'omFileVectorLayer',
+						type: 'line',
+						source: 'omFileVectorSource',
+						'source-layer': 'contours',
+						paint: {
+							'line-color': 'rgba(0,0,0,0.85)',
+							'line-width': 1
+						}
+					},
+					'place_label_other'
+				);
+			});
+		</script>
+	</body>
+</html>

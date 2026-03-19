@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Mapbox Layer - Leaflet Wind Arrows Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+		<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+		<!-- x-release-please-start-version -->
+		<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.15/dist/index.js"></script>
+		<!-- x-release-please-end -->
+		<!-- Local development -->
+		<script>
+			if (location.hostname === 'localhost' || location.href.startsWith('file://')) {
+				document.write('<script src="../../dist/index.js"><\/script>');
+			}
+		</script>
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<script>
+			// Build the Leaflet adapter that intercepts "om://" requests and routes them through omProtocol.
+			const leafletAdapter = OpenMeteoMapboxLayer.addLeafletProtocolSupport(L);
+
+			// Register the 'om' protocol handler (same as MapLibre's addProtocol).
+			leafletAdapter.addProtocol('om', OpenMeteoMapboxLayer.omProtocol);
+
+			// Create the map with a standard base layer.
+			const map = L.map('map').setView([0, 0], 2);
+
+			// Keep the protocol informed of the current viewport bounds.
+			function updateBounds() {
+				const b = map.getBounds();
+				OpenMeteoMapboxLayer.updateCurrentBounds([
+					b.getWest(),
+					b.getSouth(),
+					b.getEast(),
+					b.getNorth()
+				]);
+			}
+			map.on('moveend', updateBounds);
+			updateBounds();
+
+			L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+				attribution:
+					'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors ' +
+					'&copy; <a href="https://carto.com/attributions">CARTO</a>',
+				maxZoom: 19
+			}).addTo(map);
+
+			// Both layers share the same model / time step; only the variable differs.
+			// The vector layer appends `&arrows=true` to request PBF arrow tiles.
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=wind_u_component_10m`;
+
+			// Raster layer: wind-speed colour fill
+			leafletAdapter
+				.createTileLayer('om://' + omUrl, {
+					opacity: 0.75
+				})
+				.addTo(map);
+
+			// Vector layer: wind-arrow lines drawn on canvas tiles.
+			leafletAdapter
+				.createVectorTileLayer('om://' + omUrl + '&arrows=true', {
+					style: function (properties) {
+						const value = parseFloat(properties.value) || 0;
+						const alpha =
+							value > 5 ? 0.6 : value > 4 ? 0.5 : value > 3 ? 0.4 : value > 2 ? 0.3 : 0.2;
+
+						const lineWidth = 1; // value > 10 ? 2.5 : value > 5 ? 2 : 1.5;
+						return {
+							strokeStyle: 'rgba(0, 0, 0, ' + alpha + ')',
+							lineWidth: lineWidth,
+							lineCap: 'round'
+						};
+					}
+				})
+				.addTo(map);
+		</script>
+	</body>
+</html>

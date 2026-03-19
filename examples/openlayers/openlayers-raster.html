@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Mapbox Layer - OpenLayers Temperature Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol/ol.css" />
+		<script src="https://cdn.jsdelivr.net/npm/ol/dist/ol.js"></script>
+		<!-- x-release-please-start-version -->
+		<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.15/dist/index.js"></script>
+		<!-- x-release-please-end -->
+		<!-- Local development -->
+		<script>
+			if (location.hostname === 'localhost' || location.href.startsWith('file://')) {
+				document.write('<script src="../../dist/index.js"><\/script>');
+			}
+		</script>
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<script>
+			const olAdapter = OpenMeteoMapboxLayer.addOpenLayersProtocolSupport(ol);
+
+			// Register the 'om' protocol handler (same as MapLibre's addProtocol).
+			olAdapter.addProtocol('om', OpenMeteoMapboxLayer.omProtocol);
+
+			// Create the raster source. TileJSON is resolved lazily on first tile load. The source is synchronous to create — no await needed.
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m`;
+
+			const rasterSource = olAdapter.createRasterSource('om://' + omUrl);
+
+			const map = new ol.Map({
+				target: 'map',
+				layers: [
+					// CARTO base map
+					new ol.layer.Tile({
+						source: new ol.source.XYZ({
+							url: 'https://{a-d}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+							attributions:
+								'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors ' +
+								'&copy; <a href="https://carto.com/attributions">CARTO</a>'
+						})
+					}),
+					// Weather raster layer — use WebGLTile to render DataTile sources
+					new ol.layer.WebGLTile({
+						source: rasterSource,
+						opacity: 0.75
+					})
+				],
+				view: new ol.View({
+					center: ol.proj.fromLonLat([10, 50]),
+					zoom: 5
+				})
+			});
+
+			// Keep the protocol informed of the current viewport bounds.
+			function updateBounds() {
+				const size = map.getSize();
+				if (!size) return;
+				const extent = map.getView().calculateExtent(size);
+				const [minLng, minLat, maxLng, maxLat] = ol.proj.transformExtent(
+					extent,
+					'EPSG:3857',
+					'EPSG:4326'
+				);
+				// Clamp to valid lon range — the view may extend past ±180° when wrapping.
+				OpenMeteoMapboxLayer.updateCurrentBounds([
+					Math.max(minLng, -180),
+					minLat,
+					Math.min(maxLng, 180),
+					maxLat
+				]);
+			}
+			map.on('moveend', updateBounds);
+			map.once('prerender', updateBounds);
+		</script>
+	</body>
+</html>

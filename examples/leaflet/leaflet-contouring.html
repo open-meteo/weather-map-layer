@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Mapbox Layer - Leaflet Contouring on Colorscale Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+		<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+		<!-- x-release-please-start-version -->
+		<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.15/dist/index.js"></script>
+		<!-- x-release-please-end -->
+		<!-- Local development -->
+		<script>
+			if (location.hostname === 'localhost' || location.href.startsWith('file://')) {
+				document.write('<script src="../../dist/index.js"><\/script>');
+			}
+		</script>
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<script>
+			// Build the Leaflet adapter that intercepts "om://" requests and routes them through omProtocol.
+			const leafletAdapter = OpenMeteoMapboxLayer.addLeafletProtocolSupport(L);
+
+			// Register the 'om' protocol handler (same as MapLibre's addProtocol).
+			leafletAdapter.addProtocol('om', OpenMeteoMapboxLayer.omProtocol);
+
+			// Create the map with a standard base layer.
+			const map = L.map('map').setView([0, 0], 2);
+
+			// Keep the protocol informed of the current viewport bounds.
+			function updateBounds() {
+				const b = map.getBounds();
+				OpenMeteoMapboxLayer.updateCurrentBounds([
+					b.getWest(),
+					b.getSouth(),
+					b.getEast(),
+					b.getNorth()
+				]);
+			}
+			map.on('moveend', updateBounds);
+			updateBounds();
+
+			L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+				attribution:
+					'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors ' +
+					'&copy; <a href="https://carto.com/attributions">CARTO</a>',
+				maxZoom: 19
+			}).addTo(map);
+
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=precipitation&contours=true`;
+
+			// Raster layer: precipitation colour fill.
+			leafletAdapter
+				.createTileLayer('om://' + omUrl, {
+					opacity: 0.75
+				})
+				.addTo(map);
+
+			// Vector layer: contour lines drawn on canvas tiles.
+			leafletAdapter
+				.createVectorTileLayer('om://' + omUrl, {
+					style: function (properties) {
+						// Only style features in the 'contours' layer.
+						if (properties.layer !== 'contours') return null;
+						return {
+							strokeStyle: 'rgba(0, 0, 0, 0.85)',
+							lineWidth: 1,
+							lineCap: 'round'
+						};
+					}
+				})
+				.addTo(map);
+		</script>
+	</body>
+</html>

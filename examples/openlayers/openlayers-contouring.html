@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Mapbox Layer - OpenLayers Contouring on Colorscale Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol/ol.css" />
+		<script src="https://cdn.jsdelivr.net/npm/ol/dist/ol.js"></script>
+		<!-- x-release-please-start-version -->
+		<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.15/dist/index.js"></script>
+		<!-- x-release-please-end -->
+		<!-- Local development -->
+		<script>
+			if (location.hostname === 'localhost' || location.href.startsWith('file://')) {
+				document.write('<script src="../../dist/index.js"><\/script>');
+			}
+		</script>
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<script>
+			const olAdapter = OpenMeteoMapboxLayer.addOpenLayersProtocolSupport(ol);
+
+			// Register the 'om' protocol handler (same as MapLibre's addProtocol).
+			olAdapter.addProtocol('om', OpenMeteoMapboxLayer.omProtocol);
+
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=precipitation&contours=true`;
+
+			// Create sources — synchronous; TileJSON resolves on first tile load.
+			const rasterSource = olAdapter.createRasterSource('om://' + omUrl);
+			const vectorSource = olAdapter.createVectorTileSource('om://' + omUrl);
+
+			// Style for contour lines.
+			const contourLineStyle = new ol.style.Style({
+				stroke: new ol.style.Stroke({
+					color: 'rgba(0, 0, 0, 0.85)',
+					width: 1
+				})
+			});
+
+			// Style for contour labels placed along the line.
+			const contourLabelStyle = new ol.style.Style({
+				text: new ol.style.Text({
+					placement: 'line',
+					font: '11px sans-serif',
+					fill: new ol.style.Fill({ color: 'rgba(0, 0, 0, 0.85)' }),
+					stroke: new ol.style.Stroke({ color: 'rgba(255, 255, 255, 0.8)', width: 3 }),
+					textBaseline: 'bottom',
+					offsetY: -2
+				})
+			});
+
+			const map = new ol.Map({
+				target: 'map',
+				layers: [
+					// CARTO base map
+					new ol.layer.Tile({
+						source: new ol.source.XYZ({
+							url: 'https://{a-d}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+							attributions:
+								'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors ' +
+								'&copy; <a href="https://carto.com/attributions">CARTO</a>'
+						})
+					}),
+					// Raster layer: precipitation colour fill (DataTile → WebGLTile)
+					new ol.layer.WebGLTile({
+						source: rasterSource,
+						opacity: 0.75
+					}),
+					// Vector layer: contour lines + inline labels
+					new ol.layer.VectorTile({
+						source: vectorSource,
+						style: function (feature) {
+							// Only style features in the 'contours' layer.
+							if (feature.get('layer') !== 'contours') return null;
+							const value = feature.get('value');
+							contourLabelStyle.getText().setText(value != null ? String(value) : '');
+							return [contourLineStyle, contourLabelStyle];
+						}
+					})
+				],
+				view: new ol.View({
+					center: ol.proj.fromLonLat([10, 50]),
+					zoom: 5
+				})
+			});
+
+			// Keep the protocol informed of the current viewport bounds.
+			function updateBounds() {
+				const size = map.getSize();
+				if (!size) return;
+				const extent = map.getView().calculateExtent(size);
+				const [minLng, minLat, maxLng, maxLat] = ol.proj.transformExtent(
+					extent,
+					'EPSG:3857',
+					'EPSG:4326'
+				);
+				// Clamp to valid lon range — the view may extend past ±180° when wrapping.
+				OpenMeteoMapboxLayer.updateCurrentBounds([
+					Math.max(minLng, -180),
+					minLat,
+					Math.min(maxLng, 180),
+					maxLat
+				]);
+			}
+			map.on('moveend', updateBounds);
+			map.once('prerender', updateBounds);
+		</script>
+	</body>
+</html>

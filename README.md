@@ -152,6 +152,22 @@ For the vector source examples there is the `examples/vector` sub-directory with
 - `examples/vector/temperature-labels.html` – displays all grid points for a model, using value data to show temperature labels.
 - `examples/vector/wind-arrows.html` – displays wind map with directional arrows.
 
+## Framework Adapters
+
+The core `omProtocol` handler is designed for MapLibre GL JS, but this package also ships adapters for **Mapbox GL JS**, **Leaflet** and **OpenLayers**. Each adapter provides `addProtocol` / `removeProtocol` plus factory methods for creating map-library-native source or layer objects.
+
+#### Maptiler SDK
+
+The Maptiler SDK natively supports `addProtocol`, but unfortunately it mangles the param url, by removing the second `:`, this small snippet will fix that:
+
+```ts
+// MapTiler SDK mangles URLs like `om://https://...` into `om://https//...`
+maptilersdk.addProtocol('om', (params, abortController) => {
+	params.url = params.url.replace('https//', 'https://');
+	return omProtocol(params, abortController, omProtocolSettings);
+});
+```
+
 ### Contouring
 
 - `examples/vector/contouring/contouring-pressure.html` – shows how to use contouring with a pressure map.

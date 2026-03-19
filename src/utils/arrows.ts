@@ -154,7 +154,7 @@ export const generateArrows = (
 
 			features.push({
 				id: tileX + tileY,
-				type: 1, // 1 = Point
+				type: 2, // 2 = LineString
 				properties: properties,
 				geom: geom
 			});

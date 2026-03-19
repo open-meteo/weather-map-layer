@@ -75,7 +75,7 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 
 		context.putImageData(imageData, 0, 0);
 
-		let blob;
+		let imageBitmap;
 		if (clippingOptions && clippingOptions.polygons) {
 			// create 2nd OffscreenCanvas to handle clipping
 			const clipCanvas = new OffscreenCanvas(tileSize, tileSize);
@@ -104,13 +104,12 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 			clipContext.clip('nonzero');
 			clipContext.drawImage(canvas, 0, 0);
 
-			blob = await clipCanvas.convertToBlob({ type: 'image/png' });
+			imageBitmap = clipCanvas.transferToImageBitmap();
 		} else {
-			blob = await canvas.convertToBlob({ type: 'image/png' });
+			imageBitmap = canvas.transferToImageBitmap();
 		}
 
-		const arrayBuffer = await blob.arrayBuffer();
-		postMessage({ type: 'returnImage', tile: arrayBuffer, key: key }, { transfer: [arrayBuffer] });
+		postMessage({ type: 'returnImage', tile: imageBitmap, key: key }, { transfer: [imageBitmap] });
 	} else if (message.data.type == 'getArrayBuffer') {
 		const directions = message.data.data.directions;
 
