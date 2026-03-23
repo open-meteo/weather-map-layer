@@ -13,10 +13,11 @@
 		"README.md",
 
 		"examples/wind.html",
+		"examples/popup.html",
 		"examples/temperature.html",
 		"examples/precipitation.html",
-		"examples/combined-variables.html",
 		"examples/partial-requests.html",
+		"examples/combined-variables.html",
 
 		"examples/vector/grid-points.html",
 		"examples/vector/wind-arrows.html",
@@ -25,9 +26,9 @@
 
 		"examples/callbacks/post-read-callback.html",
 
-		"examples/colorscales/custom-breakpoints.html",
-		"examples/colorscales/custom-rgba.html",
 		"examples/colorscales/darkmode.html",
+		"examples/colorscales/custom-rgba.html",
+		"examples/colorscales/custom-breakpoints.html",
 
 		"examples/clipping/arrows/clip-italy.html",
 		"examples/clipping/contours/clip-france.html",
@@ -36,6 +37,18 @@
 
 		"examples/vector/contouring/contouring-pressure.html",
 		"examples/vector/contouring/contouring-on-colorscale.html",
-		"examples/vector/contouring/custom-contouring-intervals.html"
+		"examples/vector/contouring/custom-contouring-intervals.html",
+
+		"examples/leaflet/leaflet-raster.html",
+		"examples/leaflet/leaflet-vector.html",
+		"examples/leaflet/leaflet-contouring.html",
+
+		"examples/openlayers/openlayers-raster.html",
+		"examples/openlayers/openlayers-vector.html",
+		"examples/openlayers/openlayers-contouring.html",
+
+		"examples/mapbox/mapbox-raster.html",
+		"examples/mapbox/mapbox-vector.html",
+		"examples/mapbox/mapbox-contouring.html"
 	]
 }

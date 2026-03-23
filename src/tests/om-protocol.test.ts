@@ -308,7 +308,7 @@ describe('getValueFromLatLong', () => {
 		);
 
 		// Then query value
-		const result = getValueFromLatLong(0, 0, url);
+		const result = await getValueFromLatLong(0, 0, url);
 
 		expect(result.value).toBe(0); // Mock returns zeros
 	});
@@ -316,13 +316,13 @@ describe('getValueFromLatLong', () => {
 	it('throws when protocol not initialized', async () => {
 		const { getValueFromLatLong } = await import('../om-protocol-state');
 
-		expect(() =>
+		await expect(
 			getValueFromLatLong(
 				0,
 				0,
 				'om://https://example.com/data_spatial/dwd_icon/file.om?variable=temp'
 			)
-		).toThrow('OmProtocolInstance is not initialized');
+		).rejects.toThrow('OmProtocolInstance is not initialized');
 	});
 
 	it('throws when state not found', async () => {
@@ -340,12 +340,12 @@ describe('getValueFromLatLong', () => {
 		);
 
 		// Query with different URL
-		expect(() =>
+		await expect(
 			getValueFromLatLong(
 				0,
 				0,
 				'om://https://example.com/data_spatial/dwd_icon/other.om?variable=other'
 			)
-		).toThrow('State not found');
+		).rejects.toThrow('State not found');
 	});
 });

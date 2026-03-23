@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Mapbox Layer - Temperature Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.17.0/dist/maplibre-gl.css" />
+		<script src="https://unpkg.com/maplibre-gl@5.17.0/dist/maplibre-gl.js"></script>
+		<!-- x-release-please-start-version -->
+		<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.16/dist/index.js"></script>
+		<!-- x-release-please-end -->
+		<!-- Local development -->
+		<script>
+			if (location.hostname === 'localhost' || location.href.startsWith('file://')) {
+				document.write('<script src="../dist/index.js"><\/script>');
+			}
+		</script>
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+
+			.maplibregl-popup .maplibregl-popup-content {
+				border: 3px solid rgba(100, 100, 100, 1);
+				padding: 0;
+				background-color: rgba(255, 255, 255, 0.65);
+				backdrop-filter: blur(4px);
+			}
+
+			.maplibregl-popup-anchor-top .maplibregl-popup-tip {
+				border-bottom-color: rgba(100, 100, 100, 1);
+			}
+
+			.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+				border-left-color: rgba(100, 100, 100, 1);
+			}
+
+			.maplibregl-popup-anchor-bottom .maplibregl-popup-tip {
+				border-top-color: rgba(100, 100, 100, 1);
+			}
+
+			.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+				border-right-color: rgba(100, 100, 100, 1);
+			}
+
+			.popup-div {
+				display: inline-block;
+				text-align: center;
+				padding: 3px 5px;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<script>
+			maplibregl.addProtocol('om', OpenMeteoMapboxLayer.omProtocol);
+
+			const map = new maplibregl.Map({
+				container: 'map',
+				style: 'https://map-assets.open-meteo.com/styles/minimal-planet-maps.json', // replace with your own style sheet
+				hash: true
+			});
+
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=freezing_level_height`;
+
+			let popup;
+			const updatePopup = async (e) => {
+				if (!map) return;
+
+				const coordinates = e.lngLat;
+				if (!popup) {
+					popup = new maplibregl.Popup({ closeButton: false })
+						.setLngLat(coordinates)
+						.setHTML(`<span class="value-popup">Outside domain</span>`)
+						.addTo(map);
+				} else {
+					popup.addTo(map);
+				}
+				const { value } = await OpenMeteoMapboxLayer.getValueFromLatLong(
+					coordinates.lat,
+					coordinates.lng,
+					'om://' + omUrl
+				);
+
+				if (isFinite(value)) {
+					const colorScale = OpenMeteoMapboxLayer.getColorScale(
+						'freezing_level_height',
+						false,
+						OpenMeteoMapboxLayer.defaultOmProtocolSettings.colorScales
+					);
+					const color = OpenMeteoMapboxLayer.getColor(colorScale, value);
+					const content =
+						'<span class="popup-value">' + value.toFixed(1) + '</span>' + colorScale.unit;
+					popup
+						.setLngLat(coordinates)
+						.setHTML(
+							`<div style="font-weight: bold; background-color: rgba(${color.join(',')}); color: black" class="popup-div">${content}</div>`
+						);
+				} else {
+					popup
+						.setLngLat(coordinates)
+						.setHTML(`<span style="padding: 3px 5px;" class="popup-string">Outside domain</span>`);
+				}
+			};
+
+			map.on('load', () => {
+				map.addSource('omFileSource', {
+					url: 'om://' + omUrl,
+					type: 'raster',
+					maxzoom: 12
+				});
+				map.addLayer(
+					{
+						id: 'omFileLayer',
+						type: 'raster',
+						source: 'omFileSource',
+						paint: {
+							'raster-opacity': 0.75
+						}
+					},
+					'waterway-tunnel'
+				);
+
+				map.on('mousemove', updatePopup);
+			});
+		</script>
+	</body>
+</html>

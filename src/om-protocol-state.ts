@@ -4,6 +4,7 @@ import { parseUrlComponents } from './utils/parse-url';
 
 import { GridFactory } from './grids';
 import { MapboxLayerFileReader } from './om-file-reader';
+import { normalizeUrl } from './om-protocol';
 
 import type {
 	Bounds,
@@ -185,16 +186,18 @@ export const ensureData = async (
 	}
 };
 
-export const getValueFromLatLong = (
+export const getValueFromLatLong = async (
 	lat: number,
 	lon: number,
 	omUrl: string
-): { value: number; direction?: number } => {
+): Promise<{ value: number; direction?: number }> => {
 	if (!omProtocolInstance) {
 		throw new Error('OmProtocolInstance is not initialized');
 	}
 
-	const { fileAndVariableKey } = parseUrlComponents(omUrl);
+	const url = await normalizeUrl(omUrl);
+
+	const { fileAndVariableKey } = parseUrlComponents(url);
 	const state = omProtocolInstance.stateByKey.get(fileAndVariableKey);
 	if (!state) {
 		throw new Error(`State not found for key: ${fileAndVariableKey}`);
