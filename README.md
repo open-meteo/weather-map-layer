@@ -1,9 +1,9 @@
-# Open-Meteo Mapbox Layer
+# Open-Meteo Weather Map Layer
 
-[![codecov](https://codecov.io/gh/open-meteo/mapbox-layer/graph/badge.svg?token=E2WYHGJJHP)](https://codecov.io/gh/open-meteo/mapbox-layer)
-[![Linting & Tests](https://github.com/open-meteo/mapbox-layer/actions/workflows/ci.yml/badge.svg)](https://github.com/open-meteo/mapbox-layer/actions/workflows/ci.yml)
-[![GitHub license](https://img.shields.io/github/license/open-meteo/mapbox-layer)](https://github.com/open-meteo/mapbox-layer/blob/main/LICENSE)
-[![npm version](https://img.shields.io/npm/v/@openmeteo/mapbox-layer?label=@openmeteo/mapbox-layer)](https://www.npmjs.com/package/@openmeteo/mapbox-layer)
+[![codecov](https://codecov.io/gh/open-meteo/weather-map-layer/graph/badge.svg?token=E2WYHGJJHP)](https://codecov.io/gh/open-meteo/weather-map-layer)
+[![Linting & Tests](https://github.com/open-meteo/weather-map-layer/actions/workflows/ci.yml/badge.svg)](https://github.com/open-meteo/weather-map-layer/actions/workflows/ci.yml)
+[![GitHub license](https://img.shields.io/github/license/open-meteo/weather-map-layer)](https://github.com/open-meteo/weather-map-layer/blob/main/LICENSE)
+[![npm version](https://img.shields.io/npm/v/@openmeteo/weather-map-layer?label=@openmeteo/weather-map-layer)](https://www.npmjs.com/package/@openmeteo/weather-map-layer)
 
 > **⚠️ Notice**
 > This package is still under construction and is not yet fully production-ready.
@@ -22,12 +22,12 @@ An interactive demo is available at [maps.open-meteo.com](https://maps.open-mete
 ### Node
 
 ```bash
-npm install @openmeteo/mapbox-layer
+npm install @openmeteo/weather-map-layer
 ```
 
 ```ts
 // ...
-import { omProtocol } from '@openmeteo/mapbox-layer';
+import { omProtocol } from '@openmeteo/weather-map-layer';
 
 // Standard Mapbox / MapLibre GL JS setup
 // ...
@@ -62,7 +62,7 @@ For a standalone example, see `examples/temperature.html`.
 
 ```ts
 ...
-<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.16/dist/index.js"></script>
+<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.0.16/dist/index.js"></script>
 ...
 ```
 

@@ -73,7 +73,7 @@ export class RegularGrid implements GridInterface {
 		const yFraction = ((lat - this.bounds[1]) % this.dy) / this.dy;
 
 		// small visual hack for "incomplete" icon global grids
-		// compare: https://github.com/open-meteo/mapbox-layer/pull/148#discussion_r2681391084
+		// compare: https://github.com/open-meteo/weather-map-layer/pull/148#discussion_r2681391084
 		const x = Math.min(Math.floor((lon - this.bounds[0]) / this.dx), this.nx - 1);
 		const dx = this.longitudeWrap && lon >= this.bounds[2] - this.dx ? this.dx * 2 : this.dx;
 		const xFraction = ((lon - this.bounds[0]) % dx) / dx;

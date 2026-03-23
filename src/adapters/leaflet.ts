@@ -21,7 +21,7 @@
  *
  * ```ts
  * import L from 'leaflet';
- * import { omProtocol, addLeafletProtocolSupport } from '@openmeteo/mapbox-layer';
+ * import { omProtocol, addLeafletProtocolSupport } from '@openmeteo/weather-map-layer';
  *
  * // 1. Create the adapter, passing the Leaflet global.
  * const leafletAdapter = addLeafletProtocolSupport(L);

@@ -10,7 +10,7 @@
  *
  * ```ts
  * import mapboxgl from 'mapbox-gl';
- * import { omProtocol, addMapboxProtocolSupport } from '@openmeteo/mapbox-layer';
+ * import { omProtocol, addMapboxProtocolSupport } from '@openmeteo/weather-map-layer';
  *
  * // 1. Create the adapter (before or after creating the map).
  * const adapter = addMapboxProtocolSupport(mapboxgl);

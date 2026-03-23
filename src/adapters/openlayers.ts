@@ -20,7 +20,7 @@
  * Usage:
  *
  * ```ts
- * import { omProtocol, addOpenLayersProtocolSupport } from '@openmeteo/mapbox-layer';
+ * import { omProtocol, addOpenLayersProtocolSupport } from '@openmeteo/weather-map-layer';
  *
  * // 1. Create the adapter, passing the OpenLayers global.
  * const olAdapter = addOpenLayersProtocolSupport(ol);
