@@ -32,8 +32,8 @@
 
 			// Build the adapter. It provides both rasterSourceType and vectorSourceType
 			// that intercept "om://" URLs and route them through omProtocol.
-			const mapboxAdapter = OpenMeteoMapboxLayer.addMapboxProtocolSupport(mapboxgl);
-			mapboxAdapter.addProtocol('om', OpenMeteoMapboxLayer.omProtocol);
+			const mapboxAdapter = OMWeatherMapLayer.addMapboxProtocolSupport(mapboxgl);
+			mapboxAdapter.addProtocol('om', OMWeatherMapLayer.omProtocol);
 
 			const map = new mapboxgl.Map({
 				container: 'map',
@@ -59,7 +59,7 @@
 				const bounds = map.getBounds();
 				const [minLng, minLat] = bounds.getSouthWest().toArray();
 				const [maxLng, maxLat] = bounds.getNorthEast().toArray();
-				OpenMeteoMapboxLayer.updateCurrentBounds([minLng, minLat, maxLng, maxLat]);
+				OMWeatherMapLayer.updateCurrentBounds([minLng, minLat, maxLng, maxLat]);
 			});
 
 			// Both layers share the same model file and time step. The vector layer appends `&arrows=true` to request PBF arrow tiles.

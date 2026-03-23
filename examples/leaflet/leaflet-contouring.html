@@ -29,10 +29,10 @@
 		<div id="map"></div>
 		<script>
 			// Build the Leaflet adapter that intercepts "om://" requests and routes them through omProtocol.
-			const leafletAdapter = OpenMeteoMapboxLayer.addLeafletProtocolSupport(L);
+			const leafletAdapter = OMWeatherMapLayer.addLeafletProtocolSupport(L);
 
 			// Register the 'om' protocol handler (same as MapLibre's addProtocol).
-			leafletAdapter.addProtocol('om', OpenMeteoMapboxLayer.omProtocol);
+			leafletAdapter.addProtocol('om', OMWeatherMapLayer.omProtocol);
 
 			// Create the map with a standard base layer.
 			const map = L.map('map').setView([0, 0], 2);
@@ -40,7 +40,7 @@
 			// Keep the protocol informed of the current viewport bounds.
 			function updateBounds() {
 				const b = map.getBounds();
-				OpenMeteoMapboxLayer.updateCurrentBounds([
+				OMWeatherMapLayer.updateCurrentBounds([
 					b.getWest(),
 					b.getSouth(),
 					b.getEast(),

@@ -28,10 +28,10 @@
 	<body>
 		<div id="map"></div>
 		<script>
-			const olAdapter = OpenMeteoMapboxLayer.addOpenLayersProtocolSupport(ol);
+			const olAdapter = OMWeatherMapLayer.addOpenLayersProtocolSupport(ol);
 
 			// Register the 'om' protocol handler (same as MapLibre's addProtocol).
-			olAdapter.addProtocol('om', OpenMeteoMapboxLayer.omProtocol);
+			olAdapter.addProtocol('om', OMWeatherMapLayer.omProtocol);
 
 			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=precipitation&contours=true`;
 
@@ -105,7 +105,7 @@
 					'EPSG:4326'
 				);
 				// Clamp to valid lon range — the view may extend past ±180° when wrapping.
-				OpenMeteoMapboxLayer.updateCurrentBounds([
+				OMWeatherMapLayer.updateCurrentBounds([
 					Math.max(minLng, -180),
 					minLat,
 					Math.min(maxLng, 180),

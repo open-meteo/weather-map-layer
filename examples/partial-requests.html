@@ -28,7 +28,7 @@
 	<body>
 		<div id="map"></div>
 		<script>
-			maplibregl.addProtocol('om', OpenMeteoMapboxLayer.omProtocol);
+			maplibregl.addProtocol('om', OMWeatherMapLayer.omProtocol);
 
 			const map = new maplibregl.Map({
 				container: 'map',
@@ -46,7 +46,7 @@
 				const bounds = map.getBounds();
 				const [minLng, minLat] = bounds.getSouthWest().toArray();
 				const [maxLng, maxLat] = bounds.getNorthEast().toArray();
-				OpenMeteoMapboxLayer.updateCurrentBounds([minLng, minLat, maxLng, maxLat]);
+				OMWeatherMapLayer.updateCurrentBounds([minLng, minLat, maxLng, maxLat]);
 			});
 
 			map.on('load', () => {

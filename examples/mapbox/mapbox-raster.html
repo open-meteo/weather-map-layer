@@ -31,10 +31,10 @@
 			mapboxgl.accessToken = 'XXX'; // replace with your Mapbox access token
 
 			// This builds the custom source type class that intercepts "om://" requests and routes them through omProtocol.
-			const mapboxAdapter = OpenMeteoMapboxLayer.addMapboxProtocolSupport(mapboxgl);
+			const mapboxAdapter = OMWeatherMapLayer.addMapboxProtocolSupport(mapboxgl);
 
 			// Register the 'om' protocol handler (same as MapLibre's addProtocol).
-			mapboxAdapter.addProtocol('om', OpenMeteoMapboxLayer.omProtocol);
+			mapboxAdapter.addProtocol('om', OMWeatherMapLayer.omProtocol);
 
 			const map = new mapboxgl.Map({
 				container: 'map',
@@ -53,7 +53,7 @@
 				const bounds = map.getBounds();
 				const [minLng, minLat] = bounds.getSouthWest().toArray();
 				const [maxLng, maxLat] = bounds.getNorthEast().toArray();
-				OpenMeteoMapboxLayer.updateCurrentBounds([minLng, minLat, maxLng, maxLat]);
+				OMWeatherMapLayer.updateCurrentBounds([minLng, minLat, maxLng, maxLat]);
 			});
 
 			// below url is used to request 'latest.json' and get the nearest timestep to "current local time" + 1 hour

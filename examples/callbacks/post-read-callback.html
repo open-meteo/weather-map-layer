@@ -40,12 +40,12 @@
 				}
 			};
 
-			const omProtocolOptions = OpenMeteoMapboxLayer.defaultOmProtocolSettings;
+			const omProtocolOptions = OMWeatherMapLayer.defaultOmProtocolSettings;
 			omProtocolOptions.postReadCallback = postReadCallback;
 
 			// use the settings as argument for the protocol
 			maplibregl.addProtocol('om', (params, abortController) =>
-				OpenMeteoMapboxLayer.omProtocol(params, abortController, omProtocolOptions)
+				OMWeatherMapLayer.omProtocol(params, abortController, omProtocolOptions)
 			);
 
 			const map = new maplibregl.Map({

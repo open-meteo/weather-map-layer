@@ -30,8 +30,8 @@
 		<script>
 			mapboxgl.accessToken = 'XXX'; // replace with your Mapbox access token
 
-			const mapboxAdapter = OpenMeteoMapboxLayer.addMapboxProtocolSupport(mapboxgl);
-			mapboxAdapter.addProtocol('om', OpenMeteoMapboxLayer.omProtocol);
+			const mapboxAdapter = OMWeatherMapLayer.addMapboxProtocolSupport(mapboxgl);
+			mapboxAdapter.addProtocol('om', OMWeatherMapLayer.omProtocol);
 
 			const map = new mapboxgl.Map({
 				container: 'map',
@@ -55,7 +55,7 @@
 				const bounds = map.getBounds();
 				const [minLng, minLat] = bounds.getSouthWest().toArray();
 				const [maxLng, maxLat] = bounds.getNorthEast().toArray();
-				OpenMeteoMapboxLayer.updateCurrentBounds([minLng, minLat, maxLng, maxLat]);
+				OMWeatherMapLayer.updateCurrentBounds([minLng, minLat, maxLng, maxLat]);
 			});
 
 			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=precipitation&contours=true`;

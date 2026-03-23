@@ -73,7 +73,7 @@ For a standalone example, see `examples/temperature.html`.
 	// Standard Mapbox / MapLibre GL JS setup
 	// ...
 
-	maplibregl.addProtocol('om', OpenMeteoMapboxLayer.omProtocol);
+	maplibregl.addProtocol('om', OMWeatherMapLayer.omProtocol);
 
 	const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?variable=temperature_2m`;
 
@@ -187,7 +187,7 @@ If you’re rendering tiles on a dark base‑map or simply want to experiment wi
 In scenarios where post‑loading transformations of weather data is required, the protocol provides a post‑read callback. This callback is invoked immediately after the data has been parsed by `omFileReader`, allowing transformations before the data is forwarded to the rendering pipeline. A typical usage pattern is illustrated below:
 
 ```ts
-const omProtocolOptions = OpenMeteoMapboxLayer.defaultOmProtocolSettings;
+const omProtocolOptions = OMWeatherMapLayer.defaultOmProtocolSettings;
 omProtocolOptions.postReadCallback = (omFileReader, data, state) => {
 	if (data.values) {
 		data.values = data.values?.map((value) => value / 100);
@@ -195,7 +195,7 @@ omProtocolOptions.postReadCallback = (omFileReader, data, state) => {
 };
 
 maplibregl.addProtocol('om', (params, abortController) =>
-	OpenMeteoMapboxLayer.omProtocol(params, abortController, omProtocolOptions)
+	OMWeatherMapLayer.omProtocol(params, abortController, omProtocolOptions)
 );
 ```
 
@@ -206,7 +206,7 @@ An example implementation with a usefull case is available in the `examples/call
 To restrict weather data to a geometric boundary, the clipping parameters can be supplied during the instantiation of the omProtocol.
 
 ```ts
-const omProtocolOptions = OpenMeteoMapboxLayer.defaultOmProtocolSettings;
+const omProtocolOptions = OMWeatherMapLayer.defaultOmProtocolSettings;
 omProtocolOptions.clippingOptions = {
 	polygons: polygonList, // optionally clip raster / vector data to these polygons
 	bounds: clipBbox // optionally limit tile generation to these bbox bounds

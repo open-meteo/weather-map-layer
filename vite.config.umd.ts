@@ -5,7 +5,7 @@ export default defineConfig({
 		emptyOutDir: false, // so it doesn't wipe the main build
 		lib: {
 			entry: 'src/index.ts',
-			name: 'OpenMeteoMapboxLayer', // global variable name for UMD
+			name: 'OMWeatherMapLayer', // global variable name for UMD
 			formats: ['umd'],
 			fileName: (_format) => `index.js`
 		},
