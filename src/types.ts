@@ -84,21 +84,18 @@ export interface Data {
 }
 
 export type TileJSON = {
-	tilejson: '2.2.0';
+	tilejson: '3.0.0';
 	tiles: Array<string>;
 	name?: string;
 	description?: string;
 	version?: string;
 	attribution?: string;
-	template?: string;
-	legend?: string;
 	scheme?: string;
-	grids?: Array<string>;
-	data?: Array<string>;
 	minzoom: number;
 	maxzoom: number;
 	bounds?: Array<number>;
 	center?: Array<number>;
+	fillzoom?: number;
 };
 
 export type TileIndex = {

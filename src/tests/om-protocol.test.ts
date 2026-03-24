@@ -221,7 +221,7 @@ describe('omProtocol', () => {
 			const result = await omProtocol(params, new AbortController(), defaultOmProtocolSettings);
 			const resultData = result.data as TileJSON;
 
-			expect(resultData.tilejson).toBe('2.2.0');
+			expect(resultData.tilejson).toBe('3.0.0');
 			expect(resultData.tiles[0]).toBe(params.url + '/{z}/{x}/{y}');
 			expect(resultData.attribution).toContain('Open-Meteo');
 			expect(resultData.minzoom).toBe(0);

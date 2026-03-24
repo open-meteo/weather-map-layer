@@ -179,7 +179,7 @@ const getTilejson = async (
 	}
 
 	return {
-		tilejson: '2.2.0',
+		tilejson: '3.0.0',
 		tiles: [fullUrl + '/{z}/{x}/{y}'],
 		attribution: '<a href="https://open-meteo.com/en/licence#maps">© Open-Meteo</a>',
 		minzoom: 0,
