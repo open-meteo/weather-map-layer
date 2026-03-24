@@ -1,4 +1,4 @@
-import type { MapboxLayerFileReader } from '../om-file-reader';
+import type { WeatherMapLayerFileReader } from '../om-file-reader';
 import { ensureData, getOrCreateState } from '../om-protocol-state';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -49,7 +49,7 @@ const makeMockData = (size = 100): Data => ({
 // ---------------------------------------------------------------------------
 
 /**
- * Controllable test double for MapboxLayerFileReader.
+ * Controllable test double for WeatherMapLayerFileReader.
  *
  * Each call to readVariable is recorded in `calls` and returns a Promise
  * that the test controls via resolveCall / rejectCall.
@@ -57,7 +57,7 @@ const makeMockData = (size = 100): Data => ({
 class FakeReader {
 	calls: ReadCall[] = [];
 
-	// Must match the MapboxLayerFileReader interface used by ensureData
+	// Must match the WeatherMapLayerFileReader interface used by ensureData
 	async setToOmFile(_url?: string): Promise<void> {
 		// intentional no-op
 	}
@@ -108,7 +108,7 @@ class FakeReader {
 // ---------------------------------------------------------------------------
 
 /** Cast only when FakeReader structurally satisfies the subset used by ensureData. */
-const asReader = (r: FakeReader) => r as unknown as MapboxLayerFileReader;
+const asReader = (r: FakeReader) => r as unknown as WeatherMapLayerFileReader;
 
 // ---------------------------------------------------------------------------
 // Factory helpers

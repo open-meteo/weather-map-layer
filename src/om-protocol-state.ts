@@ -3,7 +3,7 @@ import { normalizeLon } from './utils/math';
 import { parseUrlComponents } from './utils/parse-url';
 
 import { GridFactory } from './grids';
-import { MapboxLayerFileReader } from './om-file-reader';
+import { WeatherMapLayerFileReader } from './om-file-reader';
 import { normalizeUrl } from './om-protocol';
 
 import type {
@@ -50,11 +50,16 @@ export const getProtocolInstance = (settings: OmProtocolSettings): OmProtocolIns
 	}
 
 	const instance = {
-		omFileReader: new MapboxLayerFileReader(settings.fileReaderConfig),
+		omFileReader: new WeatherMapLayerFileReader(settings.fileReaderConfig),
 		stateByKey: new Map()
 	};
 	omProtocolInstance = instance;
 	return instance;
+};
+
+export const clearBlockCache = async (): Promise<void> => {
+	await omProtocolInstance?.omFileReader.cache.clear();
+	omProtocolInstance?.stateByKey.clear();
 };
 
 export const getRanges = (gridData: GridData, bounds: Bounds | undefined): DimensionRange[] => {
@@ -113,7 +118,7 @@ export const getOrCreateState = (
  */
 export const ensureData = async (
 	state: OmUrlState,
-	omFileReader: MapboxLayerFileReader,
+	omFileReader: WeatherMapLayerFileReader,
 	postReadCallback: PostReadCallback,
 	signal?: AbortSignal
 ): Promise<Data> => {

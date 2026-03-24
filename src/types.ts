@@ -1,7 +1,7 @@
-import { FileReaderConfig, MapboxLayerFileReader } from './om-file-reader';
+import { FileReaderConfig, WeatherMapLayerFileReader } from './om-file-reader';
 
 export interface OmProtocolInstance {
-	omFileReader: MapboxLayerFileReader;
+	omFileReader: WeatherMapLayerFileReader;
 
 	// per-URL state:
 	stateByKey: Map<string, OmUrlState>;
@@ -57,7 +57,7 @@ export type RequestResolver = (
 ) => { dataOptions: DataIdentityOptions; renderOptions: RenderOptions };
 
 export type PostReadCallback =
-	| ((omFileReader: MapboxLayerFileReader, data: Data, state: OmUrlState) => void)
+	| ((omFileReader: WeatherMapLayerFileReader, data: Data, state: OmUrlState) => void)
 	| undefined;
 
 export interface OmProtocolSettings {
