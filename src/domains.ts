@@ -8,6 +8,7 @@ export const domainGroups = [
 	{ value: 'dwd', label: 'DWD Germany' },
 	{ value: 'ecmwf', label: 'ECMWF' },
 	{ value: 'cmc_gem', label: 'GEM Canada' },
+	{ value: 'geosphere', label: 'Geosphere Austria' },
 	{ value: 'ncep', label: 'NOAA U.S.' },
 	{ value: 'italia_meteo', label: 'ItaliaMeteo' },
 	{ value: 'jma', label: 'JMA Japan' },
@@ -764,6 +765,24 @@ export const domainOptions: Array<Domain> = [
 		},
 		time_interval: '6_hourly',
 		model_interval: '12_hourly'
+	},
+
+	// Geosphere Austria
+	{
+		value: 'geosphere_arome_austria',
+		label: 'Geosphere Austria',
+		grid: {
+			type: 'regular',
+			nx: 594,
+			ny: 492,
+			latMin: 42.981,
+			lonMin: 5.498,
+			dx: 0.028,
+			dy: 0.018,
+			zoom: 1
+		},
+		time_interval: 'hourly',
+		model_interval: '3_hourly'
 	},
 
 	// ItaliaMeteo
