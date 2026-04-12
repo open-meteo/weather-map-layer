@@ -116,18 +116,15 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 
 		const pbf = new Pbf();
 
+		const grid = GridFactory.create(domain.grid, ranges);
 		if (message.data.renderOptions.drawGrid) {
-			if (domain.grid.type !== 'regular') {
-				throw new Error('Only regular grid types supported');
-			}
-			generateGridPoints(pbf, values, directions, domain.grid, x, y, z);
+			generateGridPoints(pbf, grid, values, directions, x, y, z, clippingOptions?.bounds);
 		}
 		if (message.data.renderOptions.drawArrows && directions) {
 			generateArrows(pbf, values, directions, domain, ranges, x, y, z, clippingOptions);
 		}
 		if (message.data.renderOptions.drawContours) {
 			const intervals = message.data.renderOptions.intervals;
-			const grid = GridFactory.create(domain.grid, ranges);
 			generateContours(pbf, values, grid, x, y, z, tileSize, intervals, clippingOptions);
 		}
 

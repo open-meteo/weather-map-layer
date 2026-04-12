@@ -1,4 +1,4 @@
-import { GridInterface } from './interface';
+import { GridInterface, GridPoint } from './interface';
 import { interpolateLinear } from './interpolations';
 import { Projection, createProjection } from './projections';
 
@@ -213,6 +213,21 @@ export class ProjectionGrid implements GridInterface {
 			lng: (bounds[2] - bounds[0]) / 2 + bounds[0],
 			lat: (bounds[3] - bounds[1]) / 2 + bounds[1]
 		};
+	}
+
+	forEachPoint(callback: (point: GridPoint) => void | false, bounds?: Bounds): void {
+		for (let j = 0; j < this.ny; j++) {
+			const projY = this.minY + this.dy * j;
+			for (let i = 0; i < this.nx; i++) {
+				const projX = this.minX + this.dx * i;
+				const [lat, lon] = this.projection.reverse(projX, projY);
+				if (bounds) {
+					if (lat < bounds[1] || lat > bounds[3] || lon < bounds[0] || lon > bounds[2]) continue;
+				}
+				const result = callback({ index: j * this.nx + i, lat, lon });
+				if (result === false) return;
+			}
+		}
 	}
 }
 

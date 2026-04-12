@@ -116,7 +116,7 @@ export const normalizeUrl = async (url: string): Promise<string> => {
 const makeTileAbortedResponse = (): TileResult => {
 	return { data: undefined, cancelled: true };
 };
-const makeEmptyVectorLayResponse = (): TileResult => {
+const makeEmptyVectorLayerResponse = (): TileResult => {
 	return { data: new ArrayBuffer(0), cancelled: false };
 };
 
@@ -146,7 +146,7 @@ const requestTile = async (
 			!request.renderOptions.drawContours &&
 			!request.renderOptions.drawGrid
 		) {
-			return makeEmptyVectorLayResponse();
+			return makeEmptyVectorLayerResponse();
 		}
 	}
 

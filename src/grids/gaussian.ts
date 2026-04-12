@@ -1,6 +1,6 @@
 import { modPositive, roundWithPrecision } from '../utils/math';
 
-import { GridInterface } from './interface';
+import { GridInterface, GridPoint } from './interface';
 
 import { Bounds, DimensionRange, GaussianGridData } from '../types';
 
@@ -242,5 +242,24 @@ export class GaussianGrid implements GridInterface {
 		const latitudeLines = this.latitudeLines;
 		const dy = 180 / (2 * latitudeLines + 0.5);
 		return modPositive(Math.floor(latitudeLines - 1 - (lat - dy / 2) / dy), 2 * latitudeLines);
+	}
+
+	forEachPoint(callback: (point: GridPoint) => void | false, bounds?: Bounds): void {
+		const dy = 180 / (2 * this.latitudeLines + 0.5);
+		for (let y = 0; y < 2 * this.latitudeLines; y++) {
+			const lat = (this.latitudeLines - y - 1) * dy + dy / 2;
+			if (bounds && (lat < bounds[1] || lat > bounds[3])) continue;
+			const nx = this.nxOf(y);
+			const dx = 360 / nx;
+			const integralY = this.integral(y);
+			for (let x = 0; x < nx; x++) {
+				const lon = x * dx;
+				const adjustedLon = lon >= 180 ? lon - 360 : lon;
+				if (bounds && (adjustedLon < bounds[0] || adjustedLon > bounds[2])) continue;
+				const index = integralY + x;
+				const result = callback({ index, lat, lon: adjustedLon });
+				if (result === false) return;
+			}
+		}
 	}
 }
