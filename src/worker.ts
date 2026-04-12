@@ -1,9 +1,10 @@
 import Pbf from 'pbf';
 
 import { generateArrows } from './utils/arrows';
+import { checkAgainstBounds } from './utils/bounds';
 import { generateContours } from './utils/contours';
 import { generateGridPoints } from './utils/grid-points';
-import { checkAgainstBounds, lat2tile, lon2tile, tile2lat, tile2lon } from './utils/math';
+import { lat2tile, lon2tile, tile2lat, tile2lon } from './utils/math';
 import { getColor } from './utils/styling';
 
 import { GridFactory } from './grids/index';

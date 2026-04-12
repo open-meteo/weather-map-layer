@@ -1,6 +1,6 @@
 import { type GetResourceResponse, type RequestParameters } from 'maplibre-gl';
 
-import { clipBounds } from './utils/math';
+import { constrainBounds } from './utils/bounds';
 import { defaultResolveRequest, parseRequest } from './utils/parse-request';
 import { parseMetaJson } from './utils/parse-url';
 import { COLOR_SCALES_WITH_ALIASES as defaultColorScales } from './utils/styling';
@@ -173,7 +173,7 @@ const getTilejson = async (
 	const grid = GridFactory.create(dataOptions.domain.grid, null);
 	let bounds;
 	if (clippingOptions && clippingOptions.bounds) {
-		bounds = clipBounds(grid.getBounds(), clippingOptions.bounds);
+		bounds = constrainBounds(grid.getBounds(), clippingOptions.bounds) ?? grid.getBounds();
 	} else {
 		bounds = grid.getBounds();
 	}
