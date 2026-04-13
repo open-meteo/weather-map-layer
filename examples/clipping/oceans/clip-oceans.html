@@ -32,24 +32,14 @@
 			fetch('./natural_earth_50m_land_10km_buffer.geojson')
 				.then((response) => response.json())
 				.then((geojson) => {
-					const oceansFlatten = turf.flatten(geojson);
-					const oceansDissolve = turf.dissolve(oceansFlatten, { propertyName: 'combine' });
-					const oceansPolygon = turf.union(oceansDissolve);
-
-					const oceansBbox = turf.bbox(oceansPolygon);
-					const simplifiedoceansPolygon = turf.simplify(oceansPolygon, {
+					const simplifiedoceansPolygon = turf.simplify(geojson, {
 						tolerance: 0.00025,
 						highQuality: true
 					});
 
-					let polygons = [];
-					for (let coords of simplifiedoceansPolygon.geometry.coordinates) {
-						polygons.push(...coords);
-					}
-
 					const omProtocolOptions = OMWeatherMapLayer.defaultOmProtocolSettings;
 					omProtocolOptions.clippingOptions = {
-						polygons: [polygons]
+						geojson: simplifiedoceansPolygon
 					};
 
 					// use the settings as argument for the protocol

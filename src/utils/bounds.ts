@@ -45,10 +45,33 @@ export const snapBounds = (viewportBounds: Bounds): Bounds => {
 	return [snapMinLon, snapMinLat, snapMaxLon, snapMaxLat];
 };
 
+let clippingBounds: Bounds | undefined = undefined;
+export const setClippingBounds = (newClippingBounds?: Bounds): void => {
+	if (
+		clippingBounds &&
+		newClippingBounds &&
+		clippingBounds[0] === newClippingBounds[0] &&
+		clippingBounds[1] === newClippingBounds[1] &&
+		clippingBounds[2] === newClippingBounds[2] &&
+		clippingBounds[3] === newClippingBounds[3]
+	) {
+		// No change in clipping bounds
+		return;
+	}
+	clippingBounds = newClippingBounds;
+};
+
 export let currentBounds: Bounds | undefined = undefined;
-export const updateCurrentBounds = (bounds: Bounds) => {
-	const bbox = snapBounds(bounds);
-	currentBounds = [bbox[0], bbox[1], bbox[2], bbox[3]];
+export const updateCurrentBounds = (viewportBounds: Bounds) => {
+	// Snap to a stable grid first so small pans don't change the request
+	let effectiveBounds = snapBounds(viewportBounds);
+
+	// Then constrain to clipping bounds
+	if (clippingBounds) {
+		effectiveBounds = constrainBounds(effectiveBounds, clippingBounds) ?? effectiveBounds;
+	}
+
+	currentBounds = effectiveBounds;
 };
 
 export const boundsIncluded = (innerBounds: Bounds, outerBounds: Bounds): boolean => {
@@ -60,14 +83,14 @@ export const boundsIncluded = (innerBounds: Bounds, outerBounds: Bounds): boolea
 
 /*
 Compares domain bounds against bounds limitation set in clippingOptions.
-Returns the intersection, or undefined when there is no overlap.
-Both bounds and constraint may cross the antimeridian (minLon > maxLon).
+Returns undefined when the two bounds do not overlap at all.
+Handles dateline-crossing bounds (minLon > maxLon) for both inputs.
 */
 export const constrainBounds = (bounds: Bounds, constraint: Bounds): Bounds | undefined => {
 	let [minLon, minLat, maxLon, maxLat] = bounds;
 	const [clipMinLon, clipMinLat, clipMaxLon, clipMaxLat] = constraint;
 
-	// Latitude: always simple clamping
+	// Latitude is always a simple clamp — no dateline complexity.
 	if (minLat < clipMinLat) minLat = clipMinLat;
 	if (maxLat > clipMaxLat) maxLat = clipMaxLat;
 
@@ -75,61 +98,56 @@ export const constrainBounds = (bounds: Bounds, constraint: Bounds): Bounds | un
 	const clipWraps = clipMinLon > clipMaxLon;
 
 	if (!boundsWraps && !clipWraps) {
-		// Standard contiguous case
+		// Standard case: both non-crossing.
 		if (minLon < clipMinLon) minLon = clipMinLon;
 		if (maxLon > clipMaxLon) maxLon = clipMaxLon;
+		if (minLon > maxLon) return undefined;
 	} else if (clipWraps && !boundsWraps) {
-		// Bounds = [a, b]; Clip = [c1, 180] ∪ [-180, c2] (c1 > c2)
-		// Intersection = ([max(a,c1), b] if non-empty) ∪ ([a, min(b,c2)] if non-empty)
-		const rightStart = Math.max(minLon, clipMinLon);
-		const rightEnd = maxLon;
-		const rightNonEmpty = rightStart <= rightEnd;
-
-		const leftStart = minLon;
-		const leftEnd = Math.min(maxLon, clipMaxLon);
-		const leftNonEmpty = leftStart <= leftEnd;
-
-		if (rightNonEmpty && leftNonEmpty) {
-			// Result wraps: right segment ∪ left segment
-			minLon = rightStart;
-			maxLon = leftEnd;
-		} else if (rightNonEmpty) {
-			minLon = rightStart;
-			maxLon = rightEnd;
-		} else if (leftNonEmpty) {
-			minLon = leftStart;
-			maxLon = leftEnd;
+		// Clip crosses dateline: valid zone is [clipMinLon..180] ∪ [-180..clipMaxLon].
+		// Bounds is fully in the gap when it sits between clipMaxLon and clipMinLon.
+		const rightMin = Math.max(minLon, clipMinLon);
+		const rightMax = Math.min(maxLon, 180);
+		const leftMin = Math.max(minLon, -180);
+		const leftMax = Math.min(maxLon, clipMaxLon);
+		const hasRight = rightMin <= rightMax;
+		const hasLeft = leftMin <= leftMax;
+		if (!hasRight && !hasLeft) return undefined;
+		if (hasRight && !hasLeft) {
+			minLon = rightMin;
+			maxLon = rightMax;
+		} else if (!hasRight && hasLeft) {
+			minLon = leftMin;
+			maxLon = leftMax;
 		} else {
-			return undefined;
+			// The bounds spans both valid clip segments, so the result wraps.
+			minLon = rightMin;
+			maxLon = leftMax;
 		}
-	} else if (boundsWraps && !clipWraps) {
-		// Bounds = [a, 180] ∪ [-180, b] (a > b); Clip = [c1, c2]
-		const rightStart = Math.max(minLon, clipMinLon);
-		const rightEnd = Math.min(180, clipMaxLon);
-		const rightNonEmpty = rightStart <= rightEnd;
-
-		const leftStart = Math.max(-180, clipMinLon);
-		const leftEnd = Math.min(maxLon, clipMaxLon);
-		const leftNonEmpty = leftStart <= leftEnd;
-
-		if (rightNonEmpty && leftNonEmpty) {
-			// Still wrapping
-			minLon = rightStart;
-			maxLon = leftEnd;
-		} else if (rightNonEmpty) {
-			minLon = rightStart;
-			maxLon = rightEnd;
-		} else if (leftNonEmpty) {
-			minLon = leftStart;
-			maxLon = leftEnd;
+	} else if (!clipWraps && boundsWraps) {
+		// Bounds crosses dateline: covers [minLon..180] ∪ [-180..maxLon].
+		// Intersect each half with the non-crossing clip.
+		const rightMin = Math.max(minLon, clipMinLon);
+		const rightMax = Math.min(180, clipMaxLon);
+		const leftMin = Math.max(-180, clipMinLon);
+		const leftMax = Math.min(maxLon, clipMaxLon);
+		const hasRight = rightMin <= rightMax;
+		const hasLeft = leftMin <= leftMax;
+		if (!hasRight && !hasLeft) return undefined;
+		if (hasRight && !hasLeft) {
+			minLon = rightMin;
+			maxLon = rightMax;
+		} else if (!hasRight && hasLeft) {
+			minLon = leftMin;
+			maxLon = leftMax;
 		} else {
-			return undefined;
+			// Both halves survived — result stays dateline-crossing.
+			minLon = rightMin;
+			maxLon = leftMax;
 		}
 	} else {
-		// Both wrap: Bounds = [a, 180] ∪ [-180, b]; Clip = [c1, 180] ∪ [-180, c2]
-		// Intersection: [max(a, c1), min(b, c2)] (still wrapping)
-		minLon = Math.max(minLon, clipMinLon);
-		maxLon = Math.min(maxLon, clipMaxLon);
+		// Both cross dateline: intersect by clamping each edge independently.
+		if (minLon < clipMinLon) minLon = clipMinLon;
+		if (maxLon > clipMaxLon) maxLon = clipMaxLon;
 	}
 
 	return [minLon, minLat, maxLon, maxLat];

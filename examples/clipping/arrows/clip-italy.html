@@ -33,25 +33,14 @@
 				.then((response) => response.json())
 				.then((geojson) => {
 					// optionally use turf to do some simplication and calculate bbox
-					const italyFlatten = turf.flatten(geojson);
-					const italyDissolve = turf.dissolve(italyFlatten, { propertyName: 'combine' });
-					const italyPolygon = turf.union(italyDissolve);
-
-					const italyBbox = turf.bbox(italyPolygon);
-					const simplifieditalyPolygon = turf.simplify(italyPolygon, {
+					const simplifiedItaly = turf.simplify(geojson, {
 						tolerance: 0.00025,
 						highQuality: true
 					});
 
-					let polygons = [];
-					for (let coords of simplifieditalyPolygon.geometry.coordinates) {
-						polygons.push(...coords);
-					}
-
 					const omProtocolOptions = OMWeatherMapLayer.defaultOmProtocolSettings;
 					omProtocolOptions.clippingOptions = {
-						polygons: [polygons],
-						bounds: italyBbox
+						geojson: simplifiedItaly
 					};
 
 					// use the settings as argument for the protocol
@@ -62,7 +51,9 @@
 					const map = new maplibregl.Map({
 						container: 'map',
 						style: 'https://map-assets.open-meteo.com/styles/minimal-planet-maps.json', // replace with your own style sheet
-						hash: true
+						hash: true,
+						center: [12.5674, 41.8719],
+						zoom: 5
 					});
 
 					// setting tile_size=128 reduces each tile to 1/4 the width and height of the default 512px. Without it, each tile would contain 4x4 = 16 times as many pixels to compute.

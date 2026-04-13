@@ -1,23 +1,20 @@
-import { GridFactory } from '../grids';
+import { GridInterface } from '../grids';
 import Pbf from 'pbf';
-import inside from 'point-in-polygon-hao';
 
+import { type ResolvedClippingOptions, createClippingTester } from './clipping';
 import { VECTOR_TILE_EXTENT } from './constants';
 import { degreesToRadians, rotatePoint, tile2lat, tile2lon } from './math';
 import { command, writeLayer, zigzag } from './pbf';
-
-import { ClippingOptions, DimensionRange, Domain } from '../types';
 
 export const generateArrows = (
 	pbf: Pbf,
 	values: Float32Array,
 	directions: Float32Array,
-	domain: Domain,
-	ranges: DimensionRange[] | null,
+	grid: GridInterface,
 	x: number,
 	y: number,
 	z: number,
-	clippingOptions: ClippingOptions,
+	clippingOptions: ResolvedClippingOptions | undefined,
 	extent: number = VECTOR_TILE_EXTENT,
 	arrows: number = 25
 ) => {
@@ -32,7 +29,7 @@ export const generateArrows = (
 	const size = extent / arrows;
 
 	let cursor = [0, 0];
-	const grid = GridFactory.create(domain.grid, ranges);
+	const isInsideClip = createClippingTester(clippingOptions);
 
 	for (let tileY = 0; tileY < extent + 1; tileY += size) {
 		const lat = tile2lat(y + tileY / extent, z);
@@ -44,15 +41,7 @@ export const generateArrows = (
 			const center = [tileX, tileY];
 			const geom = [];
 
-			let insideClip = true;
-			if (clippingOptions && clippingOptions.polygons) {
-				for (const polygon of clippingOptions.polygons) {
-					if (!inside([lon, lat], polygon)) {
-						insideClip = false;
-					}
-				}
-			}
-			if (!insideClip) {
+			if (isInsideClip && !isInsideClip(lon, lat)) {
 				continue;
 			}
 

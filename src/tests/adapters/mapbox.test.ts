@@ -113,7 +113,7 @@ describe('addMapboxProtocolSupport', () => {
 			expect(() => adapter.removeProtocol('om')).not.toThrow();
 		});
 
-		it('allows re-registering a protocol', () => {
+		it('allows overwriting a protocol with a different handler', () => {
 			const adapter = addMapboxProtocolSupport(mapboxgl);
 			const handler1 = createMockHandler();
 			const handler2 = createMockHandler();

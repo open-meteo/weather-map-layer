@@ -1,4 +1,5 @@
-import { currentBounds } from './bounds';
+import { currentBounds, setClippingBounds } from './bounds';
+import { type ResolvedClippingOptions, resolveClippingOptions } from './clipping';
 import {
 	DEFAULT_INTERVAL,
 	DEFAULT_TILE_SIZE,
@@ -9,6 +10,7 @@ import { parseUrlComponents } from './parse-url';
 import { getColorScale, resolveColorScale } from './styling';
 
 import type {
+	ClippingOptions,
 	ColorScales,
 	DataIdentityOptions,
 	Domain,
@@ -19,10 +21,29 @@ import type {
 	RenderableColorScale
 } from '../types';
 
+let cachedClippingInput: ClippingOptions = undefined;
+let cachedClippingResult: ResolvedClippingOptions | undefined = undefined;
+let useSAB: boolean | undefined = undefined;
+
+const getCachedResolvedClipping = (
+	options: ClippingOptions
+): ResolvedClippingOptions | undefined => {
+	if (options === cachedClippingInput) {
+		return cachedClippingResult;
+	}
+	cachedClippingInput = options;
+	cachedClippingResult = resolveClippingOptions(options, useSAB);
+	return cachedClippingResult;
+};
+
 export const parseRequest = (url: string, settings: OmProtocolSettings): ParsedRequest => {
 	const urlComponents = parseUrlComponents(url);
 	const resolver = settings.resolveRequest ?? defaultResolveRequest;
 	const { dataOptions, renderOptions } = resolver(urlComponents, settings);
+
+	useSAB = settings.fileReaderConfig.useSAB;
+	const resolvedClippingOptions = getCachedResolvedClipping(settings.clippingOptions);
+	setClippingBounds(resolvedClippingOptions?.bounds);
 
 	return {
 		baseUrl: urlComponents.baseUrl,
@@ -30,7 +51,7 @@ export const parseRequest = (url: string, settings: OmProtocolSettings): ParsedR
 		tileIndex: urlComponents.tileIndex,
 		dataOptions,
 		renderOptions,
-		clippingOptions: settings.clippingOptions
+		clippingOptions: resolvedClippingOptions
 	};
 };
 

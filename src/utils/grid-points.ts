@@ -1,6 +1,7 @@
 import { GridInterface } from '../grids';
 import Pbf from 'pbf';
 
+import { ResolvedClippingOptions, createClippingTester } from './clipping';
 import { VECTOR_TILE_EXTENT } from './constants';
 import { lat2tile, lon2tile, tile2lat } from './math';
 import { command, writeLayer, zigzag } from './pbf';
@@ -27,7 +28,7 @@ export const generateGridPoints = (
 	x: number,
 	y: number,
 	z: number,
-	clippingBounds?: Bounds,
+	clippingOptions?: ResolvedClippingOptions,
 	extent: number = VECTOR_TILE_EXTENT,
 	margin: number = 0
 ) => {
@@ -37,6 +38,8 @@ export const generateGridPoints = (
 		properties: { value?: number; direction?: number };
 		geom: number[];
 	}> = [];
+
+	const isInsideClip = createClippingTester(clippingOptions);
 
 	const tileOffsetX = x * extent;
 	const tileOffsetY = y * extent;
@@ -50,6 +53,8 @@ export const generateGridPoints = (
 		tile2lonUnwrapped(x + 1 + marginFrac, z),
 		tile2lat(y - marginFrac, z)
 	];
+
+	const clippingBounds = clippingOptions?.bounds;
 
 	// Intersect tile bounds with clippingBounds when defined.
 	const iterBounds: Bounds = clippingBounds
@@ -78,6 +83,10 @@ export const generateGridPoints = (
 
 		const value = values[index];
 		if (isNaN(value)) return;
+
+		if (isInsideClip && !isInsideClip(lon, lat)) {
+			return;
+		}
 
 		const properties: { value?: number; direction?: number } = {};
 		properties.value = Number(value.toFixed(2));

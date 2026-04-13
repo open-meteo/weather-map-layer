@@ -9,7 +9,7 @@ export * from './utils/styling';
 export * from './utils/variables';
 export * from './utils/arrows';
 export * from './utils/bounds';
-
+export * from './utils/clipping';
 export * from './grids/index';
 
 export * from './adapters/leaflet';

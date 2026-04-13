@@ -32,21 +32,14 @@
 			fetch('./swissBOUNDARIES3D_1_5_TLM_LANDESGEBIET.geojson')
 				.then((response) => response.json())
 				.then((geojson) => {
-					// optionally use turf to do some simplication and calculate bbox
-					const swissFlatten = turf.flatten(geojson);
-					const swissDissolve = turf.dissolve(swissFlatten, { propertyName: 'combine' });
-
-					const swissPolygon = swissDissolve.features[0];
-					const swissBbox = turf.bbox(swissPolygon);
-					const simplifiedSwissPolygon = turf.simplify(swissPolygon, {
+					const simplifiedSwitzerland = turf.simplify(geojson, {
 						tolerance: 0.00025,
 						highQuality: true
 					});
 
 					const omProtocolOptions = OMWeatherMapLayer.defaultOmProtocolSettings;
 					omProtocolOptions.clippingOptions = {
-						polygons: [simplifiedSwissPolygon.geometry.coordinates],
-						bounds: swissBbox
+						geojson: simplifiedSwitzerland
 					};
 
 					// use the settings as argument for the protocol
@@ -57,7 +50,9 @@
 					const map = new maplibregl.Map({
 						container: 'map',
 						style: 'https://map-assets.open-meteo.com/styles/minimal-planet-maps.json', // replace with your own style sheet
-						hash: true
+						hash: true,
+						center: [8.2275, 46.8182],
+						zoom: 7.5
 					});
 
 					// setting tile_size=256 reduces each tile to 1/2 the width and height of the default 512px. Without it, each tile would contain 2x2 = 4 times as many pixels to compute.

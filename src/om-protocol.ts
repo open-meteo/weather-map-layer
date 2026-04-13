@@ -1,6 +1,7 @@
 import { type GetResourceResponse, type RequestParameters } from 'maplibre-gl';
 
 import { constrainBounds } from './utils/bounds';
+import { type ResolvedClippingOptions } from './utils/clipping';
 import { defaultResolveRequest, parseRequest } from './utils/parse-request';
 import { parseMetaJson } from './utils/parse-url';
 import { COLOR_SCALES_WITH_ALIASES as defaultColorScales } from './utils/styling';
@@ -13,7 +14,6 @@ import { capitalize } from './utils';
 import { WorkerPool } from './worker-pool';
 
 import type {
-	ClippingOptions,
 	Data,
 	DataIdentityOptions,
 	DimensionRange,
@@ -77,7 +77,9 @@ export const omProtocol = async (
 
 	// Handle TileJSON request
 	if (params.type == 'json') {
-		return { data: await getTilejson(params.url, request.dataOptions, settings.clippingOptions) };
+		return {
+			data: await getTilejson(params.url, request.dataOptions, request.clippingOptions)
+		};
 	}
 
 	// Handle tile request
@@ -166,10 +168,9 @@ const requestTile = async (
 const getTilejson = async (
 	fullUrl: string,
 	dataOptions: DataIdentityOptions,
-	clippingOptions?: ClippingOptions
+	clippingOptions?: ResolvedClippingOptions
 ): Promise<TileJSON> => {
 	// We initialize the grid with the ranges set to null, because we want to find out the maximum bounds of this grid
-	// Also parse ranges here
 	const grid = GridFactory.create(dataOptions.domain.grid, null);
 	let bounds;
 	if (clippingOptions && clippingOptions.bounds) {

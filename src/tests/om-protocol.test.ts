@@ -165,6 +165,32 @@ describe('Request Options', () => {
 
 			expect(() => parseRequest(url, settings)).toThrow('Invalid tile size');
 		});
+
+		it('resolves clipping options and caches by reference', () => {
+			const domainOptions = [createTestDomain('domain1')];
+			const clippingOptions = {
+				bounds: [-10, -10, 10, 10] as [number, number, number, number]
+			};
+			const settings = createTestSettings({ domainOptions, clippingOptions });
+			const url = 'om://https://example.com/data_spatial/domain1/file.om?variable=temp';
+
+			const result1 = parseRequest(url, settings);
+			const result2 = parseRequest(url, settings);
+
+			// Same reference for clippingOptions means cached result is reused
+			expect(result1.clippingOptions).toBeDefined();
+			expect(result1.clippingOptions).toBe(result2.clippingOptions);
+			expect(result1.clippingOptions!.bounds).toBeDefined();
+		});
+
+		it('returns undefined clippingOptions when none provided', () => {
+			const domainOptions = [createTestDomain('domain1')];
+			const settings = createTestSettings({ domainOptions });
+			const url = 'om://https://example.com/data_spatial/domain1/file.om?variable=temp';
+
+			const result = parseRequest(url, settings);
+			expect(result.clippingOptions).toBeUndefined();
+		});
 	});
 
 	describe('custom resolver', () => {

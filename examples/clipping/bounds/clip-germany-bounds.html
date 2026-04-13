@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Mapbox Layer - Germany Bounds Clip</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.20.1/dist/maplibre-gl.css" />
+		<script src="https://unpkg.com/maplibre-gl@5.20.1/dist/maplibre-gl.js"></script>
+		<!-- x-release-please-start-version -->
+		<script src="https://unpkg.com/@openmeteo/mapbox-layer@0.0.16/dist/index.js"></script>
+		<!-- x-release-please-end -->
+		<!-- Local development -->
+		<script>
+			if (location.hostname === 'localhost' || location.href.startsWith('file://')) {
+				document.write('<script src="/dist/index.js"><\/script>');
+			}
+		</script>
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<script>
+			const germanyBounds = [5.87, 47.27, 15.04, 55.06];
+
+			const omProtocolOptions = OpenMeteoMapboxLayer.defaultOmProtocolSettings;
+			omProtocolOptions.clippingOptions = {
+				bounds: germanyBounds
+			};
+
+			maplibregl.addProtocol('om', (params) =>
+				OpenMeteoMapboxLayer.omProtocol(params, undefined, omProtocolOptions)
+			);
+
+			const map = new maplibregl.Map({
+				container: 'map',
+				style: 'https://map-assets.open-meteo.com/styles/minimal-planet-maps.json', // replace with your own style sheet
+				center: [10.4515, 51.1657],
+				zoom: 5,
+				hash: true
+			});
+
+			const omUrl =
+				'https://map-tiles.open-meteo.com/data_spatial/dwd_icon_d2/latest.json?time_step=current_time_1H&variable=temperature_2m';
+
+			map.on('load', () => {
+				map.addSource('omFileSource', {
+					url: 'om://' + omUrl,
+					type: 'raster',
+					maxzoom: 12
+				});
+				map.addLayer(
+					{
+						id: 'omFileLayer',
+						type: 'raster',
+						source: 'omFileSource',
+						paint: {
+							'raster-opacity': 0.75
+						}
+					},
+					'waterway-tunnel'
+				);
+			});
+		</script>
+	</body>
+</html>

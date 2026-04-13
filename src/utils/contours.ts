@@ -1,12 +1,10 @@
 import { GridInterface } from '../grids/index';
 import Pbf from 'pbf';
-import inside from 'point-in-polygon-hao';
 
+import { type ResolvedClippingOptions, createClippingTester } from './clipping';
 import { VECTOR_TILE_EXTENT } from './constants';
 import { tile2lat, tile2lon } from './math';
 import { command, writeLayer, zigzag } from './pbf';
-
-import { ClippingOptions } from '../types';
 
 // prettier-ignore
 export const CASES: [number, number][][][] = [
@@ -112,7 +110,7 @@ export const generateContours = (
 	z: number,
 	tileSize: number,
 	intervals: number[],
-	clippingOptions: ClippingOptions,
+	clippingOptions: ResolvedClippingOptions | undefined,
 	extent: number = VECTOR_TILE_EXTENT
 ) => {
 	const features = [];
@@ -129,6 +127,8 @@ export const generateContours = (
 	const segments: { [ele: number]: number[][] } = {};
 	const fragmentByStartByLevel: Map<number, Map<number, Fragment>> = new Map();
 	const fragmentByEndByLevel: Map<number, Map<number, Fragment>> = new Map();
+
+	const isInsideClip = createClippingTester(clippingOptions);
 
 	for (i = 1 - buffer; i < height + buffer; i++) {
 		const latTop = tile2lat(y + i / height, z);
@@ -159,15 +159,7 @@ export const generateContours = (
 				continue;
 			}
 
-			let insideClip = true;
-			if (clippingOptions && clippingOptions.polygons) {
-				for (const polygon of clippingOptions.polygons) {
-					if (!inside([lon, latBottom], polygon)) {
-						insideClip = false;
-					}
-				}
-			}
-			if (!insideClip) {
+			if (isInsideClip && !isInsideClip(lon, latBottom)) {
 				continue;
 			}
 
