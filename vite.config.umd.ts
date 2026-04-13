@@ -9,7 +9,7 @@ export default defineConfig({
 			formats: ['umd'],
 			fileName: (_format) => `index.js`
 		},
-		rollupOptions: {
+		rolldownOptions: {
 			output: {
 				globals: {
 					'@openmeteo/file-reader': 'OpenMeteoFileReader',
