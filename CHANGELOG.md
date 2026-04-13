@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.18](https://github.com/open-meteo/weather-map-layer/compare/v0.0.17...v0.0.18) (2026-04-13)
+
+
+### Bug Fixes
+
+* vite 8 type generation ([#228](https://github.com/open-meteo/weather-map-layer/issues/228)) ([ecab418](https://github.com/open-meteo/weather-map-layer/commit/ecab41816fbdb9a2f5c4b1d7d076ec277f376cc4))
+
 ## [0.0.17](https://github.com/open-meteo/weather-map-layer/compare/v0.0.16...v0.0.17) (2026-04-13)
 
 
