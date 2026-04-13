@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.19](https://github.com/open-meteo/weather-map-layer/compare/v0.0.18...v0.0.19) (2026-04-13)
+
+
+### Bug Fixes
+
+* temp. revert to vite 7 / ts 5 / rollup ([#230](https://github.com/open-meteo/weather-map-layer/issues/230)) ([819fc39](https://github.com/open-meteo/weather-map-layer/commit/819fc3964b0d3830c1ecbbb8128cdd0af01ee06c))
+
 ## [0.0.18](https://github.com/open-meteo/weather-map-layer/compare/v0.0.17...v0.0.18) (2026-04-13)
 
 
