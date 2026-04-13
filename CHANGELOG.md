@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.0.17](https://github.com/open-meteo/weather-map-layer/compare/v0.0.16...v0.0.17) (2026-04-13)
+
+
+### Features
+
+* add geosphere austria model to domains ([572d216](https://github.com/open-meteo/weather-map-layer/commit/572d216a3bc3108b6762fc78fd14f23a223a9645))
+* clipping with geojson ([#166](https://github.com/open-meteo/weather-map-layer/issues/166)) ([389705e](https://github.com/open-meteo/weather-map-layer/commit/389705e5896d69fe125a1720cfe5b9fa7804ec74))
+* make generateGridPoints compatible with all types of grids ([#169](https://github.com/open-meteo/weather-map-layer/issues/169)) ([46630b4](https://github.com/open-meteo/weather-map-layer/commit/46630b48c8dd3996d32131cbc5ea83608f056f7f))
+* popup example ([#211](https://github.com/open-meteo/weather-map-layer/issues/211)) ([4e8d189](https://github.com/open-meteo/weather-map-layer/commit/4e8d18923f22005d3bc470ebbc071502f23ba63d))
+* rename package ([#213](https://github.com/open-meteo/weather-map-layer/issues/213)) ([8e2dcc8](https://github.com/open-meteo/weather-map-layer/commit/8e2dcc8fc32b18d59c79a9d39b02dffe43a9d501))
+* rename umd global variable ([#217](https://github.com/open-meteo/weather-map-layer/issues/217)) ([de58c5b](https://github.com/open-meteo/weather-map-layer/commit/de58c5b34b033b3e4076c03941cda8bdf5c48262))
+
+
+### Bug Fixes
+
+* bump codecov/codecov-action from 5 to 6 ([#224](https://github.com/open-meteo/weather-map-layer/issues/224)) ([48a2cb7](https://github.com/open-meteo/weather-map-layer/commit/48a2cb714c893c4ed7d135cfc25aad5c02a4c88f))
+* bump the openmeteo group with 2 updates ([#223](https://github.com/open-meteo/weather-map-layer/issues/223)) ([568cc2c](https://github.com/open-meteo/weather-map-layer/commit/568cc2cffd8e4c757d635b91c955ca1fcb0d6027))
+* bump the openmeteo group with 8 updates ([#218](https://github.com/open-meteo/weather-map-layer/issues/218)) ([bb7064d](https://github.com/open-meteo/weather-map-layer/commit/bb7064dc6c498ad4208a51217257f78391bab0f4))
+* bump typescript from 5.9.3 to 6.0.2 in the openmeteo group ([#225](https://github.com/open-meteo/weather-map-layer/issues/225)) ([4b7a67e](https://github.com/open-meteo/weather-map-layer/commit/4b7a67e30d1ba63651a3fdc180e2e6b7084645e5))
+* change last names to new repo name ([#222](https://github.com/open-meteo/weather-map-layer/issues/222)) ([e7428cf](https://github.com/open-meteo/weather-map-layer/commit/e7428cfd2e7dd9c780c79c0bef0f4c8968ed8cd5))
+* change to tilejson v3 ([#221](https://github.com/open-meteo/weather-map-layer/issues/221)) ([095b66d](https://github.com/open-meteo/weather-map-layer/commit/095b66d450102dbbac1fa809a295624abc0a0977))
+* rm big tile snapping in favour of smaller tile snapping ([#227](https://github.com/open-meteo/weather-map-layer/issues/227)) ([830e9a8](https://github.com/open-meteo/weather-map-layer/commit/830e9a8f0015fe5c053c21f2a97b60ca3592b6de))
+
 ## [0.0.16](https://github.com/open-meteo/weather-map-layer/compare/v0.0.15...v0.0.16) (2026-03-19)
 
 
