@@ -53,17 +53,17 @@
 		"live-server": "^1.2.2",
 		"prettier": "^3.6.2",
 		"tsx": "^4.20.6",
-		"typescript": "^6.0.2",
+		"typescript": "^5.9.3",
 		"typescript-eslint": "^8.58.1",
 		"unplugin-dts": "^1.0.0-beta.6",
-		"vite": "^8.0.0",
+		"vite": "^7.3.2",
 		"vitest": "^4.0.4"
 	},
 	"dependencies": {
 		"@mapbox/tilebelt": "^2.0.3",
 		"@mapbox/vector-tile": "^2.0.4",
 		"@openmeteo/file-reader": "^0.0.15",
-		"maplibre-gl": "^5.9.0",
+		"maplibre-gl": "^5.20.1",
 		"pbf": "^4.0.1",
 		"point-in-polygon-hao": "^1.2.4"
 	}
