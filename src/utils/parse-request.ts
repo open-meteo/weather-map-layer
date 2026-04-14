@@ -25,7 +25,7 @@ let cachedClippingInput: ClippingOptions = undefined;
 let cachedClippingResult: ResolvedClippingOptions | undefined = undefined;
 let useSAB: boolean | undefined = undefined;
 
-const getCachedResolvedClipping = (
+export const getCachedResolvedClipping = (
 	options: ClippingOptions
 ): ResolvedClippingOptions | undefined => {
 	if (options === cachedClippingInput) {
