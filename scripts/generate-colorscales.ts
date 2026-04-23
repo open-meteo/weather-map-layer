@@ -36,7 +36,7 @@ interface ColorScaleDefinition {
 	unit: string;
 	breakpoints: number[];
 	colorSegments: ColorSegmentsDefinition;
-	opacitySegments: OpacitySegmentsDefinition;
+	opacitySegments?: OpacitySegmentsDefinition;
 }
 
 // Interpolate a color at a specific position within a segment
@@ -101,7 +101,8 @@ function getColorAt(colorSegments: ColorSegment[], value: number): RGB {
 }
 
 // Find the opacity at a given value by finding the appropriate segment
-function getOpacityAt(opacitySegments: OpacitySegment[], value: number): number {
+function getOpacityAt(opacitySegments: OpacitySegment[] | null, value: number): number {
+	if (!opacitySegments) return 1;
 	// Find the segment that contains this value
 	for (const segment of opacitySegments) {
 		if (value >= segment.range[0] && value <= segment.range[1]) {
@@ -126,8 +127,9 @@ function hasColorVariants(
 
 // Check if opacity segments have light/dark variants
 function hasOpacityVariants(
-	segments: OpacitySegmentsDefinition
+	segments?: OpacitySegmentsDefinition
 ): segments is { light: OpacitySegment[]; dark: OpacitySegment[] } {
+	if (!segments) return false;
 	return !Array.isArray(segments) && 'light' in segments && 'dark' in segments;
 }
 
@@ -144,9 +146,10 @@ function getColorSegments(
 
 // Get opacity segments for a specific mode
 function getOpacitySegments(
-	segments: OpacitySegmentsDefinition,
-	mode: 'light' | 'dark'
-): OpacitySegment[] {
+	mode: 'light' | 'dark',
+	segments?: OpacitySegmentsDefinition
+): OpacitySegment[] | null {
+	if (!segments) return null;
 	if (hasOpacityVariants(segments)) {
 		return segments[mode];
 	}
@@ -160,7 +163,7 @@ function generateColorsAtBreakpoints(
 ): RGBA[] {
 	const { breakpoints, colorSegments, opacitySegments } = definition;
 	const colorSegs = getColorSegments(colorSegments, mode);
-	const opacitySegs = getOpacitySegments(opacitySegments, mode);
+	const opacitySegs = getOpacitySegments(mode, opacitySegments);
 
 	return breakpoints.map((value) => {
 		const rgb = getColorAt(colorSegs, value);
@@ -178,6 +181,15 @@ function needsVariants(definition: ColorScaleDefinition): boolean {
 
 // Color scale definitions
 const colorScaleDefinitions: Record<string, ColorScaleDefinition> = {
+	albedo: {
+		unit: '%',
+		breakpoints: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
+		colorSegments: [
+			{ range: [0, 10], colors: ['#add8e6', '#004011'] },
+			{ range: [10, 25], colors: ['#004011', '#937350'] },
+			{ range: [25, 100], colors: ['#937350', '#ffffff'] }
+		]
+	},
 	cape: {
 		unit: 'J/kg',
 		breakpoints: [0, 50, 150, 250, 500, 750, 1000, 1500, 2000, 2500, 3000, 3500, 4000],
@@ -234,19 +246,21 @@ const colorScaleDefinitions: Record<string, ColorScaleDefinition> = {
 	},
 	precipitation: {
 		unit: 'mm',
-		breakpoints: [0.01, 0.055, 0.11, 0.255, 0.45, 0.95, 2, 3, 4.95, 7.45, 10, 15, 20, 25, 30],
+		breakpoints: [0.01, 0.055, 0.2, 1, 2, 4, 8, 12, 16, 20, 25, 30],
 		colorSegments: [
-			{ range: [0, 0.04], colors: ['#000000', '#87CEFA'] },
-			{ range: [0.04, 2], colors: ['#87CEFA', '#0060e9'] },
-			{ range: [2, 10], colors: ['#0060e9', '#FFDD00'] },
-			{ range: [10, 20], colors: ['#FFDD00', '#ff0000'] },
-			{ range: [20, 30], colors: ['#ff0000', '#af0099'] }
+			{ range: [0, 0.04], colors: ['#d1eeff', '#87cefa'] },
+			{ range: [0.04, 2], colors: ['#87cefa', '#0060e9'] },
+			{ range: [2, 4], colors: ['#0060e9', '#388e3c'] },
+			{ range: [4, 8], colors: ['#388e3c', '#fdff00'] },
+			{ range: [8, 12], colors: ['#fdff00', '#ff8c00'] },
+			{ range: [12, 16], colors: ['#ff8c00', '#ff3131'] },
+			{ range: [16, 30], colors: ['#ff3131', '#9c27b0'] }
 		],
 		opacitySegments: [
 			{ range: [0, 0.055], opacity: [0, 0.5], easing: 'linear' },
 			{ range: [0.055, 0.11], opacity: [0.5, 0.7], easing: 'linear' },
 			{ range: [0.11, 0.95], opacity: [0.7, 0.8], easing: 'linear' },
-			{ range: [0.95, 30], opacity: [0.8, 1], easing: 'power-inverse', exponent: 2 }
+			{ range: [0.95, 2], opacity: [0.8, 1], easing: 'power-inverse', exponent: 2 }
 		]
 	},
 	precipitation_probability: {
@@ -344,20 +358,21 @@ const colorScaleDefinitions: Record<string, ColorScaleDefinition> = {
 	temperature: {
 		unit: '°C',
 		breakpoints: [
-			-80, -60, -50, -40, -37.5, -35, -32.5, -30, -27.5, -25, -22.5, -20, -17.5, -15, -12.5, -10,
-			-8, -6, -4, -2, 0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40,
-			42, 44, 46, 48, 50
+			-80, -70, -60, -50, -40, -36, -32, -28, -24, -20, -17.5, -15, -12.5, -10, -8, -6, -4, -2, 0,
+			2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50
 		],
 		colorSegments: [
-			{ range: [-80, -50], colors: ['#1af2dd', '#17658f'] },
-			{ range: [-50, -30], colors: ['#17658f', '#ef07ef'] },
-			{ range: [-30, -10], colors: ['#ef07ef', '#0034ff'] },
+			{ range: [-80, -50], colors: ['#000000', '#ffffff'] },
+			{ range: [-50, -30], colors: ['#ffffff', '#c535dc'] },
+			{ range: [-30, -10], colors: ['#c535dc', '#0034ff'] },
 			{ range: [-10, 0], colors: ['#0034ff', '#a4eef5'] },
-			{ range: [0, 14], colors: ['#7cf57c', 'green'] },
-			{ range: [14, 20], colors: ['green', 'yellow'] },
-			{ range: [20, 28], colors: ['yellow', 'orange'] },
-			{ range: [28, 42], colors: ['orange', 'red'] },
-			{ range: [42, 50], colors: ['red', '#93001a'] }
+			{ range: [0, 8], colors: ['#23ff3e', 'green'] },
+			{ range: [8, 16], colors: ['green', 'yellow'] },
+			// { range: [14, 20], colors: ['green', 'yellow'] },
+			{ range: [16, 24], colors: ['yellow', 'orange'] },
+			{ range: [24, 32], colors: ['orange', 'red'] },
+			{ range: [32, 42], colors: ['red', 'brown'] },
+			{ range: [42, 50], colors: ['brown', 'pink'] }
 		],
 		opacitySegments: [{ range: [-80, 50], opacity: [1, 1], easing: 'linear' }]
 	},
