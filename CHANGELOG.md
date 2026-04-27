@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.0.20](https://github.com/open-meteo/weather-map-layer/compare/v0.0.19...v0.0.20) (2026-04-27)
+
+
+### Bug Fixes
+
+* bump actions/setup-node from 6 to 6.3.0 ([#238](https://github.com/open-meteo/weather-map-layer/issues/238)) ([80a637c](https://github.com/open-meteo/weather-map-layer/commit/80a637c134df7af42a62d73f67e2dff64abb7cc5))
+* bump actions/setup-node from 6.3.0 to 6.4.0 ([#240](https://github.com/open-meteo/weather-map-layer/issues/240)) ([208c638](https://github.com/open-meteo/weather-map-layer/commit/208c638b0c27a51ee6f93c73b5797c25e67b1f3e))
+* bump googleapis/release-please-action from 4 to 4.4.1 ([#241](https://github.com/open-meteo/weather-map-layer/issues/241)) ([12eeb65](https://github.com/open-meteo/weather-map-layer/commit/12eeb657f8eb6014fac83422d1266813edae14b8))
+* export getCachedResolvedClipping ([#235](https://github.com/open-meteo/weather-map-layer/issues/235)) ([e65e070](https://github.com/open-meteo/weather-map-layer/commit/e65e07029794285a64ec19f5f96e0e0c18a3e539))
+
 ## [0.0.19](https://github.com/open-meteo/weather-map-layer/compare/v0.0.18...v0.0.19) (2026-04-13)
 
 
