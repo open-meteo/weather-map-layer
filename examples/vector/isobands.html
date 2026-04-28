@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Weather Map Layer - Isobands Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.20.1/dist/maplibre-gl.css" />
+		<script src="https://unpkg.com/maplibre-gl@5.20.1/dist/maplibre-gl.js"></script>
+		<!-- x-release-please-start-version -->
+		<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.0.19/dist/index.js"></script>
+		<!-- x-release-please-end -->
+		<!-- Local development -->
+		<script>
+			if (location.hostname === 'localhost' || location.href.startsWith('file://')) {
+				document.write('<script src="../../dist/index.js"><\/script>');
+			}
+		</script>
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<script>
+			maplibregl.addProtocol('om', OMWeatherMapLayer.omProtocol);
+
+			const map = new maplibregl.Map({
+				container: 'map',
+				style: 'https://map-assets.open-meteo.com/styles/minimal-planet-maps.json',
+				hash: true
+			});
+
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m`;
+
+			map.on('load', () => {
+				// Vector source with isobands enabled — no raster source needed
+				map.addSource('omIsobandSource', {
+					url: 'om://' + omUrl + '&isobands=true',
+					type: 'vector'
+				});
+
+				// Filled isoband polygons colored by the r/g/b/a properties
+				map.addLayer(
+					{
+						id: 'omIsobandFill',
+						type: 'fill',
+						source: 'omIsobandSource',
+						'source-layer': 'isobands',
+						paint: {
+							'fill-opacity': 0.75,
+							'fill-antialias': false,
+							'fill-color': [
+								'rgba',
+								['get', 'r'],
+								['get', 'g'],
+								['get', 'b'],
+								['/', ['get', 'a'], 255]
+							]
+						}
+					},
+					'waterway-tunnel'
+				);
+
+				// Optional: contour lines on top
+				map.addSource('omContourSource', {
+					url: 'om://' + omUrl + '&contours=true',
+					type: 'vector'
+				});
+
+				map.addLayer(
+					{
+						id: 'omContourLines',
+						type: 'line',
+						source: 'omContourSource',
+						'source-layer': 'contours',
+						paint: {
+							'line-color': 'rgba(0,0,0,0.3)',
+							'line-width': 1
+						}
+					},
+					'place_label_other'
+				);
+			});
+		</script>
+	</body>
+</html>

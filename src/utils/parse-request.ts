@@ -127,12 +127,14 @@ const defaultResolveRenderOptions = (
 	const drawGrid = params.get('grid') === 'true';
 	const drawArrows = params.get('arrows') === 'true';
 	const drawContours = params.get('contours') === 'true';
+	const drawIsobands = params.get('isobands') === 'true';
 
 	return {
 		tileSize,
 		drawGrid,
 		drawArrows,
 		drawContours,
+		drawIsobands,
 		colorScale,
 		intervals
 	};

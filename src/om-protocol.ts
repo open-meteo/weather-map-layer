@@ -146,7 +146,8 @@ const requestTile = async (
 		if (
 			!drawsArrows(request.renderOptions, data) &&
 			!request.renderOptions.drawContours &&
-			!request.renderOptions.drawGrid
+			!request.renderOptions.drawGrid &&
+			!request.renderOptions.drawIsobands
 		) {
 			return makeEmptyVectorLayerResponse();
 		}
