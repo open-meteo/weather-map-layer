@@ -40,10 +40,6 @@ export const defaultOmProtocolSettings: OmProtocolSettings = {
 	postReadCallback: undefined
 };
 
-const makeAbortResult = (): GetResourceResponse<null> => {
-	return { data: null };
-};
-
 export const omProtocol = async (
 	params: RequestParameters,
 	abortController: AbortController,
@@ -53,7 +49,7 @@ export const omProtocol = async (
 
 	// Check if already aborted
 	if (signal.aborted) {
-		return makeAbortResult();
+		return { data: null };
 	}
 
 	const instance = getProtocolInstance(settings);
@@ -70,7 +66,7 @@ export const omProtocol = async (
 
 	// Check abort status before proceeding
 	if (signal.aborted) {
-		return makeAbortResult();
+		return { data: null };
 	}
 
 	const data = await ensureData(state, instance.omFileReader, settings.postReadCallback, signal);
@@ -101,7 +97,7 @@ export const omProtocol = async (
 	);
 
 	if (cancelled) {
-		return makeAbortResult();
+		return { data: null };
 	} else {
 		return { data: tileData! };
 	}
@@ -144,7 +140,7 @@ const requestTile = async (
 	// early return if the worker will not return a tile
 	if (tileType === 'getArrayBuffer') {
 		if (
-			!drawsArrows(request.renderOptions, data) &&
+			!(request.renderOptions.drawArrows && data.directions !== undefined) &&
 			!request.renderOptions.drawContours &&
 			!request.renderOptions.drawGrid
 		) {
@@ -187,8 +183,4 @@ const getTilejson = async (
 		maxzoom: 12,
 		bounds: bounds
 	};
-};
-
-const drawsArrows = (renderOptions: RenderOptions, data: Data): boolean => {
-	return renderOptions.drawArrows && data.directions !== undefined;
 };

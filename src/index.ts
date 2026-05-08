@@ -1,29 +1,37 @@
-export * from './domains';
+export { domainOptions, domainGroups } from './domains';
 
-export * from './om-file-reader';
-export * from './om-protocol';
-export * from './om-protocol-state';
+export { omProtocol, defaultOmProtocolSettings } from './om-protocol';
+export {
+	getValueFromLatLong,
+	clearBlockCache,
+	getRanges,
+	getProtocolInstance
+} from './om-protocol-state';
 
-export * from './types';
+export type {
+	ClippingOptions,
+	Data,
+	Domain,
+	DomainMetaDataJson,
+	GeoJson,
+	GeoJsonFeature,
+	GeoJsonGeometry,
+	GeoJsonPosition,
+	OmProtocolSettings,
+	OmUrlState,
+	RenderableColorScale
+} from './types';
 
-export * from './worker-pool';
+export { addLeafletProtocolSupport } from './adapters/leaflet';
+export { addMapboxProtocolSupport } from './adapters/mapbox';
+export { addOpenLayersProtocolSupport } from './adapters/openlayers';
 
-export * from './adapters/leaflet';
-export * from './adapters/mapbox';
-export * from './adapters/openlayers';
+export { GridFactory } from './grids/index';
 
-export * from './grids/index';
-
-export * from './utils/arrows';
-export * from './utils/bounds';
-export * from './utils/clipping';
-export * from './utils/color-scales';
-export * from './utils/constants';
-export * from './utils/contours';
-export * from './utils/grid-points';
-export * from './utils/index';
-export * from './utils/math';
-export * from './utils/parse-request';
-export * from './utils/pbf';
-export * from './utils/styling';
-export * from './utils/variables';
+export { currentBounds, updateCurrentBounds } from './utils/bounds';
+export { createClippingTester } from './utils/clipping';
+export { VARIABLE_PREFIX, LEVEL_PREFIX, LEVEL_REGEX, LEVEL_UNIT_REGEX } from './utils/constants';
+export { domainStep, closestModelRun } from './utils/model-runs';
+export { getCachedResolvedClipping } from './utils/parse-request';
+export { getColor, getColorScale } from './utils/styling';
+export { variableOptions, levelGroupVariables } from './utils/variables';
