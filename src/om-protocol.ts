@@ -19,9 +19,9 @@ import type {
 	DimensionRange,
 	OmProtocolSettings,
 	ParsedRequest,
-	RenderOptions,
 	TileJSON,
 	TilePromise,
+	TileResponse,
 	TileResult
 } from './types';
 
@@ -44,7 +44,7 @@ export const omProtocol = async (
 	params: RequestParameters,
 	abortController: AbortController,
 	settings = defaultOmProtocolSettings
-): Promise<GetResourceResponse<TileJSON | ImageBitmap | ArrayBuffer | null>> => {
+): Promise<GetResourceResponse<TileJSON | TileResponse | null>> => {
 	const signal = abortController.signal;
 
 	// Check if already aborted
@@ -87,19 +87,12 @@ export const omProtocol = async (
 		throw new Error(`Tile coordinates required for ${params.type} request`);
 	}
 
-	const { data: tileData, cancelled } = await requestTile(
-		url,
-		request,
-		data,
-		state.ranges,
-		params.type,
-		signal
-	);
+	const tileResult = await requestTile(url, request, data, state.ranges, params.type, signal);
 
-	if (cancelled) {
+	if (tileResult.cancelled || !tileResult.data) {
 		return { data: null };
 	} else {
-		return { data: tileData! };
+		return { data: tileResult.data };
 	}
 };
 
