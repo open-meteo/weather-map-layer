@@ -1,6 +1,5 @@
-export { domainOptions, domainGroups } from './domains';
-
 export { omProtocol, defaultOmProtocolSettings } from './om-protocol';
+
 export {
 	getValueFromLatLong,
 	clearBlockCache,
@@ -22,9 +21,8 @@ export type {
 	RenderableColorScale
 } from './types';
 
-export { addLeafletProtocolSupport } from './adapters/leaflet';
-export { addMapboxProtocolSupport } from './adapters/mapbox';
-export { addOpenLayersProtocolSupport } from './adapters/openlayers';
+export { domainOptions, domainGroups } from './domains';
+export { variableOptions, levelGroupVariables } from './utils/variables';
 
 export { GridFactory } from './grids/index';
 
@@ -34,4 +32,8 @@ export { VARIABLE_PREFIX, LEVEL_PREFIX, LEVEL_REGEX, LEVEL_UNIT_REGEX } from './
 export { domainStep, closestModelRun } from './utils/model-runs';
 export { getCachedResolvedClipping } from './utils/parse-request';
 export { getColor, getColorScale } from './utils/styling';
-export { variableOptions, levelGroupVariables } from './utils/variables';
+
+// Adapters
+export { addLeafletProtocolSupport } from './adapters/leaflet';
+export { addMapboxProtocolSupport } from './adapters/mapbox';
+export { addOpenLayersProtocolSupport } from './adapters/openlayers';

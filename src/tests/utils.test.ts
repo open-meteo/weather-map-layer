@@ -1,5 +1,5 @@
-import { closestModelRun, domainStep } from '../utils';
 import { fastAtan2, tile2lat, tile2lon } from '../utils/math';
+import { closestModelRun, domainStep } from '../utils/model-runs';
 import { describe, expect, test } from 'vitest';
 
 describe('tile2lon', () => {
