@@ -1,11 +1,6 @@
-export { omProtocol, defaultOmProtocolSettings } from './om-protocol';
+export { omProtocol } from './om-protocol';
 
-export {
-	getValueFromLatLong,
-	clearBlockCache,
-	getRanges,
-	getProtocolInstance
-} from './om-protocol-state';
+// Types
 
 export type {
 	ClippingOptions,
@@ -21,19 +16,34 @@ export type {
 	RenderableColorScale
 } from './types';
 
-export { domainOptions, domainGroups } from './domains';
-export { variableOptions, levelGroupVariables } from './utils/variables';
+// Functions
 
-export { GridFactory } from './grids/index';
-
-export { currentBounds, updateCurrentBounds } from './utils/bounds';
+export {
+	getValueFromLatLong,
+	clearBlockCache,
+	getRanges,
+	getProtocolInstance
+} from './om-protocol-state';
+export { updateCurrentBounds } from './utils/bounds';
 export { createClippingTester } from './utils/clipping';
-export { VARIABLE_PREFIX, LEVEL_PREFIX, LEVEL_REGEX, LEVEL_UNIT_REGEX } from './utils/constants';
 export { domainStep, closestModelRun } from './utils/model-runs';
 export { getCachedResolvedClipping } from './utils/parse-request';
 export { getColor, getColorScale } from './utils/styling';
 
+// Classes
+
+export { GridFactory } from './grids/index';
+
+// Objects / Constants
+
+export { currentBounds } from './utils/bounds';
+export { defaultOmProtocolSettings } from './om-protocol';
+export { domainOptions, domainGroups } from './domains';
+export { variableOptions, levelGroupVariables } from './utils/variables';
+export { VARIABLE_PREFIX, LEVEL_PREFIX, LEVEL_REGEX, LEVEL_UNIT_REGEX } from './utils/constants';
+
 // Adapters
+
 export { addLeafletProtocolSupport } from './adapters/leaflet';
 export { addMapboxProtocolSupport } from './adapters/mapbox';
 export { addOpenLayersProtocolSupport } from './adapters/openlayers';
