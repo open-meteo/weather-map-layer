@@ -57,7 +57,7 @@ export interface OmUrlState {
 export type RequestResolver = (
 	urlComponents: ParsedUrlComponents,
 	settings: OmProtocolSettings,
-	reader: MapboxLayerFileReader
+	reader: WeatherMapLayerFileReader
 ) => Promise<{ dataOptions: DataIdentityOptions; renderOptions: RenderOptions }>;
 
 export type PostReadCallback =
