@@ -71,6 +71,18 @@ const createTestSettings = (overrides: Partial<OmProtocolSettings> = {}): OmProt
 	...overrides
 });
 
+/** Returns the om-file path for the first day of the previous calendar month (1200Z run). */
+const getFirstDayLastMonthOmPath = (): string => {
+	const d = new Date();
+	d.setDate(1); // prevent month overflow when subtracting
+	d.setMonth(d.getMonth() - 1);
+	const y = d.getFullYear();
+	const m = String(d.getMonth() + 1).padStart(2, '0');
+	return `dwd_icon/${y}/${m}/01/1200Z/${y}-${m}-01T1200.om`;
+};
+
+const DWD_ICON_BASE_URL = `om://https://map-tiles.open-meteo.com/data_spatial/${getFirstDayLastMonthOmPath()}?variable=temperature_2m`;
+
 describe('Request Options', () => {
 	describe('parseRequest', () => {
 		it('resolves data identity and render options from URL', async () => {
@@ -158,16 +170,16 @@ describe('Request Options', () => {
 			await expect(parseRequest(url, settings, reader)).rejects.toThrow('Invalid tile size');
 		});
 
-		it('resolves clipping options and caches by reference', () => {
-			const domainOptions = [createTestDomain('domain1')];
+		it('resolves clipping options and caches by reference', async () => {
 			const clippingOptions = {
 				bounds: [-10, -10, 10, 10] as [number, number, number, number]
 			};
-			const settings = createTestSettings({ domainOptions, clippingOptions });
+			const settings = createTestSettings({ clippingOptions });
 			const url = 'om://https://example.com/data_spatial/domain1/file.om?variable=temp';
+			const reader = new WeatherMapLayerFileReader();
 
-			const result1 = parseRequest(url, settings);
-			const result2 = parseRequest(url, settings);
+			const result1 = await parseRequest(url, settings, reader);
+			const result2 = await parseRequest(url, settings, reader);
 
 			// Same reference for clippingOptions means cached result is reused
 			expect(result1.clippingOptions).toBeDefined();
@@ -175,12 +187,12 @@ describe('Request Options', () => {
 			expect(result1.clippingOptions!.bounds).toBeDefined();
 		});
 
-		it('returns undefined clippingOptions when none provided', () => {
-			const domainOptions = [createTestDomain('domain1')];
-			const settings = createTestSettings({ domainOptions });
+		it('returns undefined clippingOptions when none provided', async () => {
+			const settings = createTestSettings();
 			const url = 'om://https://example.com/data_spatial/domain1/file.om?variable=temp';
+			const reader = new WeatherMapLayerFileReader();
 
-			const result = parseRequest(url, settings);
+			const result = await parseRequest(url, settings, reader);
 			expect(result.clippingOptions).toBeUndefined();
 		});
 	});
@@ -235,7 +247,7 @@ describe('omProtocol', () => {
 		it('returns tilejson with correct tiles URL', async () => {
 			const { omProtocol } = await import('../om-protocol');
 			const params: RequestParameters = {
-				url: 'om://https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m',
+				url: DWD_ICON_BASE_URL,
 				type: 'json'
 			};
 			const result = await omProtocol(params, new AbortController(), defaultOmProtocolSettings);
@@ -252,7 +264,7 @@ describe('omProtocol', () => {
 		it('returns correct bounds for domain grid', async () => {
 			const { omProtocol } = await import('../om-protocol');
 			const params: RequestParameters = {
-				url: 'om://https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m',
+				url: DWD_ICON_BASE_URL,
 				type: 'json'
 			};
 			const result = await omProtocol(params, new AbortController(), defaultOmProtocolSettings);
@@ -268,7 +280,7 @@ describe('omProtocol', () => {
 			const { omProtocol } = await import('../om-protocol');
 
 			const params: RequestParameters = {
-				url: 'om://https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m/0/0/0',
+				url: `${DWD_ICON_BASE_URL}/0/0/0`,
 				type: 'arrayBuffer'
 			};
 			const result = await omProtocol(params, new AbortController(), defaultOmProtocolSettings);
@@ -281,7 +293,7 @@ describe('omProtocol', () => {
 			const { omProtocol } = await import('../om-protocol');
 
 			const params: RequestParameters = {
-				url: 'om://https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m',
+				url: DWD_ICON_BASE_URL,
 				type: 'arrayBuffer'
 			};
 
@@ -297,7 +309,7 @@ describe('omProtocol', () => {
 			const settings = createTestSettings({ postReadCallback });
 
 			const params: RequestParameters = {
-				url: 'om://https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m/0/0/0',
+				url: `${DWD_ICON_BASE_URL}/0/0/0`,
 				type: 'arrayBuffer'
 			};
 
@@ -319,8 +331,7 @@ describe('getValueFromLatLong', () => {
 		const { getValueFromLatLong } = await import('../om-protocol-state');
 
 		// First load data via tile request
-		const url =
-			'om://https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m/0/0/0';
+		const url = `${DWD_ICON_BASE_URL}/0/0/0`;
 		await omProtocol(
 			{ url, type: 'arrayBuffer' },
 			new AbortController(),
@@ -352,7 +363,7 @@ describe('getValueFromLatLong', () => {
 		// Initialize protocol with one URL
 		await omProtocol(
 			{
-				url: 'om://https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m/0/0/0',
+				url: `${DWD_ICON_BASE_URL}/0/0/0`,
 				type: 'arrayBuffer'
 			},
 			new AbortController(),
