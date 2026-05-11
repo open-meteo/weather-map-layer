@@ -10,6 +10,11 @@ export class RegularGrid implements GridInterface {
 	private dx: number;
 	private dy: number;
 
+	// Coordinates at grid index [0, 0]
+	private originLon: number;
+	private originLat: number;
+
+	// Bounds: [west, south, east, north]
 	private bounds: Bounds;
 	private longitudeWrap: boolean;
 	private center?: { lng: number; lat: number };
@@ -47,36 +52,54 @@ export class RegularGrid implements GridInterface {
 		this.nx = ranges[1].end - ranges[1].start;
 		this.ny = ranges[0].end - ranges[0].start;
 
-		const lonMin = data.lonMin + this.dx * ranges[1].start;
-		const latMin = data.latMin + this.dy * ranges[0].start;
-		const lonMax = data.lonMin + this.dx * ranges[1].end;
-		const latMax = data.latMin + this.dy * ranges[0].end;
-		this.bounds = [lonMin, latMin, lonMax, latMax];
+		// Origin = coordinates at grid index [0, 0] of this (sub)grid
+		this.originLon = data.lonMin + this.dx * ranges[1].start;
+		this.originLat = data.latMin + this.dy * ranges[0].start;
+
+		// End = coordinates one step past the last grid index
+		const endLon = data.lonMin + this.dx * ranges[1].end;
+		const endLat = data.latMin + this.dy * ranges[0].end;
+
+		// Bounds: [west, south, east, north]
+		// Longitude preserves natural direction for antimeridian support
+		// Latitude is always ordered south <= north
+		const west = this.dx >= 0 ? this.originLon : endLon;
+		const east = this.dx >= 0 ? endLon : this.originLon;
+		const south = this.dy >= 0 ? this.originLat : endLat;
+		const north = this.dy >= 0 ? endLat : this.originLat;
+		this.bounds = [west, south, east, north];
+		console.log(this.bounds);
 
 		// icon global is one grid point short, therefore compare to 359.875
-		this.longitudeWrap = lonMax - lonMin >= 359.875 ? true : false;
+		this.longitudeWrap = Math.abs(this.nx * this.dx) >= 359.875;
 	}
 
 	getLinearInterpolatedValue(values: Float32Array, lat: number, lon: number): number {
-		// check longitude is within bounds
+		// Compute floating-point grid indices from origin
+		const xRaw = (lon - this.originLon) / this.dx;
+		const yRaw = (lat - this.originLat) / this.dy;
+
+		// Check y bounds (works for both positive and negative dy)
+		if (yRaw < 0 || yRaw >= this.ny) {
+			return NaN;
+		}
+
+		// Check x bounds
 		if (!this.longitudeWrap) {
-			if (lon < this.bounds[0] || lon > this.bounds[2]) {
+			if (xRaw < 0 || xRaw >= this.nx) {
 				return NaN;
 			}
 		}
 
-		// check latitude is within bounds
-		if (lat < this.bounds[1] || lat >= this.bounds[3]) {
-			return NaN;
-		}
-		const y = Math.floor((lat - this.bounds[1]) / this.dy);
-		const yFraction = ((lat - this.bounds[1]) % this.dy) / this.dy;
+		const y = Math.floor(yRaw);
+		const yFraction = yRaw - y;
 
 		// small visual hack for "incomplete" icon global grids
 		// compare: https://github.com/open-meteo/weather-map-layer/pull/148#discussion_r2681391084
-		const x = Math.min(Math.floor((lon - this.bounds[0]) / this.dx), this.nx - 1);
-		const dx = this.longitudeWrap && lon >= this.bounds[2] - this.dx ? this.dx * 2 : this.dx;
-		const xFraction = ((lon - this.bounds[0]) % dx) / dx;
+		const x = Math.min(Math.floor(xRaw), this.nx - 1);
+		const absDx = Math.abs(this.dx);
+		const effectiveDx = this.longitudeWrap && xRaw >= this.nx - 1 ? absDx * 2 : absDx;
+		const xFraction = Math.abs((lon - this.originLon) % effectiveDx) / effectiveDx;
 
 		return interpolateLinear(values, x, y, xFraction, yFraction, this.nx, this.longitudeWrap);
 	}
@@ -88,66 +111,30 @@ export class RegularGrid implements GridInterface {
 	getCenter(): { lng: number; lat: number } {
 		if (!this.center) {
 			this.center = {
-				lng: this.bounds[0] + this.dx * (this.nx * 0.5),
-				lat: this.bounds[1] + this.dy * (this.ny * 0.5)
+				lng: this.originLon + this.dx * (this.nx * 0.5),
+				lat: this.originLat + this.dy * (this.ny * 0.5)
 			};
 		}
 		return this.center;
 	}
 
 	getCoveringRanges(south: number, west: number, north: number, east: number): DimensionRange[] {
-		const dx = this.dx;
-		const dy = this.dy;
-		const nx = this.nx;
-		const ny = this.ny;
+		// Convert geographic bounds to floating-point grid indices
+		const yFromSouth = (south - this.originLat) / this.dy;
+		const yFromNorth = (north - this.originLat) / this.dy;
+		const xFromWest = (west - this.originLon) / this.dx;
+		const xFromEast = (east - this.originLon) / this.dx;
 
-		let xPrecision, yPrecision;
-		if (String(dx).split('.')[1]) {
-			xPrecision = String(dx).split('.')[1].length;
-			yPrecision = String(dy).split('.')[1].length;
-		} else {
-			xPrecision = 2;
-			yPrecision = 2;
-		}
+		// Use min/max on grid indices (not geographic coordinates) to handle both positive and negative dx/dy
+		const minY = Math.max(Math.floor(Math.min(yFromSouth, yFromNorth)) - 1, 0);
+		const maxY = Math.min(Math.ceil(Math.max(yFromSouth, yFromNorth)) + 1, this.ny);
+		const minX = Math.max(Math.floor(Math.min(xFromWest, xFromEast)) - 1, 0);
+		const maxX = Math.min(Math.ceil(Math.max(xFromWest, xFromEast)) + 1, this.nx);
 
-		const originX = this.bounds[0];
-		const originY = this.bounds[1];
-
-		const s = Number((south - (south % dy)).toFixed(yPrecision));
-		const w = Number((west - (west % dx)).toFixed(xPrecision));
-		const n = Number((north - (north % dy) + dy).toFixed(yPrecision));
-		const e = Number((east - (east % dx) + dx).toFixed(xPrecision));
-
-		let minX: number, minY: number, maxX: number, maxY: number;
-
-		if (s - originY < 0) {
-			minY = 0;
-		} else {
-			minY = Math.floor(Math.max((s - originY) / dy - 1, 0));
-		}
-
-		if (w - originX < 0) {
-			minX = 0;
-		} else {
-			minX = Math.floor(Math.max((w - originX) / dx - 1, 0));
-		}
-
-		if (n - originY < 0) {
-			maxY = ny;
-		} else {
-			maxY = Math.ceil(Math.min((n - originY) / dy + 1, ny));
-		}
-
-		if (e - originX < 0) {
-			maxX = nx;
-		} else {
-			maxX = Math.ceil(Math.min((e - originX) / dx + 1, nx));
-		}
-		const ranges = [
+		return [
 			{ start: minY, end: maxY },
 			{ start: minX, end: maxX }
 		];
-		return ranges;
 	}
 
 	forEachPoint(callback: (point: GridPoint) => void | false, bounds?: Bounds): void {
