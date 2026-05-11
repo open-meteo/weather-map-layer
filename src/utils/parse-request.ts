@@ -1,11 +1,18 @@
 import { WeatherMapLayerFileReader } from '../om-file-reader';
 
-import { currentBounds } from './bounds';
-import { DEFAULT_INTERVAL, DEFAULT_TILE_SIZE, VALID_TILE_SIZES } from './constants';
+import { currentBounds, setClippingBounds } from './bounds';
+import { type ResolvedClippingOptions, resolveClippingOptions } from './clipping';
+import {
+	DEFAULT_INTERVAL,
+	DEFAULT_TILE_SIZE,
+	RESOLVE_DOMAIN_REGEX,
+	VALID_TILE_SIZES
+} from './constants';
 import { parseUrlComponents } from './parse-url';
 import { getColorScale, resolveColorScale } from './styling';
 
 import type {
+	ClippingOptions,
 	ColorScales,
 	DataIdentityOptions,
 	OmProtocolSettings,
@@ -14,6 +21,21 @@ import type {
 	RenderOptions,
 	RenderableColorScale
 } from '../types';
+
+let cachedClippingInput: ClippingOptions = undefined;
+let cachedClippingResult: ResolvedClippingOptions | undefined = undefined;
+let useSAB: boolean | undefined = undefined;
+
+export const getCachedResolvedClipping = (
+	options: ClippingOptions
+): ResolvedClippingOptions | undefined => {
+	if (options === cachedClippingInput) {
+		return cachedClippingResult;
+	}
+	cachedClippingInput = options;
+	cachedClippingResult = resolveClippingOptions(options, useSAB);
+	return cachedClippingResult;
+};
 
 export const parseRequest = async (
 	url: string,
@@ -24,13 +46,17 @@ export const parseRequest = async (
 	const resolver = settings.resolveRequest ?? defaultResolveRequest;
 	const { dataOptions, renderOptions } = await resolver(urlComponents, settings, reader);
 
+	useSAB = settings.fileReaderConfig.useSAB;
+	const resolvedClippingOptions = getCachedResolvedClipping(settings.clippingOptions);
+	setClippingBounds(resolvedClippingOptions?.bounds);
+
 	return {
 		baseUrl: urlComponents.baseUrl,
 		fileAndVariableKey: urlComponents.fileAndVariableKey,
 		tileIndex: urlComponents.tileIndex,
 		dataOptions,
 		renderOptions,
-		clippingOptions: settings.clippingOptions
+		clippingOptions: resolvedClippingOptions
 	};
 };
 

@@ -4,10 +4,10 @@
 		<title>Open-Meteo Weather Map Layer - Temperature Example</title>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.20.1/dist/maplibre-gl.css" />
-		<script src="https://unpkg.com/maplibre-gl@5.20.1/dist/maplibre-gl.js"></script>
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
+		<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
 		<!-- x-release-please-start-version -->
-		<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.0.16/dist/index.js"></script>
+		<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.0.19/dist/index.js"></script>
 		<!-- x-release-please-end -->
 		<!-- Local development -->
 		<script>
@@ -37,7 +37,7 @@
 			});
 
 			// below url is used to request 'latest.json' and get the nearest timestep to "current local time" + 1 hour
-			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/ecmwf_ifs/latest.json?time_step=current_time_1H&variable=temperature_2m`;
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m`;
 			// example of an actual omUrl:
 			// const omUrl = `om://https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/06/06/1200Z/2025-06-06T1200.om?variable=temperature_2m`;
 

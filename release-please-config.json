@@ -31,9 +31,10 @@
 		"examples/colorscales/custom-breakpoints.html",
 
 		"examples/clipping/arrows/clip-italy.html",
-		"examples/clipping/contours/clip-france.html",
 		"examples/clipping/oceans/clip-oceans.html",
+		"examples/clipping/contours/clip-france.html",
 		"examples/clipping/raster/clip-switzerland.html",
+		"examples/clipping/bounds/clip-germany-bounds.html",
 
 		"examples/vector/contouring/contouring-pressure.html",
 		"examples/vector/contouring/contouring-on-colorscale.html",

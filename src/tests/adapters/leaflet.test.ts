@@ -108,7 +108,7 @@ describe('addLeafletProtocolSupport', () => {
 			expect(() => adapter.removeProtocol('om')).not.toThrow();
 		});
 
-		it('allows re-registering a protocol with a different handler', () => {
+		it('allows overwriting a protocol with a different handler', () => {
 			const adapter = addLeafletProtocolSupport(L);
 			const handler1 = createMockHandler();
 			const handler2 = createMockHandler();

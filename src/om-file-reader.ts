@@ -82,7 +82,9 @@ export class WeatherMapLayerFileReader {
 		const wkt2Crs = await this.reader.getChildByName('crs_wkt');
 		const wkt = wkt2Crs!.readScalar<string>(OmDataType.String)!;
 		const grid = wktToGridData(wkt, nx, ny);
-		console.log(grid);
+
+		// console.log(grid); FIXME: rm before merge
+
 		return grid;
 	}
 

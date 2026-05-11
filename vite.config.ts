@@ -1,4 +1,4 @@
-import dts from 'unplugin-dts/vite';
+import dts from 'unplugin-dts/rolldown';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
@@ -6,7 +6,6 @@ export default defineConfig({
 		dts({
 			exclude: ['src/tests'],
 			entryRoot: 'src',
-			rollupTypes: true,
 			insertTypesEntry: true
 		})
 	],
@@ -15,7 +14,7 @@ export default defineConfig({
 	},
 	build: {
 		chunkSizeWarningLimit: 1200,
-		rollupOptions: {
+		rolldownOptions: {
 			external: ['@openmeteo/file-reader', '@openmeteo/file-format-wasm'],
 			input: {
 				index: 'src/index.ts'
