@@ -2,12 +2,7 @@ import { WeatherMapLayerFileReader } from '../om-file-reader';
 
 import { currentBounds, setClippingBounds } from './bounds';
 import { type ResolvedClippingOptions, resolveClippingOptions } from './clipping';
-import {
-	DEFAULT_INTERVAL,
-	DEFAULT_TILE_SIZE,
-	RESOLVE_DOMAIN_REGEX,
-	VALID_TILE_SIZES
-} from './constants';
+import { DEFAULT_INTERVAL, DEFAULT_TILE_SIZE, VALID_TILE_SIZES } from './constants';
 import { parseUrlComponents } from './parse-url';
 import { getColorScale, resolveColorScale } from './styling';
 
@@ -81,17 +76,6 @@ const defaultResolveDataIdentity = async (
 	reader: WeatherMapLayerFileReader
 ): Promise<DataIdentityOptions> => {
 	const { baseUrl, params } = urlComponents;
-
-	// const match = baseUrl.match(RESOLVE_DOMAIN_REGEX);
-	// const domainValue = match?.groups?.domain;
-
-	// if (!domainValue) {
-	// 	throw new Error(`Could not parse domain from URL: ${baseUrl}`);
-	// }
-	// const domain = domainOptions.find((dm) => dm.value === domainValue);
-	// if (!domain) {
-	// 	throw new Error(`Invalid domain: ${domainValue}`);
-	// }
 
 	const variable = params.get('variable');
 	if (!variable) {
