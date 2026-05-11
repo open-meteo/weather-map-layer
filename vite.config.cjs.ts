@@ -17,7 +17,6 @@ export default defineConfig({
 				entryFileNames: `[name].cjs`
 			},
 			preserveEntrySignatures: 'strict'
-		},
-		minify: false
+		}
 	}
 });

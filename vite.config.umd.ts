@@ -27,7 +27,6 @@ export default defineConfig({
 					'@openmeteo/file-format-wasm': 'OpenMeteoFileFormatWasm'
 				}
 			}
-		},
-		minify: true
+		}
 	}
 });
