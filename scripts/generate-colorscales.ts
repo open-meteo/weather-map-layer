@@ -248,13 +248,14 @@ const colorScaleDefinitions: Record<string, ColorScaleDefinition> = {
 		unit: 'mm',
 		breakpoints: [0.01, 0.055, 0.2, 1, 2, 3, 4.5, 6, 8, 10, 12, 16, 20, 25, 30],
 		colorSegments: [
-			{ range: [0, 0.04], colors: ['#000000', '#87CEFA'] },
+			{ range: [0, 0.04], colors: ['#ffffff', '#87CEFA'] },
 			{ range: [0.04, 1], colors: ['#87CEFA', 'blue'] },
 			{ range: [1, 2], colors: ['blue', '#0A940A'] },
 			{ range: [2, 5], colors: ['#0A940A', 'yellow'] },
 			{ range: [5, 20], colors: ['yellow', 'red'] }
 		],
 		opacitySegments: [
+			{ range: [0, 0.01], opacity: [0, 0], easing: 'linear' },
 			{ range: [0, 0.055], opacity: [0, 0.4], easing: 'linear' },
 			{ range: [0.055, 0.1], opacity: [0.4, 0.6], easing: 'linear' },
 			{ range: [0.1, 5], opacity: [0.6, 0.8], easing: 'linear' },
@@ -306,10 +307,13 @@ const colorScaleDefinitions: Record<string, ColorScaleDefinition> = {
 		colorSegments: [
 			{
 				range: [0, 1000],
-				colors: ['#009392', '#39b185', '#9ccb86', '#e9e29c', '#eeb479', '#e88471', '#cf597e']
+				colors: ['#3D006E', 'orange']
 			}
 		],
-		opacitySegments: [{ range: [0, 1000], opacity: [1, 1], easing: 'linear' }]
+		opacitySegments: [
+			{ range: [0, 100], opacity: [0.8, 0.9], easing: 'linear' },
+			{ range: [100, 1000], opacity: [0.9, 1], easing: 'linear' }
+		]
 	},
 	snow_depth: {
 		unit: 'm',
@@ -356,12 +360,12 @@ const colorScaleDefinitions: Record<string, ColorScaleDefinition> = {
 	temperature: {
 		unit: '°C',
 		breakpoints: [
-			-80, -70, -60, -50, -40, -36, -32, -28, -24, -20, -17.5, -15, -12.5, -10, -8, -6, -4, -2, 0,
-			2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50
+			-80, -65, -50, -40, -32, -28, -24, -20, -17.5, -15, -12.5, -10, -8, -6, -4, -2, 0, 2, 4, 6, 8,
+			10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50
 		],
 		colorSegments: [
-			{ range: [-80, -40], colors: ['#4A0D00', '#ef07ef'] },
-			{ range: [-40, -10], colors: ['#ef07ef', '#0034ff'] },
+			{ range: [-80, -35], colors: ['#4A0D00', '#ef07ef'] },
+			{ range: [-35, -10], colors: ['#ef07ef', '#0034ff'] },
 			{ range: [-10, 0], colors: ['#0034ff', '#A4DAF5'] },
 			{ range: [0, 12], colors: ['#72E8A5', 'green'] },
 			{ range: [12, 20], colors: ['green', 'yellow'] },
@@ -393,6 +397,23 @@ const colorScaleDefinitions: Record<string, ColorScaleDefinition> = {
 		],
 		opacitySegments: [{ range: [0, 100], opacity: [0, 1], easing: 'power', exponent: 1.5 }]
 	},
+	total_column: {
+		unit: 'kg/m²',
+		breakpoints: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 100, 150],
+		colorSegments: [
+			{ range: [0, 5], colors: ['#52AEFF', '#52AEFF'] },
+			{ range: [5, 30], colors: ['#52AEFF', '#000066'] },
+			{ range: [30, 45], colors: ['#FFC0CB', 'red'] },
+			{ range: [45, 60], colors: ['red', '#93001a'] },
+			{ range: [60, 150], colors: ['#93001a', 'black'] }
+		],
+		opacitySegments: [
+			{ range: [0, 5], opacity: [0, 0.4], easing: 'linear' },
+			{ range: [5, 30], opacity: [0.4, 0.8], easing: 'linear' },
+			{ range: [30, 50], opacity: [0.8, 1], easing: 'linear' }
+		]
+	},
+
 	uv: {
 		unit: '',
 		breakpoints: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
@@ -437,6 +458,7 @@ const colorScaleDefinitions: Record<string, ColorScaleDefinition> = {
 		]
 	}
 };
+
 interface GeneratedColorScale {
 	unit: string;
 	breakpoints: number[];
