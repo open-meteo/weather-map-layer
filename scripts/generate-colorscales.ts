@@ -246,21 +246,19 @@ const colorScaleDefinitions: Record<string, ColorScaleDefinition> = {
 	},
 	precipitation: {
 		unit: 'mm',
-		breakpoints: [0.01, 0.055, 0.2, 1, 2, 4, 8, 12, 16, 20, 25, 30],
+		breakpoints: [0.01, 0.055, 0.2, 1, 2, 3, 4.5, 6, 8, 10, 12, 16, 20, 25, 30],
 		colorSegments: [
-			{ range: [0, 0.04], colors: ['#d1eeff', '#87cefa'] },
-			{ range: [0.04, 2], colors: ['#87cefa', '#0060e9'] },
-			{ range: [2, 4], colors: ['#0060e9', '#388e3c'] },
-			{ range: [4, 8], colors: ['#388e3c', '#fdff00'] },
-			{ range: [8, 12], colors: ['#fdff00', '#ff8c00'] },
-			{ range: [12, 16], colors: ['#ff8c00', '#ff3131'] },
-			{ range: [16, 30], colors: ['#ff3131', '#9c27b0'] }
+			{ range: [0, 0.04], colors: ['#000000', '#87CEFA'] },
+			{ range: [0.04, 1], colors: ['#87CEFA', 'blue'] },
+			{ range: [1, 2], colors: ['blue', '#0A940A'] },
+			{ range: [2, 5], colors: ['#0A940A', 'yellow'] },
+			{ range: [5, 20], colors: ['yellow', 'red'] }
 		],
 		opacitySegments: [
-			{ range: [0, 0.055], opacity: [0, 0.5], easing: 'linear' },
-			{ range: [0.055, 0.11], opacity: [0.5, 0.7], easing: 'linear' },
-			{ range: [0.11, 0.95], opacity: [0.7, 0.8], easing: 'linear' },
-			{ range: [0.95, 2], opacity: [0.8, 1], easing: 'power-inverse', exponent: 2 }
+			{ range: [0, 0.055], opacity: [0, 0.4], easing: 'linear' },
+			{ range: [0.055, 0.1], opacity: [0.4, 0.6], easing: 'linear' },
+			{ range: [0.1, 5], opacity: [0.6, 0.8], easing: 'linear' },
+			{ range: [5, 20], opacity: [0.8, 1], easing: 'power-inverse', exponent: 2 }
 		]
 	},
 	precipitation_probability: {
@@ -362,17 +360,14 @@ const colorScaleDefinitions: Record<string, ColorScaleDefinition> = {
 			2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50
 		],
 		colorSegments: [
-			{ range: [-80, -50], colors: ['#000000', '#ffffff'] },
-			{ range: [-50, -30], colors: ['#ffffff', '#c535dc'] },
-			{ range: [-30, -10], colors: ['#c535dc', '#0034ff'] },
-			{ range: [-10, 0], colors: ['#0034ff', '#a4eef5'] },
-			{ range: [0, 8], colors: ['#23ff3e', 'green'] },
-			{ range: [8, 16], colors: ['green', 'yellow'] },
-			// { range: [14, 20], colors: ['green', 'yellow'] },
-			{ range: [16, 24], colors: ['yellow', 'orange'] },
-			{ range: [24, 32], colors: ['orange', 'red'] },
-			{ range: [32, 42], colors: ['red', 'brown'] },
-			{ range: [42, 50], colors: ['brown', 'pink'] }
+			{ range: [-80, -40], colors: ['#4A0D00', '#ef07ef'] },
+			{ range: [-40, -10], colors: ['#ef07ef', '#0034ff'] },
+			{ range: [-10, 0], colors: ['#0034ff', '#A4DAF5'] },
+			{ range: [0, 12], colors: ['#72E8A5', 'green'] },
+			{ range: [12, 20], colors: ['green', 'yellow'] },
+			{ range: [20, 30], colors: ['yellow', 'orange'] },
+			{ range: [30, 42], colors: ['orange', 'red'] },
+			{ range: [42, 50], colors: ['red', '#93001a'] }
 		],
 		opacitySegments: [{ range: [-80, 50], opacity: [1, 1], easing: 'linear' }]
 	},
