@@ -1,4 +1,4 @@
-import { boundsIncluded } from './utils/bounds';
+import { boundsIncluded, constrainBounds } from './utils/bounds';
 import { normalizeLon } from './utils/math';
 import { parseUrlComponents } from './utils/parse-url';
 
@@ -65,7 +65,14 @@ export const clearBlockCache = async (): Promise<void> => {
 export const getRanges = (gridData: GridData, bounds: Bounds | undefined): DimensionRange[] => {
 	if (bounds) {
 		const gridGetter = GridFactory.create(gridData, null);
-		return gridGetter.getCoveringRanges(bounds[1], bounds[0], bounds[3], bounds[2]);
+		// Clamp to grid extent so padded snap bounds don't produce out-of-range indices
+		const clampedBounds = constrainBounds(bounds, gridGetter.getBounds()) ?? bounds;
+		return gridGetter.getCoveringRanges(
+			clampedBounds[1],
+			clampedBounds[0],
+			clampedBounds[3],
+			clampedBounds[2]
+		);
 	} else {
 		return [
 			{ start: 0, end: gridData.ny },

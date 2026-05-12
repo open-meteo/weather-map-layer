@@ -1,3 +1,5 @@
+import type { ResolvedClippingOptions } from './utils/clipping';
+
 import { FileReaderConfig, WeatherMapLayerFileReader } from './om-file-reader';
 
 export interface OmProtocolInstance {
@@ -35,7 +37,7 @@ export interface ParsedRequest {
 	tileIndex: TileIndex | null;
 	renderOptions: RenderOptions; // Only rendering-related params
 	dataOptions: DataIdentityOptions; // Only data-identity params,
-	clippingOptions: ClippingOptions;
+	clippingOptions: ResolvedClippingOptions | undefined;
 }
 
 export interface OmUrlState {
@@ -112,7 +114,7 @@ export interface TileRequest {
 	renderOptions: RenderOptions;
 	dataOptions: DataIdentityOptions;
 	ranges: DimensionRange[];
-	clippingOptions: ClippingOptions;
+	clippingOptions: ResolvedClippingOptions | undefined;
 	signal?: AbortSignal;
 }
 
@@ -321,4 +323,30 @@ export interface DomainMetaDataJson {
 	variables: string[];
 }
 
-export type ClippingOptions = { polygons: [number, number][][][]; bounds: Bounds } | undefined;
+export type ZoomLevel = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+
+export type GeoJsonPosition = [number, number] | [number, number, number] | number[];
+
+export type GeoJsonGeometry =
+	| { type: 'Point'; coordinates: GeoJsonPosition }
+	| { type: 'MultiPoint'; coordinates: GeoJsonPosition[] }
+	| { type: 'LineString'; coordinates: GeoJsonPosition[] }
+	| { type: 'MultiLineString'; coordinates: GeoJsonPosition[][] }
+	| { type: 'Polygon'; coordinates: GeoJsonPosition[][] }
+	| { type: 'MultiPolygon'; coordinates: GeoJsonPosition[][][] }
+	| { type: 'GeometryCollection'; geometries: GeoJsonGeometry[] };
+
+export type GeoJsonFeature = {
+	type: 'Feature';
+	geometry: GeoJsonGeometry | null;
+	properties?: Record<string, unknown> | null;
+};
+
+export type GeoJson =
+	| GeoJsonGeometry
+	| GeoJsonFeature
+	| { type: 'FeatureCollection'; features: GeoJsonFeature[] };
+
+export type ClippingOptions =
+	| { geojson?: GeoJson; bounds?: Bounds; fillRule?: 'nonzero' | 'evenodd' }
+	| undefined;

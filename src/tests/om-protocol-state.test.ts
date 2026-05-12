@@ -1,8 +1,15 @@
 import type { WeatherMapLayerFileReader } from '../om-file-reader';
-import { ensureData, getOrCreateState } from '../om-protocol-state';
+import { ensureData, getOrCreateState, getRanges } from '../om-protocol-state';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { Data, DataIdentityOptions, Domain, OmUrlState } from '../types';
+import type {
+	Data,
+	DataIdentityOptions,
+	Domain,
+	GridData,
+	OmUrlState,
+	RegularGridData
+} from '../types';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -260,5 +267,103 @@ describe('ensureData – data already cached', () => {
 
 		expect(result).toBe(cachedData);
 		expect(reader.calls).toHaveLength(0);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// getRanges
+// ---------------------------------------------------------------------------
+
+describe('getRanges', () => {
+	const makeGrid = (overrides: Partial<RegularGridData> = {}): GridData => ({
+		type: 'regular',
+		nx: 360,
+		ny: 180,
+		lonMin: -180,
+		latMin: -90,
+		dx: 1,
+		dy: 1,
+		...overrides
+	});
+
+	it('returns full grid ranges when bounds is undefined', () => {
+		const grid = makeGrid();
+		const ranges = getRanges(grid, undefined);
+
+		expect(ranges).toEqual([
+			{ start: 0, end: 180 },
+			{ start: 0, end: 360 }
+		]);
+	});
+
+	it('returns subset ranges when bounds is provided', () => {
+		const grid = makeGrid();
+		const bounds = [10, 40, 20, 50] as [number, number, number, number];
+		const ranges = getRanges(grid, bounds);
+
+		// Ranges should be a subset of the full grid
+		expect(ranges[0].start).toBeGreaterThan(0);
+		expect(ranges[0].end).toBeLessThan(180);
+		expect(ranges[1].start).toBeGreaterThan(0);
+		expect(ranges[1].end).toBeLessThan(360);
+	});
+
+	it('clamps bounds that exceed grid extent', () => {
+		const grid = makeGrid({ lonMin: 0, latMin: 0, nx: 100, ny: 50, dx: 1, dy: 1 });
+		// Bounds go beyond the grid's extent
+		const bounds = [-10, -10, 200, 100] as [number, number, number, number];
+
+		// Should not throw — bounds are clamped to grid extent
+		const ranges = getRanges(grid, bounds);
+
+		expect(ranges[0].start).toBe(0);
+		expect(ranges[1].start).toBe(0);
+		expect(ranges[0].end).toBe(50);
+		expect(ranges[1].end).toBe(100);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// getOrCreateState – eviction
+// ---------------------------------------------------------------------------
+
+describe('getOrCreateState – eviction', () => {
+	it('evicts oldest states when exceeding MAX_STATES_WITH_DATA', () => {
+		const stateByKey = new Map<string, OmUrlState>();
+
+		// MAX_STATES_WITH_DATA = 2. When creating the 4th, the map has 3 entries
+		// which exceeds the limit, so eviction removes the oldest.
+		makeState(stateByKey, 'k1');
+		makeState(stateByKey, 'k2');
+		makeState(stateByKey, 'k3');
+		// Now map has k1, k2, k3 (size=3). Creating k4 triggers eviction with size>2.
+		makeState(stateByKey, 'k4');
+
+		expect(stateByKey.has('k1')).toBe(false);
+		expect(stateByKey.has('k4')).toBe(true);
+	});
+
+	it('reuses existing state when bounds are included', () => {
+		const stateByKey = new Map<string, OmUrlState>();
+		const dataOptions = makeDataOptions({ bounds: [-50, -50, 50, 50] });
+		const state1 = getOrCreateState(stateByKey, 'k1', dataOptions, 'https://example.com/file.om');
+
+		// Request with smaller bounds (included in existing state)
+		const dataOptions2 = makeDataOptions({ bounds: [-30, -30, 30, 30] });
+		const state2 = getOrCreateState(stateByKey, 'k1', dataOptions2, 'https://example.com/file.om');
+
+		expect(state2).toBe(state1);
+	});
+
+	it('creates new state when bounds are not included', () => {
+		const stateByKey = new Map<string, OmUrlState>();
+		const dataOptions = makeDataOptions({ bounds: [0, 0, 10, 10] });
+		const state1 = getOrCreateState(stateByKey, 'k1', dataOptions, 'https://example.com/file.om');
+
+		// Request with larger/different bounds
+		const dataOptions2 = makeDataOptions({ bounds: [-50, -50, 50, 50] });
+		const state2 = getOrCreateState(stateByKey, 'k1', dataOptions2, 'https://example.com/file.om');
+
+		expect(state2).not.toBe(state1);
 	});
 });
