@@ -76,7 +76,7 @@
 	"dependencies": {
 		"@mapbox/tilebelt": "^2.0.3",
 		"@mapbox/vector-tile": "^2.0.4",
-		"@openmeteo/file-reader": "^0.0.15",
+		"@openmeteo/file-reader": "^0.0.16",
 		"maplibre-gl": "^5.20.1",
 		"pbf": "^4.0.1",
 		"point-in-polygon-hao": "^1.2.4"
