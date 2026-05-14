@@ -19,9 +19,9 @@ import type {
 	DimensionRange,
 	OmProtocolSettings,
 	ParsedRequest,
-	RenderOptions,
 	TileJSON,
 	TilePromise,
+	TileResponse,
 	TileResult
 } from './types';
 
@@ -40,20 +40,16 @@ export const defaultOmProtocolSettings: OmProtocolSettings = {
 	postReadCallback: undefined
 };
 
-const makeAbortResult = (): GetResourceResponse<null> => {
-	return { data: null };
-};
-
 export const omProtocol = async (
 	params: RequestParameters,
 	abortController: AbortController,
 	settings = defaultOmProtocolSettings
-): Promise<GetResourceResponse<TileJSON | ImageBitmap | ArrayBuffer | null>> => {
+): Promise<GetResourceResponse<TileJSON | TileResponse | null>> => {
 	const signal = abortController.signal;
 
 	// Check if already aborted
 	if (signal.aborted) {
-		return makeAbortResult();
+		return { data: null };
 	}
 
 	const instance = getProtocolInstance(settings);
@@ -70,7 +66,7 @@ export const omProtocol = async (
 
 	// Check abort status before proceeding
 	if (signal.aborted) {
-		return makeAbortResult();
+		return { data: null };
 	}
 
 	const data = await ensureData(state, instance.omFileReader, settings.postReadCallback, signal);
@@ -91,19 +87,12 @@ export const omProtocol = async (
 		throw new Error(`Tile coordinates required for ${params.type} request`);
 	}
 
-	const { data: tileData, cancelled } = await requestTile(
-		url,
-		request,
-		data,
-		state.ranges,
-		params.type,
-		signal
-	);
+	const tileResult = await requestTile(url, request, data, state.ranges, params.type, signal);
 
-	if (cancelled) {
-		return makeAbortResult();
+	if (tileResult.cancelled || !tileResult.data) {
+		return { data: null };
 	} else {
-		return { data: tileData! };
+		return { data: tileResult.data };
 	}
 };
 
@@ -144,7 +133,7 @@ const requestTile = async (
 	// early return if the worker will not return a tile
 	if (tileType === 'getArrayBuffer') {
 		if (
-			!drawsArrows(request.renderOptions, data) &&
+			!(request.renderOptions.drawArrows && data.directions !== undefined) &&
 			!request.renderOptions.drawContours &&
 			!request.renderOptions.drawGrid
 		) {
@@ -187,8 +176,4 @@ const getTilejson = async (
 		maxzoom: 12,
 		bounds: bounds
 	};
-};
-
-const drawsArrows = (renderOptions: RenderOptions, data: Data): boolean => {
-	return renderOptions.drawArrows && data.directions !== undefined;
 };
