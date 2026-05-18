@@ -26,7 +26,6 @@ export default defineConfig({
 				entryFileNames: `[name].mjs`
 			},
 			preserveEntrySignatures: 'strict'
-		},
-		minify: false
+		}
 	}
 });
