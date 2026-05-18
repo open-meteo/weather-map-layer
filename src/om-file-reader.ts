@@ -46,6 +46,8 @@ export class WeatherMapLayerFileReader {
 	readonly cache: BlockCache;
 	readonly config: Required<Omit<FileReaderConfig, 'cache'>>;
 	private readonly allDerivationRules: VariableDerivationRule[];
+	private currentUrl: string | undefined;
+	private readonly gridParametersCache = new Map<string, GridData>();
 
 	constructor(config: FileReaderConfig = {}) {
 		this.config = {
@@ -65,6 +67,10 @@ export class WeatherMapLayerFileReader {
 			throw new Error('Reader not initialized');
 		}
 
+		const cacheKey = `${this.currentUrl}:${variable}`;
+		const cached = this.gridParametersCache.get(cacheKey);
+		if (cached) return cached;
+
 		const variableReader = await this.reader.getChildByName(variable);
 
 		if (!variableReader) {
@@ -83,12 +89,12 @@ export class WeatherMapLayerFileReader {
 		const wkt = wkt2Crs!.readScalar<string>(OmDataType.String)!;
 		const grid = wktToGridData(wkt, nx, ny);
 
-		// console.log(grid); FIXME: rm before merge
-
+		this.gridParametersCache.set(cacheKey, grid);
 		return grid;
 	}
 
 	async setToOmFile(omUrl: string): Promise<void> {
+		this.currentUrl = omUrl;
 		this.dispose();
 		const s3Backend = new OmHttpBackend({
 			url: omUrl,
