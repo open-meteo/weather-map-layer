@@ -1,8 +1,8 @@
+import { RotatedLatLonProjection } from '../grids/projections';
+import { RegularGrid } from '../grids/regular';
+import { parseWkt, wktToGridData } from '../utils/wkt';
 import { describe, expect, test } from 'vitest';
 
-import { RegularGrid } from '../grids/regular';
-import { RotatedLatLonProjection } from '../grids/projections';
-import { parseWkt, wktToGridData } from '../utils/wkt';
 import type {
 	GaussianGridData,
 	ProjectionGridFromBounds,
@@ -357,8 +357,8 @@ describe('wktToGridData – rotated lat/lon', () => {
 		// JS:    rotatedLat = 35  →  θ = 90 - 35 = 55°
 		const grid = wktToGridData(KNMI_ROTATED_WKT, 676, 564) as ProjectionGridFromBounds;
 		const proj = new RotatedLatLonProjection(grid.projection as RotatedLatLonProjectionData);
-		expect(proj.θ).toBeCloseTo(Math.PI * 55 / 180, 10); // 55° in radians
-		expect(proj.ϕ).toBeCloseTo(Math.PI * -8 / 180, 10); // -8° in radians
+		expect(proj.θ).toBeCloseTo((Math.PI * 55) / 180, 10); // 55° in radians
+		expect(proj.ϕ).toBeCloseTo((Math.PI * -8) / 180, 10); // -8° in radians
 	});
 
 	test('KNMI: forward/reverse round-trip', () => {
@@ -385,8 +385,8 @@ describe('wktToGridData – rotated lat/lon', () => {
 		// If the sign were wrong (negated), we'd get θ = 47° instead of 133°.
 		const grid = wktToGridData(METEOSWISS_ROTATED_WKT, 710, 640) as ProjectionGridFromBounds;
 		const proj = new RotatedLatLonProjection(grid.projection as RotatedLatLonProjectionData);
-		expect(proj.θ).toBeCloseTo(Math.PI * 133 / 180, 10); // 133°, not 47°
-		expect(proj.ϕ).toBeCloseTo(Math.PI * 190 / 180, 10);
+		expect(proj.θ).toBeCloseTo((Math.PI * 133) / 180, 10); // 133°, not 47°
+		expect(proj.ϕ).toBeCloseTo((Math.PI * 190) / 180, 10);
 	});
 
 	test('MeteoSwiss: forward/reverse round-trip', () => {
@@ -533,7 +533,6 @@ describe('wktToGridData – Lambert Azimuthal Equal-Area', () => {
 	});
 
 	test('alternate method name "Lambert_Azimuthal_Equal_Area" also parsed', () => {
-		const altWkt = LAEA_WKT.replace('Lambert Azimuthal Equal-Area', 'Lambert_Azimuthal_Equal_Area');
 		// Replace both occurrences (method name and CRS name), ensure at least the
 		// conversion METHOD name is replaced:
 		const grid = wktToGridData(

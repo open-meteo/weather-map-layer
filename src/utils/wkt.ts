@@ -323,7 +323,7 @@ export function wktToGridData(wkt: string, nx: number, ny: number): GridData {
 		const latRange = bbox.latMax - bbox.latMin;
 
 		// The BBOX stores the positions of the first (SW) and last (NE) grid points,
-		// so there are (nx-1) intervals between them. 
+		// so there are (nx-1) intervals between them.
 		const dx = lonRange / (nx - 1);
 		const dy = latRange / (ny - 1);
 
