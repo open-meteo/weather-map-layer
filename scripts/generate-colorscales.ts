@@ -303,11 +303,25 @@ const colorScaleDefinitions: Record<string, ColorScaleDefinition> = {
 	},
 	shortwave: {
 		unit: 'W/m²',
-		breakpoints: [0, 50, 100, 150, 200, 300, 400, 500, 600, 700, 800, 900, 1000],
+		breakpoints: [
+			0, 50, 100, 150, 200, 300, 350, 400, 450, 500, 550, 600, 700, 800, 900, 1000, 1100
+		],
 		colorSegments: [
 			{
-				range: [0, 1000],
-				colors: ['#3D006E', 'orange']
+				range: [0, 150],
+				colors: ['#000930', 'purple']
+			},
+			{
+				range: [150, 500],
+				colors: ['purple', 'orange']
+			},
+			{
+				range: [500, 800],
+				colors: ['orange', 'yellow']
+			},
+			{
+				range: [800, 1100],
+				colors: ['yellow', 'white']
 			}
 		],
 		opacitySegments: [
