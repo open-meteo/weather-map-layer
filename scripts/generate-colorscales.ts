@@ -292,14 +292,22 @@ const colorScaleDefinitions: Record<string, ColorScaleDefinition> = {
 	},
 	relative: {
 		unit: '%',
-		breakpoints: [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95],
+		breakpoints: [0, 10, 20, 30, 40, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95],
 		colorSegments: [
 			{
-				range: [0, 100],
-				colors: ['#cf597e', '#e88471', '#eeb479', '#e9e29c', '#9ccb86', '#39b185', '#009392']
+				range: [0, 50],
+				colors: ['green', 'green']
+			},
+			{
+				range: [50, 100],
+				colors: ['green', 'blue']
 			}
 		],
-		opacitySegments: [{ range: [0, 100], opacity: [1, 1], easing: 'linear' }]
+		opacitySegments: [
+			{ range: [0, 50], opacity: [0, 0.5], easing: 'linear' },
+			{ range: [50, 65], opacity: [0.5, 1], easing: 'linear' },
+			{ range: [65, 100], opacity: [1, 1], easing: 'linear' }
+		]
 	},
 	shortwave: {
 		unit: 'W/m²',
