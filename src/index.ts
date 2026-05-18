@@ -1,27 +1,48 @@
-export * from './om-file-reader';
-export * from './om-protocol';
-export * from './om-protocol-state';
+export { omProtocol } from './om-protocol';
 
-export * from './types';
+// Types
 
-export * from './worker-pool';
+export type {
+	ClippingOptions,
+	Data,
+	Domain,
+	DomainMetaDataJson,
+	GeoJson,
+	GeoJsonFeature,
+	GeoJsonGeometry,
+	GeoJsonPosition,
+	OmProtocolSettings,
+	OmUrlState,
+	RenderableColorScale
+} from './types';
 
-export * from './adapters/leaflet';
-export * from './adapters/mapbox';
-export * from './adapters/openlayers';
+// Functions
 
-export * from './grids/index';
+export {
+	getValueFromLatLong,
+	clearBlockCache,
+	getRanges,
+	getProtocolInstance
+} from './om-protocol-state';
+export { updateCurrentBounds } from './utils/bounds';
+export { createClippingTester } from './utils/clipping';
+export { domainStep, closestModelRun } from './utils/model-runs';
+export { getCachedResolvedClipping } from './utils/parse-request';
+export { getColor, getColorScale } from './utils/styling';
 
-export * from './utils/arrows';
-export * from './utils/bounds';
-export * from './utils/clipping';
-export * from './utils/color-scales';
-export * from './utils/constants';
-export * from './utils/contours';
-export * from './utils/grid-points';
-export * from './utils/index';
-export * from './utils/math';
-export * from './utils/parse-request';
-export * from './utils/pbf';
-export * from './utils/styling';
-export * from './utils/variables';
+// Classes
+
+export { GridFactory } from './grids/index';
+
+// Objects / Constants
+
+export { currentBounds } from './utils/bounds';
+export { defaultOmProtocolSettings } from './om-protocol';
+export { variableOptions, levelGroupVariables } from './utils/variables';
+export { VARIABLE_PREFIX, LEVEL_PREFIX, LEVEL_REGEX, LEVEL_UNIT_REGEX } from './utils/constants';
+
+// Adapters
+
+export { addLeafletProtocolSupport } from './adapters/leaflet';
+export { addMapboxProtocolSupport } from './adapters/mapbox';
+export { addOpenLayersProtocolSupport } from './adapters/openlayers';

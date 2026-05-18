@@ -53,7 +53,7 @@
 
 		<div id="toggle" class="mode-toggle" role="region" aria-label="Map color mode">
 			<label>
-				<input id="modeCheckbox" type="checkbox" />
+				<input id="modeCheckbox" type="checkbox" checked />
 				Dark mode
 			</label>
 		</div>
@@ -67,7 +67,7 @@
 				hash: true
 			});
 
-			let dark = false;
+			let dark = true;
 			const baseOmUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=cloud_cover`;
 
 			function ensureOmLayer(omUrl) {
@@ -118,6 +118,7 @@
 					});
 				}
 			}
+			setDarkMode(dark);
 
 			const checkbox = document.getElementById('modeCheckbox');
 			checkbox.addEventListener('change', (evt) => {
