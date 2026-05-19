@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.0.20](https://github.com/open-meteo/weather-map-layer/compare/v0.0.19...v0.0.20) (2026-05-19)
+
+
+### Bug Fixes
+
+* add minifying for cjs and mjs ([34dbf6a](https://github.com/open-meteo/weather-map-layer/commit/34dbf6aea393c0e8c0f13055bbad03a19b78df17))
+* bump @types/node from 25.6.2 to 25.7.0 in the openmeteo group ([#249](https://github.com/open-meteo/weather-map-layer/issues/249)) ([d9042e4](https://github.com/open-meteo/weather-map-layer/commit/d9042e4f6c2c370a1946ccd683ff8a2f0e6aeb33))
+* bump actions/setup-node from 6 to 6.3.0 ([#238](https://github.com/open-meteo/weather-map-layer/issues/238)) ([80a637c](https://github.com/open-meteo/weather-map-layer/commit/80a637c134df7af42a62d73f67e2dff64abb7cc5))
+* bump actions/setup-node from 6.3.0 to 6.4.0 ([#240](https://github.com/open-meteo/weather-map-layer/issues/240)) ([208c638](https://github.com/open-meteo/weather-map-layer/commit/208c638b0c27a51ee6f93c73b5797c25e67b1f3e))
+* bump googleapis/release-please-action from 4 to 4.4.1 ([#241](https://github.com/open-meteo/weather-map-layer/issues/241)) ([12eeb65](https://github.com/open-meteo/weather-map-layer/commit/12eeb657f8eb6014fac83422d1266813edae14b8))
+* bump googleapis/release-please-action from 4.4.1 to 5.0.0 ([#243](https://github.com/open-meteo/weather-map-layer/issues/243)) ([ba120dd](https://github.com/open-meteo/weather-map-layer/commit/ba120dded0f4f2f9afc3a9ba3b22831e62403be5))
+* correct export paths ([#252](https://github.com/open-meteo/weather-map-layer/issues/252)) ([cb8d22d](https://github.com/open-meteo/weather-map-layer/commit/cb8d22d92754e7060c04ec20eaa7ddf0f104e57c))
+* export getCachedResolvedClipping ([#235](https://github.com/open-meteo/weather-map-layer/issues/235)) ([e65e070](https://github.com/open-meteo/weather-map-layer/commit/e65e07029794285a64ec19f5f96e0e0c18a3e539))
+* remove unused exports from index ([#245](https://github.com/open-meteo/weather-map-layer/issues/245)) ([f9ca176](https://github.com/open-meteo/weather-map-layer/commit/f9ca1768e680b7f0236ad8921c8b1f7f42632ccb))
+* update to rolldown vite v8 and ts v6 ([#246](https://github.com/open-meteo/weather-map-layer/issues/246)) ([46c4f2f](https://github.com/open-meteo/weather-map-layer/commit/46c4f2f06f1ede0ec30f2b5b19e38dea47403685))
+
 ## [0.0.19](https://github.com/open-meteo/weather-map-layer/compare/v0.0.18...v0.0.19) (2026-04-13)
 
 
