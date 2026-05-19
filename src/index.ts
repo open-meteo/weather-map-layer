@@ -16,7 +16,7 @@ export type {
 	OmUrlState,
 	RenderableColorScale,
 	SeamlessDomain,
-	SeamlessLayer
+	SeamlessLayer,
 } from './types';
 
 // Functions
@@ -36,6 +36,7 @@ export { getColor, getColorScale } from './utils/styling';
 // Classes
 
 export { GridFactory } from './grids/index';
+export { WeatherMapLayerFileReader } from './om-file-reader';
 
 // Objects / Constants
 
