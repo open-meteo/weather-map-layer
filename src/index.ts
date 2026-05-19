@@ -16,7 +16,7 @@ export type {
 	OmUrlState,
 	RenderableColorScale,
 	SeamlessDomain,
-	SeamlessLayer,
+	SeamlessLayer
 } from './types';
 
 // Functions
