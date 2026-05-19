@@ -6,6 +6,13 @@
 	"author": "Open-Meteo <info@open-meteo.com>",
 	"version": "0.0.19",
 	"module": "dist/index.mjs",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.mjs",
+			"require": "./dist/index.cjs"
+		}
+	},
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/open-meteo/weather-map-layer.git"
