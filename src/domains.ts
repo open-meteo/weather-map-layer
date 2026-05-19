@@ -1297,8 +1297,18 @@ export const domainOptions: Array<AnyDomain> = [
 		time_interval: 'hourly',
 		model_interval: '3_hourly',
 		layers: [
-			{ domainValue: 'meteofrance_arome_france0025', minZoom: 5, blendWidthDeg: 3, maxForecastHours: 51 },
-			{ domainValue: 'meteofrance_arpege_europe', minZoom: 3, blendWidthDeg: 3, maxForecastHours: 102 },
+			{
+				domainValue: 'meteofrance_arome_france0025',
+				minZoom: 5,
+				blendWidthDeg: 3,
+				maxForecastHours: 51
+			},
+			{
+				domainValue: 'meteofrance_arpege_europe',
+				minZoom: 3,
+				blendWidthDeg: 3,
+				maxForecastHours: 102
+			},
 			{ domainValue: 'meteofrance_arpege_world025', minZoom: 0, blendWidthDeg: 0 }
 		]
 	},
@@ -1357,7 +1367,12 @@ export const domainOptions: Array<AnyDomain> = [
 		time_interval: 'hourly',
 		model_interval: '3_hourly',
 		layers: [
-			{ domainValue: 'ukmo_uk_deterministic_2km', minZoom: 4, blendWidthDeg: 3, maxForecastHours: 126 },
+			{
+				domainValue: 'ukmo_uk_deterministic_2km',
+				minZoom: 4,
+				blendWidthDeg: 3,
+				maxForecastHours: 126
+			},
 			{ domainValue: 'ukmo_global_deterministic_10km', minZoom: 0, blendWidthDeg: 0 }
 		]
 	},
@@ -1376,7 +1391,12 @@ export const domainOptions: Array<AnyDomain> = [
 		time_interval: 'hourly',
 		model_interval: '3_hourly',
 		layers: [
-			{ domainValue: 'knmi_harmonie_arome_netherlands', minZoom: 5, blendWidthDeg: 2, maxForecastHours: 48 },
+			{
+				domainValue: 'knmi_harmonie_arome_netherlands',
+				minZoom: 5,
+				blendWidthDeg: 2,
+				maxForecastHours: 48
+			},
 			{ domainValue: 'knmi_harmonie_arome_europe', minZoom: 0, blendWidthDeg: 0 }
 		]
 	}

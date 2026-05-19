@@ -99,8 +99,7 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 			const layerGrids = seamlessLayers.map((layer) =>
 				GridFactory.create(layer.domain.grid, layer.ranges)
 			);
-			getPixelValue = (lat, lon) =>
-				blendFromLayer(layerGrids, seamlessLayers, lat, lon, 0);
+			getPixelValue = (lat, lon) => blendFromLayer(layerGrids, seamlessLayers, lat, lon, 0);
 		} else {
 			const grid = GridFactory.create((domain as import('./types').Domain).grid, ranges);
 			getPixelValue = (lat, lon) => grid.getLinearInterpolatedValue(values!, lat, lon);
@@ -162,9 +161,8 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 				? GridFactory.create(seamlessLayers[0].domain.grid, seamlessLayers[0].ranges)
 				: GridFactory.create((domain as import('./types').Domain).grid, ranges);
 		const vectorValues =
-			(seamlessLayers && seamlessLayers.length > 0
-				? seamlessLayers[0].data.values
-				: values) ?? new Float32Array(0);
+			(seamlessLayers && seamlessLayers.length > 0 ? seamlessLayers[0].data.values : values) ??
+			new Float32Array(0);
 
 		if (message.data.renderOptions.drawGrid) {
 			generateGridPoints(pbf, vectorGrid, vectorValues, directions, x, y, z, clippingOptions);
@@ -174,7 +172,17 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 		}
 		if (message.data.renderOptions.drawContours) {
 			const intervals = message.data.renderOptions.intervals;
-			generateContours(pbf, vectorValues, vectorGrid, x, y, z, tileSize, intervals, clippingOptions);
+			generateContours(
+				pbf,
+				vectorValues,
+				vectorGrid,
+				x,
+				y,
+				z,
+				tileSize,
+				intervals,
+				clippingOptions
+			);
 		}
 
 		const arrayBuffer = pbf.finish();

@@ -4,13 +4,13 @@
  * Extracted from om-protocol.ts to keep the core protocol file clean.
  * Contains all logic specific to SeamlessDomain composite domains.
  */
-
 import { type GetResourceResponse, type RequestParameters } from 'maplibre-gl';
 
 import { constrainBounds } from './utils/bounds';
-import { capitalize } from './utils';
+
 import { GridFactory } from './grids/index';
 import { ensureData, getOrCreateState } from './om-protocol-state';
+import { capitalize } from './utils';
 import { workerPool } from './worker-pool-instance';
 
 import type {

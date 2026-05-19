@@ -309,7 +309,7 @@ export type ModelUpdateInterval =
 	| '12_hourly'
 	| 'daily'
 	| 'monthly';
-	
+
 /** A single layer within a seamless domain, referencing a concrete grid-based domain. */
 export interface SeamlessLayer {
 	/** The `value` of a concrete `Domain` entry to use for this layer. */
