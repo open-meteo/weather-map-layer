@@ -3,7 +3,7 @@ import { type GetResourceResponse, type RequestParameters } from 'maplibre-gl';
 import { constrainBounds } from './utils/bounds';
 import { type ResolvedClippingOptions } from './utils/clipping';
 import { defaultResolveRequest, parseRequest } from './utils/parse-request';
-import { parseMetaJson } from './utils/parse-url';
+import { normalizeUrl } from './utils/parse-url';
 import { COLOR_SCALES_WITH_ALIASES as defaultColorScales } from './utils/styling';
 
 import { domainOptions as defaultDomainOptions } from './domains';
@@ -110,14 +110,6 @@ export const omProtocol = async (
 	} else {
 		return { data: tileResult.data };
 	}
-};
-
-export const normalizeUrl = async (url: string): Promise<string> => {
-	let normalized = url;
-	if (url.includes('.json')) {
-		normalized = await parseMetaJson(normalized);
-	}
-	return normalized;
 };
 
 const makeTileAbortedResponse = (): TileResult => {
