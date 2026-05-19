@@ -16,12 +16,17 @@
  *  - Missing tile coordinates throws for image requests
  *  - SeamlessDomain exposes time_interval and model_interval
  */
-
 import { defaultOmProtocolSettings } from '../om-protocol';
 import { RequestParameters } from 'maplibre-gl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { DimensionRange, Domain, OmProtocolSettings, SeamlessDomain, TileJSON } from '../types';
+import type {
+	DimensionRange,
+	Domain,
+	OmProtocolSettings,
+	SeamlessDomain,
+	TileJSON
+} from '../types';
 
 // ─── Hoisted mutable state shared between mock factories ──────────────────────
 
@@ -68,8 +73,7 @@ vi.mock('../om-file-reader', async () => {
 						throw new Error(`Simulated failure for: ${sub}`);
 					}
 				}
-				const totalValues =
-					ranges?.reduce((acc, r) => acc * (r.end - r.start + 1), 1) ?? 0;
+				const totalValues = ranges?.reduce((acc, r) => acc * (r.end - r.start + 1), 1) ?? 0;
 				return { values: new Float32Array(totalValues), directions: undefined };
 			}
 		}
@@ -123,7 +127,7 @@ const makeRegularDomain = (
 		lonMin: opts.lonMin ?? -10,
 		latMin: opts.latMin ?? -10,
 		dx: opts.dx ?? 2,
-		dy: opts.dy ?? 2,
+		dy: opts.dy ?? 2
 	},
 	time_interval: 'hourly',
 	model_interval: '3_hourly'
@@ -131,13 +135,28 @@ const makeRegularDomain = (
 
 /** Concrete domain trio mirroring the real DWD ICON seamless stack. */
 const GLOBAL_DOMAIN = makeRegularDomain('test_global', {
-	nx: 20, ny: 20, lonMin: -20, latMin: -20, dx: 2, dy: 2
+	nx: 20,
+	ny: 20,
+	lonMin: -20,
+	latMin: -20,
+	dx: 2,
+	dy: 2
 });
 const EU_DOMAIN = makeRegularDomain('test_eu', {
-	nx: 10, ny: 10, lonMin: -5, latMin: -5, dx: 1, dy: 1
+	nx: 10,
+	ny: 10,
+	lonMin: -5,
+	latMin: -5,
+	dx: 1,
+	dy: 1
 });
 const D2_DOMAIN = makeRegularDomain('test_d2', {
-	nx: 6, ny: 6, lonMin: -1, latMin: -1, dx: 0.4, dy: 0.4
+	nx: 6,
+	ny: 6,
+	lonMin: -1,
+	latMin: -1,
+	dx: 0.4,
+	dy: 0.4
 });
 
 const SEAMLESS: SeamlessDomain = {
@@ -387,9 +406,9 @@ describe('SeamlessDomain – error handling', () => {
 		// (it should succeed, not throw, since 'image' is handled by requestTileSeamless)
 		// — only truly unknown types throw
 		const unknownParams = { ...params, type: 'vector' as RequestParameters['type'] };
-		await expect(
-			omProtocol(unknownParams, new AbortController(), makeSettings())
-		).rejects.toThrow("Unsupported request type 'vector'");
+		await expect(omProtocol(unknownParams, new AbortController(), makeSettings())).rejects.toThrow(
+			"Unsupported request type 'vector'"
+		);
 	});
 
 	it('tile request without z/x/y throws', async () => {
@@ -398,9 +417,9 @@ describe('SeamlessDomain – error handling', () => {
 			url: `om://${BASE}?variable=temperature`,
 			type: 'arrayBuffer'
 		};
-		await expect(
-			omProtocol(params, new AbortController(), makeSettings())
-		).rejects.toThrow('Tile coordinates required');
+		await expect(omProtocol(params, new AbortController(), makeSettings())).rejects.toThrow(
+			'Tile coordinates required'
+		);
 	});
 });
 
@@ -472,9 +491,7 @@ describe('SeamlessDomain – type properties', () => {
 		const { domainOptions } = await import('../domains');
 		const seamless = domainOptions.find((d) => d.value === 'dwd_icon_seamless') as SeamlessDomain;
 		for (const layer of seamless.layers) {
-			const concrete = domainOptions.find(
-				(d) => d.value === layer.domainValue && !('layers' in d)
-			);
+			const concrete = domainOptions.find((d) => d.value === layer.domainValue && !('layers' in d));
 			expect(concrete).toBeDefined();
 		}
 	});

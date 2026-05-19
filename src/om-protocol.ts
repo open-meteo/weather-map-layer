@@ -9,9 +9,9 @@ import { COLOR_SCALES_WITH_ALIASES as defaultColorScales } from './utils/styling
 import { domainOptions as defaultDomainOptions } from './domains';
 import { GridFactory } from './grids/index';
 import { defaultFileReaderConfig } from './om-file-reader';
+import { handleSeamlessRequest, isSeamlessDomain } from './om-protocol-seamless';
 import { ensureData, getOrCreateState, getProtocolInstance } from './om-protocol-state';
 import { capitalize } from './utils';
-import { handleSeamlessRequest, isSeamlessDomain } from './om-protocol-seamless';
 import { workerPool } from './worker-pool-instance';
 
 import type {
@@ -87,7 +87,11 @@ export const omProtocol = async (
 	// Handle TileJSON request
 	if (params.type == 'json') {
 		return {
-			data: await getTilejson(params.url, request.dataOptions.domain as Domain, request.clippingOptions)
+			data: await getTilejson(
+				params.url,
+				request.dataOptions.domain as Domain,
+				request.clippingOptions
+			)
 		};
 	}
 
@@ -108,7 +112,6 @@ export const omProtocol = async (
 		return { data: tileResult.data };
 	}
 };
-
 
 export const normalizeUrl = async (url: string): Promise<string> => {
 	let normalized = url;
