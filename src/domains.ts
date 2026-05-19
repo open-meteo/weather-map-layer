@@ -1,4 +1,4 @@
-import type { Domain } from './types';
+import type { AnyDomain } from './types';
 
 export const domainGroups = [
 	// { value: 'bom', label: 'BOM Australia' },
@@ -20,7 +20,7 @@ export const domainGroups = [
 	{ value: 'ukmo', label: 'UKMO' }
 ];
 
-export const domainOptions: Array<Domain> = [
+export const domainOptions: Array<AnyDomain> = [
 	// BOM
 	// {
 	// 	value: 'bom_access_global',
@@ -1226,6 +1226,178 @@ export const domainOptions: Array<Domain> = [
 			}
 		},
 		time_interval: 'hourly',
-		model_interval: '3_hourly'
+		model_interval: '3_hourly',
+		windUVComponents: false
+	},
+
+	// -------------------------------------------------------------------------
+	// Seamless composite domains
+	// -------------------------------------------------------------------------
+
+	/**
+	 * DWD ICON Seamless
+	 *
+	 * Automatically selects the best-available DWD model for the current zoom
+	 * level and blends values near domain boundaries:
+	 *   zoom 0+  → dwd_icon   (global, 0.125°)
+	 *   zoom 3+  → dwd_icon_eu (Europe, 0.0625°) blended over 1.5° at its edges
+	 *   zoom 5+  → dwd_icon_d2 (Germany, 0.02°)  blended over 0.5° at its edges
+	 *
+	 * The URL format is identical to a regular domain – just replace the domain
+	 * name segment with 'dwd_icon_seamless':
+	 *   om://…/data_spatial/dwd_icon_seamless/…/…om?variable=…
+	 */
+	{
+		type: 'seamless',
+		value: 'dwd_icon_seamless',
+		label: 'DWD ICON Seamless',
+		// All constituent DWD ICON domains share the same time resolution and
+		// model-run cadence, so we surface them here so consuming code can treat
+		// dwd_icon_seamless uniformly alongside regular domains.
+		time_interval: 'hourly',
+		model_interval: '3_hourly',
+		layers: [
+			{ domainValue: 'dwd_icon_d2', minZoom: 4, blendWidthDeg: 3.5, maxForecastHours: 48 },
+			{ domainValue: 'dwd_icon_eu', minZoom: 2, blendWidthDeg: 3, maxForecastHours: 120 },
+			{ domainValue: 'dwd_icon', minZoom: 0, blendWidthDeg: 0 }
+		]
+	},
+
+	/**
+	 * NCEP GFS + HRRR Seamless
+	 *
+	 * Automatically selects the best NCEP model for the current zoom level:
+	 *   zoom 0+  → ncep_gfs025     (global, 0.25°)
+	 *   zoom 3+  → ncep_hrrr_conus (CONUS, ~3 km, Lambert Conformal)
+	 */
+	{
+		type: 'seamless',
+		value: 'ncep_gfs_seamless',
+		label: 'GFS Seamless',
+		time_interval: 'hourly',
+		model_interval: 'hourly',
+		layers: [
+			{ domainValue: 'ncep_hrrr_conus', minZoom: 3, blendWidthDeg: 3, maxForecastHours: 48 },
+			{ domainValue: 'ncep_gfs025', minZoom: 0, blendWidthDeg: 0 }
+		]
+	},
+
+	/**
+	 * Météo-France Seamless
+	 *
+	 * Automatically selects the best MF model for the current zoom level:
+	 *   zoom 0+  → meteofrance_arpege_world025   (global, 0.25°)
+	 *   zoom 3+  → meteofrance_arpege_europe      (Europe, 0.1°)
+	 *   zoom 5+  → meteofrance_arome_france0025   (France, 0.025°)
+	 */
+	{
+		type: 'seamless',
+		value: 'meteofrance_seamless',
+		label: 'MF Seamless',
+		time_interval: 'hourly',
+		model_interval: '3_hourly',
+		layers: [
+			{
+				domainValue: 'meteofrance_arome_france0025',
+				minZoom: 5,
+				blendWidthDeg: 3,
+				maxForecastHours: 51
+			},
+			{
+				domainValue: 'meteofrance_arpege_europe',
+				minZoom: 3,
+				blendWidthDeg: 3,
+				maxForecastHours: 102
+			},
+			{ domainValue: 'meteofrance_arpege_world025', minZoom: 0, blendWidthDeg: 0 }
+		]
+	},
+
+	/**
+	 * GEM Canada Seamless
+	 *
+	 * Automatically selects the best GEM model for the current zoom level:
+	 *   zoom 0+  → cmc_gem_gdps  (global, 0.15°)
+	 *   zoom 2+  → cmc_gem_rdps  (North America, ~15 km, Stereographic)
+	 *   zoom 4+  → cmc_gem_hrdps (Canada, ~2.5 km, Rotated LatLon)
+	 */
+	{
+		type: 'seamless',
+		value: 'cmc_gem_seamless',
+		label: 'GEM Seamless',
+		time_interval: 'hourly',
+		model_interval: '6_hourly',
+		layers: [
+			{ domainValue: 'cmc_gem_hrdps', minZoom: 4, blendWidthDeg: 3, maxForecastHours: 48 },
+			{ domainValue: 'cmc_gem_rdps', minZoom: 2, blendWidthDeg: 3, maxForecastHours: 84 },
+			{ domainValue: 'cmc_gem_gdps', minZoom: 0, blendWidthDeg: 0 }
+		]
+	},
+
+	/**
+	 * JMA Seamless
+	 *
+	 * Automatically selects the best JMA model for the current zoom level:
+	 *   zoom 0+  → jma_gsm  (global, 0.5°)
+	 *   zoom 4+  → jma_msm  (Japan, 0.0625°/0.05°)
+	 */
+	{
+		type: 'seamless',
+		value: 'jma_seamless',
+		label: 'JMA Seamless',
+		time_interval: 'hourly',
+		model_interval: '3_hourly',
+		layers: [
+			{ domainValue: 'jma_msm', minZoom: 4, blendWidthDeg: 3, maxForecastHours: 78 },
+			{ domainValue: 'jma_gsm', minZoom: 0, blendWidthDeg: 0 }
+		]
+	},
+
+	/**
+	 * UK Met Office Seamless
+	 *
+	 * Automatically selects the best UKMO model for the current zoom level:
+	 *   zoom 0+  → ukmo_global_deterministic_10km  (global, ~10 km)
+	 *   zoom 4+  → ukmo_uk_deterministic_2km        (UK, 2 km, LAEA)
+	 */
+	{
+		type: 'seamless',
+		value: 'ukmo_seamless',
+		label: 'UKMO Seamless',
+		time_interval: 'hourly',
+		model_interval: '3_hourly',
+		layers: [
+			{
+				domainValue: 'ukmo_uk_deterministic_2km',
+				minZoom: 4,
+				blendWidthDeg: 3,
+				maxForecastHours: 126
+			},
+			{ domainValue: 'ukmo_global_deterministic_10km', minZoom: 0, blendWidthDeg: 0 }
+		]
+	},
+
+	/**
+	 * KNMI Seamless
+	 *
+	 * Automatically selects the best KNMI model for the current zoom level:
+	 *   zoom 0+  → knmi_harmonie_arome_europe       (Europe, ~2.5 km, Rotated LatLon)
+	 *   zoom 5+  → knmi_harmonie_arome_netherlands  (Netherlands, 0.029°/0.018°)
+	 */
+	{
+		type: 'seamless',
+		value: 'knmi_seamless',
+		label: 'KNMI Seamless',
+		time_interval: 'hourly',
+		model_interval: '3_hourly',
+		layers: [
+			{
+				domainValue: 'knmi_harmonie_arome_netherlands',
+				minZoom: 5,
+				blendWidthDeg: 2,
+				maxForecastHours: 48
+			},
+			{ domainValue: 'knmi_harmonie_arome_europe', minZoom: 0, blendWidthDeg: 0 }
+		]
 	}
 ];

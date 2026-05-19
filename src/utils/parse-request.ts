@@ -10,10 +10,10 @@ import { parseUrlComponents } from './parse-url';
 import { getColorScale, resolveColorScale } from './styling';
 
 import type {
+	AnyDomain,
 	ClippingOptions,
 	ColorScales,
 	DataIdentityOptions,
-	Domain,
 	OmProtocolSettings,
 	ParsedRequest,
 	ParsedUrlComponents,
@@ -72,7 +72,7 @@ export const defaultResolveRequest = (
 
 const defaultResolveDataIdentity = (
 	urlComponents: ParsedUrlComponents,
-	domainOptions: Domain[]
+	domainOptions: AnyDomain[]
 ): DataIdentityOptions => {
 	const { baseUrl, params } = urlComponents;
 

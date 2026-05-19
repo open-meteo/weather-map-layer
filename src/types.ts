@@ -10,7 +10,7 @@ export interface OmProtocolInstance {
 }
 
 export interface DataIdentityOptions {
-	domain: Domain;
+	domain: AnyDomain;
 	variable: string;
 	bounds: Bounds | undefined;
 }
@@ -68,7 +68,7 @@ export interface OmProtocolSettings {
 
 	// dynamic
 	colorScales: ColorScales;
-	domainOptions: Domain[];
+	domainOptions: AnyDomain[];
 	clippingOptions: ClippingOptions;
 
 	/**
@@ -106,6 +106,19 @@ export type TileIndex = {
 	y: number;
 };
 
+/**
+ * Data for one concrete domain layer in a seamless composite request.
+ * Passed to the worker so it can blend values across domain boundaries.
+ */
+export interface SeamlessLayerRenderData {
+	domain: Domain;
+	data: Data;
+	ranges: DimensionRange[];
+	/** Full geographic bounds of this domain (not viewport-cropped). */
+	domainBounds: Bounds;
+	blendWidthDeg: number;
+}
+
 export interface TileRequest {
 	type: 'getArrayBuffer' | 'getImage' | 'cancel';
 	key: string;
@@ -116,6 +129,8 @@ export interface TileRequest {
 	ranges: DimensionRange[];
 	clippingOptions: ResolvedClippingOptions | undefined;
 	signal?: AbortSignal;
+	/** Present when the original request was for a seamless composite domain. */
+	seamlessLayers?: SeamlessLayerRenderData[];
 }
 
 export type TileResponse = ImageBitmap | ArrayBuffer;
@@ -274,6 +289,7 @@ export interface Domain {
 	grid: GridData;
 	time_interval: ModelDt;
 	model_interval: ModelUpdateInterval;
+	windUVComponents?: boolean;
 }
 
 export type ModelDt =
@@ -294,8 +310,54 @@ export type ModelUpdateInterval =
 	| 'daily'
 	| 'monthly';
 
+/** A single layer within a seamless domain, referencing a concrete grid-based domain. */
+export interface SeamlessLayer {
+	/** The `value` of a concrete `Domain` entry to use for this layer. */
+	domainValue: string;
+	/** This layer is only used when the map zoom level is >= minZoom. */
+	minZoom: number;
+	/**
+	 * Width of the blend zone in degrees at the edges of this layer's geographic bounds.
+	 * 0 means no blending (hard cut); only meaningful for layers that aren't global.
+	 */
+	blendWidthDeg: number;
+	/**
+	 * Maximum lead time in hours that this layer's model produces forecast data for.
+	 * When the requested timestep exceeds this horizon the layer is skipped entirely,
+	 * falling through to the next coarser layer instead of issuing a request that
+	 * would return a 404 (which browsers surface as a CORS error).
+	 */
+	maxForecastHours?: number;
+}
+
+/**
+ * A virtual domain that automatically picks and blends several concrete domains
+ * based on the current zoom level.  Layers should be ordered from the
+ * highest-resolution/most-specific (first) to the global fallback (last).
+ */
+export interface SeamlessDomain {
+	value: string;
+	label?: string;
+	type: 'seamless';
+	layers: SeamlessLayer[];
+	/**
+	 * Time resolution shared by all constituent layers.
+	 * Mirrors the `time_interval` on `Domain` so consuming code can treat
+	 * `AnyDomain` uniformly for time-navigation purposes.
+	 */
+	time_interval?: ModelDt;
+	/**
+	 * Model-run update cadence shared by all constituent layers.
+	 * Mirrors the `model_interval` on `Domain`.
+	 */
+	model_interval?: ModelUpdateInterval;
+}
+
+/** Union of a regular grid domain and a seamless composite domain. */
+export type AnyDomain = Domain | SeamlessDomain;
+
 export interface DomainGroups {
-	[key: string]: Domain[];
+	[key: string]: AnyDomain[];
 }
 
 export type Bounds = [

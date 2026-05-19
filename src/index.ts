@@ -3,6 +3,7 @@ export { omProtocol } from './om-protocol';
 // Types
 
 export type {
+	AnyDomain,
 	ClippingOptions,
 	Data,
 	Domain,
@@ -13,7 +14,9 @@ export type {
 	GeoJsonPosition,
 	OmProtocolSettings,
 	OmUrlState,
-	RenderableColorScale
+	RenderableColorScale,
+	SeamlessDomain,
+	SeamlessLayer
 } from './types';
 
 // Functions
@@ -33,6 +36,7 @@ export { getColor, getColorScale } from './utils/styling';
 // Classes
 
 export { GridFactory } from './grids/index';
+export { WeatherMapLayerFileReader } from './om-file-reader';
 
 // Objects / Constants
 

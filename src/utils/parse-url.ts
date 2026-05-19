@@ -152,3 +152,10 @@ export const parseMetaJson = async (omUrl: string) => {
 			)
 	);
 };
+
+export const normalizeUrl = async (url: string): Promise<string> => {
+	if (url.includes('.json')) {
+		return parseMetaJson(url);
+	}
+	return url;
+};
