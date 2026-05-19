@@ -18,7 +18,6 @@ import type {
 	Data,
 	DimensionRange,
 	Domain,
-	OmProtocolInstance,
 	OmProtocolSettings,
 	ParsedRequest,
 	TileJSON,
