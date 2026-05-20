@@ -28,6 +28,18 @@
 	"files": [
 		"dist/**/*"
 	],
+	"watch": {
+		"generate:colorscales": {
+			"patterns": [
+				"scripts/generate-colorscales.ts"
+			],
+			"extensions": "ts",
+			"ignore": [
+				"**/node_modules/**",
+				"**/dist/**"
+			]
+		}
+	},
 	"scripts": {
 		"dev": "vite build --watch",
 		"dev:umd": "vite build --config vite.config.umd.ts --watch",
@@ -35,6 +47,7 @@
 		"coverage": "vitest run --coverage",
 		"lint": "prettier --check . && eslint .",
 		"generate:colorscales": "tsx scripts/generate-colorscales.ts && prettier --write src/utils/color-scales.ts",
+		"watch:colorscales": "npm-watch generate:colorscales",
 		"build:esm": "vite build",
 		"build:cjs": "vite build --config vite.config.cjs.ts",
 		"build:umd": "vite build --config vite.config.umd.ts",
@@ -58,6 +71,7 @@
 		"globals": "^17.0.0",
 		"jiti": "^2.6.1",
 		"live-server": "^1.2.2",
+		"npm-watch": "^0.13.0",
 		"prettier": "^3.6.2",
 		"tsx": "^4.20.6",
 		"typescript": "^6.0.3",
@@ -69,7 +83,7 @@
 	"dependencies": {
 		"@mapbox/tilebelt": "^2.0.3",
 		"@mapbox/vector-tile": "^2.0.4",
-		"@openmeteo/file-reader": "^0.0.15",
+		"@openmeteo/file-reader": "^0.0.16",
 		"maplibre-gl": "^5.20.1",
 		"pbf": "^4.0.1",
 		"point-in-polygon-hao": "^1.2.4"
