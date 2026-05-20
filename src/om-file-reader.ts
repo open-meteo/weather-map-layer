@@ -8,8 +8,9 @@ import {
 } from '@openmeteo/file-reader';
 
 import { fastAtan2, radiansToDegrees } from './utils/math';
+import { wktToGridData } from './utils/wkt';
 
-import type { Data, DimensionRange } from './types';
+import type { Data, DimensionRange, GridData } from './types';
 
 /**
  * Configuration options for the WeatherMapLayerFileReader.
@@ -45,6 +46,8 @@ export class WeatherMapLayerFileReader {
 	readonly cache: BlockCache;
 	readonly config: Required<Omit<FileReaderConfig, 'cache'>>;
 	private readonly allDerivationRules: VariableDerivationRule[];
+	private currentUrl: string | undefined;
+	private readonly gridParametersCache = new Map<string, GridData>();
 
 	constructor(config: FileReaderConfig = {}) {
 		this.config = {
@@ -59,7 +62,39 @@ export class WeatherMapLayerFileReader {
 		this.cache = config.cache ?? new LruBlockCache(64 * 1024, 128);
 	}
 
+	async getGridParameters(variable: string): Promise<GridData> {
+		if (!this.reader) {
+			throw new Error('Reader not initialized');
+		}
+
+		const cacheKey = `${this.currentUrl}:${variable}`;
+		const cached = this.gridParametersCache.get(cacheKey);
+		if (cached) return cached;
+
+		const variableReader = await this.reader.getChildByName(variable);
+
+		if (!variableReader) {
+			throw new Error(`Variable ${variable} not found`);
+		}
+
+		const dimensions = variableReader.getDimensions();
+
+		if (dimensions.length !== 2) {
+			throw new Error(`Variable ${variable} does not have 2 dimensions`);
+		}
+
+		const [ny, nx] = dimensions;
+
+		const wkt2Crs = await this.reader.getChildByName('crs_wkt');
+		const wkt = wkt2Crs!.readScalar<string>(OmDataType.String)!;
+		const grid = wktToGridData(wkt, nx, ny);
+
+		this.gridParametersCache.set(cacheKey, grid);
+		return grid;
+	}
+
 	async setToOmFile(omUrl: string): Promise<void> {
+		this.currentUrl = omUrl;
 		this.dispose();
 		const s3Backend = new OmHttpBackend({
 			url: omUrl,
