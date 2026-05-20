@@ -5,6 +5,7 @@ import { checkAgainstBounds } from './utils/bounds';
 import { clipRasterToPolygons } from './utils/clipping';
 import { generateContours } from './utils/contours';
 import { generateGridPoints } from './utils/grid-points';
+import { generateIsobands } from './utils/isobands';
 import { tile2lat, tile2lon } from './utils/math';
 import { getColor } from './utils/styling';
 
@@ -100,6 +101,9 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 		if (message.data.renderOptions.drawContours) {
 			const intervals = message.data.renderOptions.intervals;
 			generateContours(pbf, values, grid, x, y, z, tileSize, intervals, clippingOptions);
+		}
+		if (message.data.renderOptions.drawIsobands) {
+			generateIsobands(pbf, values, grid, x, y, z, tileSize, colorScale, clippingOptions);
 		}
 
 		const arrayBuffer = pbf.finish();
