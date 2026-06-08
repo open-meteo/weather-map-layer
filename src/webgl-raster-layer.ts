@@ -242,14 +242,6 @@ export class WebGLRasterLayer implements CustomLayerInterface {
 			{ start: 0, end: this.domain.grid.nx }
 		]);
 		if (!this.gl || !data.values) return;
-
-		if (this.variable.includes('wind')) {
-			for (let i = 0; i < data.values.length; i++) {
-				data.values[i] = Math.sqrt(
-					data.values[i] * data.values[i] + data.directions![i] * data.directions![i]
-				);
-			}
-		}
 		const { nx, ny } = this.domain.grid;
 		console.log('Data loaded:', { nx, ny, dataLength: data.values.length });
 		console.log('Data range: ', data.values.slice(0, 10));

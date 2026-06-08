@@ -32,7 +32,7 @@ export class WebGLWindLayer implements CustomLayerInterface {
 	// Animation parameters
 	private numParticles = 65536; // Must be a perfect square for texture dimensions
 	private particleTextureSize = 256; // sqrt(65536) = 256
-	private speedFactor = 0.8;
+	private speedFactor = 0.00004;
 	private dropRate = 0.003;
 	private animationTime = 0;
 
@@ -97,12 +97,12 @@ export class WebGLWindLayer implements CustomLayerInterface {
 	private getZoomAdjustedParameters() {
 		const zoom = this.map?.getZoom() || 0;
 
-		// Increase drop rate and reduce life at higher zoom levels
-		const zoomFactor = Math.max(1, zoom - 2) / 10;
+		// Reduce speed at higher zoom levels so particles don't fly across the screen
+		const zoomFactor = Math.max(1, zoom) / 2;
 
 		return {
 			dropRate: this.dropRate * (1 + zoomFactor * 2),
-			speedFactor: this.speedFactor * (1 + zoomFactor * 0.1)
+			speedFactor: this.speedFactor / (1 + zoomFactor * 0.5)
 		};
 	}
 
@@ -257,17 +257,18 @@ export class WebGLWindLayer implements CustomLayerInterface {
 
 		const speedValues = data.values!;
 		const directionValues = data.directions!;
+
+		if (!this.gl || !speedValues || !directionValues) return;
+
 		const uValues = new Float32Array(speedValues.length);
 		const vValues = new Float32Array(speedValues.length);
 
 		for (let i = 0; i < speedValues.length; i++) {
 			const speed = speedValues[i];
-			const direction = directionValues[i] * (Math.PI / 180);
+			const direction = (directionValues[i] + 180) * (Math.PI / 180);
 			uValues[i] = speed * Math.sin(direction);
 			vValues[i] = speed * Math.cos(direction);
 		}
-
-		if (!this.gl || !data.values || !data.directions) return;
 
 		const { nx, ny } = this.domain.grid;
 		const gl = this.gl;
@@ -324,7 +325,7 @@ export class WebGLWindLayer implements CustomLayerInterface {
 		this.renderParticles(gl as WebGL2RenderingContext, options);
 	}
 
-	private updateParticles(gl: WebGL2RenderingContext, _options: CustomRenderMethodInput): void {
+	private updateParticles(gl: WebGL2RenderingContext, options: CustomRenderMethodInput): void {
 		// Disable blending for the update pass
 		// The particle update step is a pure data-writing operation.
 		// Blending should be off to ensure the exact RGBA values calculated in the
@@ -368,6 +369,23 @@ export class WebGLWindLayer implements CustomLayerInterface {
 			bounds[2],
 			bounds[3]
 		);
+
+		// Compute viewport bounds in normalized 0-1 space
+		const mapBounds = this.map!.getBounds();
+		const viewportNorm = [
+			(mapBounds.getWest() - bounds[0]) / (bounds[2] - bounds[0]),
+			(mapBounds.getSouth() - bounds[1]) / (bounds[3] - bounds[1]),
+			(mapBounds.getEast() - bounds[0]) / (bounds[2] - bounds[0]),
+			(mapBounds.getNorth() - bounds[1]) / (bounds[3] - bounds[1])
+		];
+		gl.uniform4f(
+			gl.getUniformLocation(this.program!, 'u_viewport'),
+			viewportNorm[0],
+			viewportNorm[1],
+			viewportNorm[2],
+			viewportNorm[3]
+		);
+
 		const params = this.getZoomAdjustedParameters();
 		gl.uniform1f(gl.getUniformLocation(this.program!, 'u_drop_rate'), params.dropRate);
 		gl.uniform1f(gl.getUniformLocation(this.program!, 'u_speed_factor'), params.speedFactor);
@@ -506,6 +524,7 @@ export class WebGLWindLayer implements CustomLayerInterface {
         uniform sampler2D u_wind_u;
         uniform sampler2D u_wind_v;
         uniform vec4 u_bounds; // [minLon, minLat, maxLon, maxLat]
+        uniform vec4 u_viewport; // [minNorm, maxNorm] normalized 0-1 viewport bounds
         uniform float u_speed_factor;
         uniform float u_drop_rate;
         uniform float u_time;
@@ -523,23 +542,13 @@ export class WebGLWindLayer implements CustomLayerInterface {
             float age = particle.z;
             float life = particle.w;
 
-            // Sample wind at current position (which is also the texture coord for wind)
+            // Sample wind at current position
             float windU = texture2D(u_wind_u, pos).r;
             float windV = texture2D(u_wind_v, pos).r;
-            vec2 wind_vel = vec2(windU, windV);
 
-            // --- Correct Velocity Scaling ---
-            // The velocity needs to be scaled from m/s to normalized coordinates per frame.
-            // This is an approximation that works well for visualization.
-            const float delta_t = 0.016; // Assume ~60fps
-            vec2 grid_span = u_bounds.zw - u_bounds.xy; // [lonSpan, latSpan]
-            vec2 normalized_vel = wind_vel / grid_span * u_speed_factor * delta_t;
-
-            // The velocity in the latitude direction needs to be flipped because texture V-coordinates
-            // go from 0 (top) to 1 (bottom), opposite of latitude.
-            normalized_vel.y *= -1.0;
-
-            pos += normalized_vel;
+            // Advect particle: wind_vel is in m/s, u_speed_factor converts to
+            // a visually appropriate per-frame displacement in normalized coords.
+            pos += vec2(windU, windV) * u_speed_factor;
 
             // Age the particle
             age += 1.0;
@@ -554,9 +563,12 @@ export class WebGLWindLayer implements CustomLayerInterface {
             // Wrap longitude
             pos.x = fract(pos.x);
 
-            if (needs_reset) {
-                // Respawn particle at a new random location
-                pos = vec2(random(v_texCoord + u_time), random(v_texCoord + u_time + 1.0));
+if (needs_reset) {
+                // Respawn particle within the current viewport
+                vec2 viewportMin = u_viewport.xy;
+                vec2 viewportMax = u_viewport.zw;
+                vec2 range = viewportMax - viewportMin;
+                pos = viewportMin + range * vec2(random(v_texCoord * 127.0 + u_time), random(v_texCoord * 131.0 + u_time + 1.0));
                 age = 0.0;
             }
 
