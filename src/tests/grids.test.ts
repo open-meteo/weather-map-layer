@@ -1,11 +1,9 @@
-import { domainOptions } from '../domains';
 import { ProjectionGrid } from '../grids/projected';
 import { LambertConformalConicProjection, RotatedLatLonProjection } from '../grids/projections';
 import { RegularGrid } from '../grids/regular';
 import { describe, expect, test } from 'vitest';
 
 import type {
-	AnyProjectionGridData,
 	DimensionRange,
 	LCCProjectionData,
 	ProjectionGridFromGeographicOrigin,
@@ -13,11 +11,40 @@ import type {
 	RotatedLatLonProjectionData
 } from '../types';
 
-const dmiDomain = domainOptions.find((d) => d.value === 'dmi_harmonie_arome_europe');
-const knmiDomain = domainOptions.find((d) => d.value === 'knmi_harmonie_arome_europe');
+const dmiDomainGrid = {
+	type: 'projectedFromGeographicOrigin',
+	nx: 1906,
+	ny: 1606,
+	latitude: 39.671,
+	longitude: -25.421997,
+	dx: 2000,
+	dy: 2000,
+	zoom: 4,
+	projection: {
+		λ0: 352,
+		ϕ0: 55.5,
+		ϕ1: 55.5,
+		ϕ2: 55.5,
+		radius: 6371229,
+		name: 'LambertConformalConicProjection'
+	}
+};
+const knmiDomainGrid = {
+	type: 'projectedFromBounds',
+	nx: 676,
+	ny: 564,
+	latitudeBounds: [39.740627, 62.619324],
+	longitudeBounds: [-25.162262, 38.75702],
+	zoom: 3.5,
+	projection: {
+		rotatedLat: 35,
+		rotatedLon: -8,
+		name: 'RotatedLatLonProjection'
+	}
+};
 
 test('Test LambertConformalConicProjection for DMI', () => {
-	const projectedGrid = dmiDomain?.grid as AnyProjectionGridData;
+	const projectedGrid = dmiDomainGrid;
 	const lccProjectionData = projectedGrid.projection as LCCProjectionData;
 	const proj = new LambertConformalConicProjection(lccProjectionData);
 	expect(proj.ρ0).toBe(0.6872809586016131);
@@ -34,7 +61,7 @@ test('Test LambertConformalConicProjection for DMI', () => {
 });
 
 test('Test RotatedLatLon for KNMI', () => {
-	const projectedGrid = knmiDomain?.grid as AnyProjectionGridData;
+	const projectedGrid = knmiDomainGrid;
 	const rotatedLatLonProjectionData = projectedGrid.projection as RotatedLatLonProjectionData;
 	const proj = new RotatedLatLonProjection(rotatedLatLonProjectionData);
 	expect(proj.θ).toBe(0.9599310885968813);

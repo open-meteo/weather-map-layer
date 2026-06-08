@@ -24,7 +24,7 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 	const { z, x, y } = message.data.tileIndex;
 	const values = message.data.data.values;
 	const ranges = message.data.ranges;
-	const domain = message.data.dataOptions.domain;
+	const gridData = message.data.dataOptions.grid;
 	const tileSize = message.data.renderOptions.tileSize;
 	const colorScale = message.data.renderOptions.colorScale;
 	const clippingOptions = message.data.clippingOptions;
@@ -38,7 +38,7 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 		// Initialized with zeros
 		const rgba = new Uint8ClampedArray(pixels * 4);
 
-		const grid = GridFactory.create(domain.grid, ranges);
+		const grid = GridFactory.create(gridData, ranges);
 
 		for (let i = 0; i < tileSize; i++) {
 			const lat = tile2lat(y + i / tileSize, z);
@@ -90,7 +90,7 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 
 		const pbf = new Pbf();
 
-		const grid = GridFactory.create(domain.grid, ranges);
+		const grid = GridFactory.create(gridData, ranges);
 		if (message.data.renderOptions.drawGrid) {
 			generateGridPoints(pbf, grid, values, directions, x, y, z, clippingOptions);
 		}

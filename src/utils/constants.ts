@@ -7,16 +7,14 @@ export const VECTOR_TILE_EXTENT = 4096;
 // Parameters affecting data identity
 export const DATA_RELEVANT_PARAMS = new Set(['variable']);
 
-/* OM URL */
+/* OM Url */
 export const OM_PREFIX_REGEX = /^om:\/\/([^?]+)(?:\?(.*))?$/;
 
 export const TILE_SUFFIX_REGEX = /(?:\/)(\d+)(?:\/)(\d+)(?:\/)(\d+)$/i;
 
 export const TIME_SELECTED_REGEX = /([0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}00)/;
 
-/* Variables */
-export const RESOLVE_DOMAIN_REGEX = /data_spatial\/(?<domain>[^/]+)/;
-
+/* Domain & Variables */
 export const DOMAIN_META_REGEX =
 	/(http|https):\/\/(?<uri>[\s\S]+)\/(?<domain>[\s\S]+)\/(?<meta>[\s\S]+).json/;
 

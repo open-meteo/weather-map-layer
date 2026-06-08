@@ -6,7 +6,7 @@ import { defaultResolveRequest, parseRequest } from './utils/parse-request';
 import { parseMetaJson } from './utils/parse-url';
 import { COLOR_SCALES_WITH_ALIASES as defaultColorScales } from './utils/styling';
 
-import { domainOptions as defaultDomainOptions } from './domains';
+// import { domainOptions as defaultDomainOptions } from './domains';
 import { GridFactory } from './grids/index';
 import { defaultFileReaderConfig } from './om-file-reader';
 import { ensureData, getOrCreateState, getProtocolInstance } from './om-protocol-state';
@@ -34,7 +34,7 @@ export const defaultOmProtocolSettings: OmProtocolSettings = {
 	// dynamic
 	clippingOptions: undefined,
 	colorScales: defaultColorScales,
-	domainOptions: defaultDomainOptions,
+	// domainOptions: defaultDomainOptions,
 
 	resolveRequest: defaultResolveRequest,
 	postReadCallback: undefined
@@ -55,7 +55,7 @@ export const omProtocol = async (
 	const instance = getProtocolInstance(settings);
 
 	const url = await normalizeUrl(params.url);
-	const request = parseRequest(url, settings);
+	const request = await parseRequest(url, settings, instance.omFileReader);
 
 	const state = getOrCreateState(
 		instance.stateByKey,
@@ -160,7 +160,7 @@ const getTilejson = async (
 	clippingOptions?: ResolvedClippingOptions
 ): Promise<TileJSON> => {
 	// We initialize the grid with the ranges set to null, because we want to find out the maximum bounds of this grid
-	const grid = GridFactory.create(dataOptions.domain.grid, null);
+	const grid = GridFactory.create(dataOptions.grid, null);
 	let bounds;
 	if (clippingOptions && clippingOptions.bounds) {
 		bounds = constrainBounds(grid.getBounds(), clippingOptions.bounds) ?? grid.getBounds();

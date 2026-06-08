@@ -10,7 +10,8 @@ export interface OmProtocolInstance {
 }
 
 export interface DataIdentityOptions {
-	domain: Domain;
+	baseUrl: string;
+	grid: GridData;
 	variable: string;
 	bounds: Bounds | undefined;
 }
@@ -55,8 +56,9 @@ export interface OmUrlState {
  */
 export type RequestResolver = (
 	urlComponents: ParsedUrlComponents,
-	settings: OmProtocolSettings
-) => { dataOptions: DataIdentityOptions; renderOptions: RenderOptions };
+	settings: OmProtocolSettings,
+	reader: WeatherMapLayerFileReader
+) => Promise<{ dataOptions: DataIdentityOptions; renderOptions: RenderOptions }>;
 
 export type PostReadCallback =
 	| ((omFileReader: WeatherMapLayerFileReader, data: Data, state: OmUrlState) => void)
@@ -68,7 +70,6 @@ export interface OmProtocolSettings {
 
 	// dynamic
 	colorScales: ColorScales;
-	domainOptions: Domain[];
 	clippingOptions: ClippingOptions;
 
 	/**
@@ -178,7 +179,6 @@ export type ColorScales = Record<string, ColorScale>;
 interface BaseGridData {
 	nx: number;
 	ny: number;
-	zoom?: number;
 }
 
 // Union type for all grid types
@@ -271,10 +271,14 @@ export interface LAEAProjectionData {
 export interface Domain {
 	value: string;
 	label?: string;
-	grid: GridData;
+	// grid: GridData;
 	time_interval: ModelDt;
 	model_interval: ModelUpdateInterval;
 }
+
+// export interface DomainGrid {
+// 	grid: GridData;
+// }
 
 export type ModelDt =
 	| '15_minute'
