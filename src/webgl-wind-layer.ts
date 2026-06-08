@@ -255,9 +255,17 @@ export class WebGLWindLayer implements CustomLayerInterface {
 		]);
 		console.log(data);
 
-		// For now we implemented a small hack in the reader to get raw u and v values
-		const uValues = data.values!;
-		const vValues = data.directions!;
+		const speedValues = data.values!;
+		const directionValues = data.directions!;
+		const uValues = new Float32Array(speedValues.length);
+		const vValues = new Float32Array(speedValues.length);
+
+		for (let i = 0; i < speedValues.length; i++) {
+			const speed = speedValues[i];
+			const direction = directionValues[i] * (Math.PI / 180);
+			uValues[i] = speed * Math.sin(direction);
+			vValues[i] = speed * Math.cos(direction);
+		}
 
 		if (!this.gl || !data.values || !data.directions) return;
 
