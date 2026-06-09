@@ -295,15 +295,15 @@ The protocol handler resolves the seamless domain on the client side: the `lates
 
 ### Available seamless domains
 
-| Domain value          | Constituent models (finest → global)                              |
-| --------------------- | ----------------------------------------------------------------- |
-| `dwd_icon_seamless`   | dwd_icon_d2 (zoom 4+) → dwd_icon_eu (zoom 2+) → dwd_icon         |
-| `ncep_gfs_seamless`   | ncep_hrrr_conus (zoom 3+) → ncep_gfs025                          |
-| `meteofrance_seamless`| meteofrance_arome_france0025 (zoom 5+) → meteofrance_arpege_europe (zoom 3+) → meteofrance_arpege_world025 |
-| `cmc_gem_seamless`    | cmc_gem_hrdps (zoom 4+) → cmc_gem_rdps (zoom 2+) → cmc_gem_gdps  |
-| `jma_seamless`        | jma_msm (zoom 4+) → jma_gsm                                      |
-| `ukmo_seamless`       | ukmo_uk_deterministic_2km (zoom 4+) → ukmo_global_deterministic_10km |
-| `knmi_seamless`       | knmi_harmonie_arome_netherlands (zoom 5+) → knmi_harmonie_arome_europe |
+| Domain value           | Constituent models (finest → global)                                                                       |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `dwd_icon_seamless`    | dwd_icon_d2 (zoom 4+) → dwd_icon_eu (zoom 2+) → dwd_icon                                                   |
+| `ncep_gfs_seamless`    | ncep_hrrr_conus (zoom 3+) → ncep_gfs025                                                                    |
+| `meteofrance_seamless` | meteofrance_arome_france0025 (zoom 5+) → meteofrance_arpege_europe (zoom 3+) → meteofrance_arpege_world025 |
+| `cmc_gem_seamless`     | cmc_gem_hrdps (zoom 4+) → cmc_gem_rdps (zoom 2+) → cmc_gem_gdps                                            |
+| `jma_seamless`         | jma_msm (zoom 4+) → jma_gsm                                                                                |
+| `ukmo_seamless`        | ukmo_uk_deterministic_2km (zoom 4+) → ukmo_global_deterministic_10km                                       |
+| `knmi_seamless`        | knmi_harmonie_arome_netherlands (zoom 5+) → knmi_harmonie_arome_europe                                     |
 
 A ready-to-run example is available at `examples/seamless.html`.
 
