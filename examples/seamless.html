@@ -34,8 +34,8 @@
 				container: 'map',
 				style: 'https://map-assets.open-meteo.com/styles/minimal-planet-maps.json', // replace with your own style sheet
 				hash: true,
-				center: [8.2275, 46.8182],
-				zoom: 4
+				center: [10, 41],
+				zoom: 1.9
 			});
 
 			// below url is used to request 'latest.json' and get the nearest timestep to "current local time" + 1 hour
@@ -63,21 +63,81 @@
 
 				// Seamless domain borders
 				const borders = [
-					{ id: 'eu',  bbox: [-23.5, 29.5, 62.5,  70.5],  minZoom: 2, label: 'DWD ICON EU' },
-					{ id: 'd2',  bbox: [-3.94, 43.18, 20.34, 58.08], minZoom: 4, label: 'DWD ICON D2' }
+					{ id: 'eu', bbox: [-23.5, 29.5, 62.5, 70.5], minZoom: 2, label: 'DWD ICON EU' },
+					{ id: 'd2', bbox: [-3.94, 43.18, 20.34, 58.08], minZoom: 4, label: 'DWD ICON D2' }
 				];
-				const bbox2poly = ([w, s, e, n]) => [[[w,s],[e,s],[e,n],[w,n],[w,s]]];
+				const bbox2poly = ([w, s, e, n]) => [
+					[
+						[w, s],
+						[e, s],
+						[e, n],
+						[w, n],
+						[w, s]
+					]
+				];
 				map.addSource('seamlessBorders', {
 					type: 'geojson',
-					data: { type: 'FeatureCollection', features: borders.map(b => ({ type: 'Feature', geometry: { type: 'Polygon', coordinates: bbox2poly(b.bbox) }, properties: b })) }
+					data: {
+						type: 'FeatureCollection',
+						features: borders.map((b) => ({
+							type: 'Feature',
+							geometry: { type: 'Polygon', coordinates: bbox2poly(b.bbox) },
+							properties: b
+						}))
+					}
 				});
 				for (const b of borders) {
-					const opacity = ['interpolate', ['linear'], ['zoom'], Math.max(0, b.minZoom - 2), 0, b.minZoom, 1];
-					const lineColor = ['step', ['zoom'], 'rgba(0,0,0,0.5)', b.minZoom, 'rgba(30,120,255,0.8)'];
+					const opacity = [
+						'interpolate',
+						['linear'],
+						['zoom'],
+						Math.max(0, b.minZoom - 2),
+						0,
+						b.minZoom,
+						1
+					];
+					const lineColor = [
+						'step',
+						['zoom'],
+						'rgba(0,0,0,0.5)',
+						b.minZoom,
+						'rgba(30,120,255,0.8)'
+					];
 					const textColor = ['step', ['zoom'], 'rgba(0,0,0,0.75)', b.minZoom, 'rgba(30,120,255,1)'];
 					const filter = ['==', ['get', 'id'], b.id];
-					map.addLayer({ id: `sb-line-${b.id}`, type: 'line', source: 'seamlessBorders', minzoom: Math.max(0, b.minZoom - 2), filter, paint: { 'line-color': lineColor, 'line-width': 1.5, 'line-dasharray': [4, 3], 'line-opacity': opacity } });
-					map.addLayer({ id: `sb-label-${b.id}`, type: 'symbol', source: 'seamlessBorders', minzoom: Math.max(0, b.minZoom - 2), filter, layout: { 'text-field': ['get', 'label'], 'text-size': 11, 'symbol-placement': 'line', 'symbol-spacing': 400, 'text-offset': [0, -0.8] }, paint: { 'text-color': textColor, 'text-halo-color': 'rgba(255,255,255,0.5)', 'text-halo-width': 1.5, 'text-opacity': opacity } });
+					map.addLayer({
+						id: `sb-line-${b.id}`,
+						type: 'line',
+						source: 'seamlessBorders',
+						minzoom: Math.max(0, b.minZoom - 2),
+						filter,
+						paint: {
+							'line-color': lineColor,
+							'line-width': 1.5,
+							'line-dasharray': [4, 3],
+							'line-opacity': opacity
+						}
+					});
+					map.addLayer({
+						id: `sb-label-${b.id}`,
+						type: 'symbol',
+						source: 'seamlessBorders',
+						minzoom: Math.max(0, b.minZoom - 2),
+						filter,
+						layout: {
+							'text-field': ['get', 'label'],
+							'text-size': 11,
+							'symbol-placement': 'line',
+							'symbol-spacing': 400,
+							'text-offset': [0, -0.8]
+						},
+						paint: {
+							'text-color': textColor,
+							'text-halo-color': 'rgba(255,255,255,0.5)',
+							'text-halo-width': 1.5,
+							'text-opacity': opacity
+						}
+					});
 				}
 			});
 		</script>
