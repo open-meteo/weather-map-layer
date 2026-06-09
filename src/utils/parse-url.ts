@@ -4,11 +4,12 @@ import {
 	DATA_RELEVANT_PARAMS,
 	DOMAIN_META_REGEX,
 	OM_PREFIX_REGEX,
+	RESOLVE_DOMAIN_REGEX,
 	TILE_SUFFIX_REGEX,
 	TIME_STEP_REGEX
 } from './constants';
 
-import { DomainMetaDataJson, ParsedUrlComponents, TileIndex } from '../types';
+import { AnyDomain, DomainMetaDataJson, ParsedUrlComponents, TileIndex } from '../types';
 
 const parseTileIndex = (url: string): { tileIndex: TileIndex | null; remainingUrl: string } => {
 	const match = url.match(TILE_SUFFIX_REGEX);
@@ -71,18 +72,41 @@ const getModifiedAmount = (amount: number, modifier = '+') => {
 // {meta}.json files are cached for 60 seconds
 const metaDataCache = new Map<string, Promise<DomainMetaDataJson>>();
 
-export const parseMetaJson = async (omUrl: string) => {
+/**
+ * For SeamlessDomain URLs, return the equivalent URL using the global (last-layer)
+ * backing domain so the server request resolves correctly.  The server only serves
+ * concrete domain paths; the seamless domain is a client-side concept.
+ */
+const resolveJsonFetchUrl = (jsonUrl: string, domainOptions?: AnyDomain[]): string => {
+	if (!domainOptions) return jsonUrl;
+	const domainMatch = jsonUrl.match(RESOLVE_DOMAIN_REGEX);
+	const urlDomainValue = domainMatch?.groups?.domain;
+	if (!urlDomainValue) return jsonUrl;
+	const domain = domainOptions.find((d) => d.value === urlDomainValue);
+	if (!domain || !('layers' in domain)) return jsonUrl;
+	// domain is a SeamlessDomain — use the last (global fallback) layer for the fetch
+	const backingDomainValue = domain.layers[domain.layers.length - 1].domainValue;
+	return jsonUrl.replace(
+		`/data_spatial/${urlDomainValue}/`,
+		`/data_spatial/${backingDomainValue}/`
+	);
+};
+
+export const parseMetaJson = async (omUrl: string, domainOptions?: AnyDomain[]) => {
 	let date = new Date();
 	const url = omUrl.replace('om://', '');
 
 	// jsonUrl should be everything until ".json" of the current url (inclusive)
 	const jsonIndex = url.indexOf('.json');
 	const jsonUrl = url.slice(0, jsonIndex + '.json'.length);
+	// For seamless domains, fetch from the global backing domain; cache under the
+	// original (seamless) key so duplicate requests are still deduplicated.
+	const fetchJsonUrl = resolveJsonFetchUrl(jsonUrl, domainOptions);
 
 	if (!metaDataCache.has(jsonUrl)) {
 		metaDataCache.set(
 			jsonUrl,
-			fetch(jsonUrl).then((response) => response.json() as Promise<DomainMetaDataJson>)
+			fetch(fetchJsonUrl).then((response) => response.json() as Promise<DomainMetaDataJson>)
 		);
 		setTimeout(() => metaDataCache.delete(jsonUrl), 60000); // delete after 60 seconds
 	}
@@ -153,9 +177,9 @@ export const parseMetaJson = async (omUrl: string) => {
 	);
 };
 
-export const normalizeUrl = async (url: string): Promise<string> => {
+export const normalizeUrl = async (url: string, domainOptions?: AnyDomain[]): Promise<string> => {
 	if (url.includes('.json')) {
-		return parseMetaJson(url);
+		return parseMetaJson(url, domainOptions);
 	}
 	return url;
 };

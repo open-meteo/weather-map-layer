@@ -53,7 +53,7 @@ export const omProtocol = async (
 
 	const instance = getProtocolInstance(settings);
 
-	const url = await normalizeUrl(params.url);
+	const url = await normalizeUrl(params.url, settings.domainOptions);
 	const request = parseRequest(url, settings);
 
 	// Route seamless composite domains to the dedicated handler
