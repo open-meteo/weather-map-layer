@@ -50,7 +50,7 @@
 		"@typescript-eslint/eslint-plugin": "^8.46.2",
 		"@typescript-eslint/parser": "^8.46.2",
 		"@vitest/coverage-v8": "^4.0.15",
-		"concurrently": "^9.2.1",
+		"concurrently": "^10.0.1",
 		"d3-color": "^3.1.0",
 		"d3-interpolate": "^3.0.1",
 		"eslint": "^10.0.1",
@@ -68,10 +68,10 @@
 	},
 	"dependencies": {
 		"@mapbox/tilebelt": "^2.0.3",
-		"@mapbox/vector-tile": "^2.0.4",
+		"@mapbox/vector-tile": "^3.0.0",
 		"@openmeteo/file-reader": "^0.0.15",
 		"maplibre-gl": "^5.20.1",
-		"pbf": "^4.0.1",
+		"pbf": "^5.1.0",
 		"point-in-polygon-hao": "^1.2.4"
 	}
 }

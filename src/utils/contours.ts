@@ -1,5 +1,5 @@
 import { GridInterface } from '../grids/index';
-import Pbf from 'pbf';
+import { PbfWriter } from 'pbf';
 
 import { type ResolvedClippingOptions, createClippingTester } from './clipping';
 import { VECTOR_TILE_EXTENT } from './constants';
@@ -102,7 +102,7 @@ export const ratio = (a: number, b: number, c: number) => {
 };
 
 export const generateContours = (
-	pbf: Pbf,
+	pbf: PbfWriter,
 	values: Float32Array,
 	grid: GridInterface,
 	x: number,
