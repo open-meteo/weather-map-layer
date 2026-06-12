@@ -1,16 +1,14 @@
-import { GridInterface } from '../grids';
 import Pbf from 'pbf';
 
 import { type ResolvedClippingOptions, createClippingTester } from './clipping';
 import { VECTOR_TILE_EXTENT } from './constants';
 import { degreesToRadians, rotatePoint, tile2lat, tile2lon } from './math';
 import { command, writeLayer, zigzag } from './pbf';
+import type { VectorSampler } from './seamless-sampling';
 
 export const generateArrows = (
 	pbf: Pbf,
-	values: Float32Array,
-	directions: Float32Array,
-	grid: GridInterface,
+	sampleVector: VectorSampler,
 	x: number,
 	y: number,
 	z: number,
@@ -45,10 +43,8 @@ export const generateArrows = (
 				continue;
 			}
 
-			const speed = grid.getLinearInterpolatedValue(values, lat, lon);
-			const direction = degreesToRadians(
-				grid.getLinearInterpolatedValue(directions, lat, lon) + 180
-			);
+			const { value: speed, direction: directionDeg } = sampleVector(lat, lon);
+			const direction = degreesToRadians(directionDeg + 180);
 
 			const properties: { value?: number; direction?: number } = {
 				value: speed,

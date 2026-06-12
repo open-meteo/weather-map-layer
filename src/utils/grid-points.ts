@@ -16,15 +16,26 @@ const tile2lonUnwrapped = (x: number, z: number): number => {
 	return (x / Math.pow(2, z)) * 360 - 180;
 };
 
+/** One concrete domain's native grid + data for the grid-point layer. */
+export interface GridPointSource {
+	grid: GridInterface;
+	values: Float32Array;
+	directions?: Float32Array;
+}
+
 /**
  * Generate the PBF grid-point layer for a single tile.
- * Computes tile geographic bounds that intersects with `clippingBounds` if defined
+ *
+ * `sources` are ordered finest-first.  A point from a coarser source is dropped
+ * when a finer source already covers that location, so seamless composite domains
+ * render the best-available grid everywhere without overlapping markers.  A
+ * regular domain simply passes a single-element `sources` array.
+ *
+ * Computes tile geographic bounds that intersect with `clippingBounds` if defined.
  */
 export const generateGridPoints = (
 	pbf: Pbf,
-	grid: GridInterface,
-	values: Float32Array,
-	directions: Float32Array | undefined,
+	sources: GridPointSource[],
 	x: number,
 	y: number,
 	z: number,
@@ -72,35 +83,53 @@ export const generateGridPoints = (
 		return;
 	}
 
-	grid.forEachPoint(({ index, lat, lon }) => {
-		const worldPx = Math.floor(lon2tile(lon, z) * extent);
-		const worldPy = Math.floor(lat2tile(lat, z) * extent);
-
-		const px = worldPx - tileOffsetX;
-		const py = worldPy - tileOffsetY;
-		if (px < -margin || px > extent + margin) return;
-		if (py < -margin || py > extent + margin) return;
-
-		const value = values[index];
-		if (isNaN(value)) return;
-
-		if (isInsideClip && !isInsideClip(lon, lat)) {
-			return;
+	/** True when a finer source than `sourceIndex` already has data at (lat, lon). */
+	const coveredByFiner = (sourceIndex: number, lat: number, lon: number): boolean => {
+		for (let j = 0; j < sourceIndex; j++) {
+			if (isFinite(sources[j].grid.getLinearInterpolatedValue(sources[j].values, lat, lon))) {
+				return true;
+			}
 		}
+		return false;
+	};
 
-		const properties: { value?: number; direction?: number } = {};
-		properties.value = Number(value.toFixed(2));
-		if (directions) {
-			properties.direction = directions[index];
-		}
+	sources.forEach((source, sourceIndex) => {
+		source.grid.forEachPoint(({ index, lat, lon }) => {
+			const worldPx = Math.floor(lon2tile(lon, z) * extent);
+			const worldPy = Math.floor(lat2tile(lat, z) * extent);
 
-		features.push({
-			id: index,
-			type: 1, // Point
-			properties,
-			geom: [command(1, 1), zigzag(px), zigzag(py)]
-		});
-	}, iterBounds);
+			const px = worldPx - tileOffsetX;
+			const py = worldPy - tileOffsetY;
+			if (px < -margin || px > extent + margin) return;
+			if (py < -margin || py > extent + margin) return;
+
+			const value = source.values[index];
+			if (isNaN(value)) return;
+
+			if (isInsideClip && !isInsideClip(lon, lat)) {
+				return;
+			}
+
+			// Skip points already represented by a finer domain to avoid double markers.
+			if (sourceIndex > 0 && coveredByFiner(sourceIndex, lat, lon)) {
+				return;
+			}
+
+			const properties: { value?: number; direction?: number } = {};
+			properties.value = Number(value.toFixed(2));
+			if (source.directions) {
+				properties.direction = source.directions[index];
+			}
+
+			features.push({
+				// Offset by source so ids stay unique across stacked domains.
+				id: sourceIndex * 100_000_000 + index,
+				type: 1, // Point
+				properties,
+				geom: [command(1, 1), zigzag(px), zigzag(py)]
+			});
+		}, iterBounds);
+	});
 
 	// write Layer
 	pbf.writeMessage(3, writeLayer, {
