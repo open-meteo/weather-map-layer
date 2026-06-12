@@ -37,6 +37,17 @@ export class GaussianGrid implements GridInterface {
 		return [-180, -90, 180, 90];
 	}
 
+	getBoundaryPolygon(): Array<[number, number]> {
+		const [minLon, minLat, maxLon, maxLat] = this.getBounds();
+		return [
+			[minLon, minLat],
+			[maxLon, minLat],
+			[maxLon, maxLat],
+			[minLon, maxLat],
+			[minLon, minLat]
+		];
+	}
+
 	getCenter(): { lng: number; lat: number } {
 		// FIXME: Center hardcoded for now
 		return { lng: 0, lat: 0 };
