@@ -1,10 +1,10 @@
-import { GridInterface } from '../grids/index';
 import Pbf from 'pbf';
 
 import { type ResolvedClippingOptions, createClippingTester } from './clipping';
 import { VECTOR_TILE_EXTENT } from './constants';
 import { tile2lat, tile2lon } from './math';
 import { command, writeLayer, zigzag } from './pbf';
+import type { ValueSampler } from './seamless-sampling';
 
 // prettier-ignore
 export const CASES: [number, number][][][] = [
@@ -103,8 +103,7 @@ export const ratio = (a: number, b: number, c: number) => {
 
 export const generateContours = (
 	pbf: Pbf,
-	values: Float32Array,
-	grid: GridInterface,
+	sampleValue: ValueSampler,
 	x: number,
 	y: number,
 	z: number,
@@ -136,8 +135,8 @@ export const generateContours = (
 		// const lonTop = tile2lon(x + i / width, z);
 		const lonBottom = tile2lon(x + (i - 1) / width, z);
 
-		let trd = grid.getLinearInterpolatedValue(values, latBottom, lonBottom);
-		let brd = grid.getLinearInterpolatedValue(values, latTop, lonBottom);
+		let trd = sampleValue(latBottom, lonBottom);
+		let brd = sampleValue(latTop, lonBottom);
 
 		let minR = Math.min(trd, brd);
 		let maxR = Math.max(trd, brd);
@@ -148,8 +147,8 @@ export const generateContours = (
 			tld = trd;
 			bld = brd;
 
-			trd = grid.getLinearInterpolatedValue(values, latBottom, lon);
-			brd = grid.getLinearInterpolatedValue(values, latTop, lon);
+			trd = sampleValue(latBottom, lon);
+			brd = sampleValue(latTop, lon);
 
 			const minL = minR;
 			const maxL = maxR;

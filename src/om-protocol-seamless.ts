@@ -8,6 +8,7 @@ import { type GetResourceResponse, type RequestParameters } from 'maplibre-gl';
 
 import { constrainBounds } from './utils/bounds';
 
+import { resolveConcreteDomain } from './domain-helpers';
 import { GridFactory } from './grids/index';
 import { ensureData, getOrCreateState } from './om-protocol-state';
 import { capitalize } from './utils';
@@ -18,7 +19,6 @@ import type {
 	Data,
 	DataIdentityOptions,
 	DimensionRange,
-	Domain,
 	OmProtocolInstance,
 	OmProtocolSettings,
 	ParsedRequest,
@@ -30,9 +30,7 @@ import type {
 	TileResult
 } from './types';
 
-/** Returns true when `domain` is a SeamlessDomain (composite, zoom-adaptive). */
-export const isSeamlessDomain = (domain: { value: string }): domain is SeamlessDomain =>
-	'layers' in domain;
+export { isSeamlessDomain } from './domain-helpers';
 
 /**
  * Parse the model-run → valid-time lead in hours from an OM file URL.
@@ -148,9 +146,7 @@ export const handleSeamlessRequest = async (
 	// no data load needed; bounds are computable from the domain grid definition.
 	if (params.type === 'json') {
 		const lastLayer = activeLayers[activeLayers.length - 1];
-		const globalDomain = settings.domainOptions.find(
-			(d) => d.value === lastLayer.domainValue && !isSeamlessDomain(d)
-		) as Domain | undefined;
+		const globalDomain = resolveConcreteDomain(lastLayer.domainValue, settings.domainOptions);
 		if (!globalDomain) return { data: null };
 
 		const fullGrid = GridFactory.create(globalDomain.grid, null);
@@ -189,9 +185,7 @@ export const handleSeamlessRequest = async (
 	for (const layer of activeLayers) {
 		if (signal.aborted) break;
 
-		const concreteDomain = settings.domainOptions.find(
-			(d) => d.value === layer.domainValue && !isSeamlessDomain(d)
-		) as Domain | undefined;
+		const concreteDomain = resolveConcreteDomain(layer.domainValue, settings.domainOptions);
 
 		if (!concreteDomain) {
 			console.warn(`[seamless] Domain not found: ${layer.domainValue}`);

@@ -22,6 +22,12 @@ export type {
 // Functions
 
 export {
+	isSeamlessDomain,
+	getFallbackDomainValue,
+	resolveConcreteDomain,
+	getFallbackDomain
+} from './domain-helpers';
+export {
 	getValueFromLatLong,
 	clearBlockCache,
 	getRanges,

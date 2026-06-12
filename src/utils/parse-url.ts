@@ -1,4 +1,5 @@
 import { pad } from '.';
+import { getFallbackDomainValue, isSeamlessDomain } from '../domain-helpers';
 
 import {
 	DATA_RELEVANT_PARAMS,
@@ -83,9 +84,9 @@ const resolveJsonFetchUrl = (jsonUrl: string, domainOptions?: AnyDomain[]): stri
 	const urlDomainValue = domainMatch?.groups?.domain;
 	if (!urlDomainValue) return jsonUrl;
 	const domain = domainOptions.find((d) => d.value === urlDomainValue);
-	if (!domain || !('layers' in domain)) return jsonUrl;
+	if (!domain || !isSeamlessDomain(domain)) return jsonUrl;
 	// domain is a SeamlessDomain — use the last (global fallback) layer for the fetch
-	const backingDomainValue = domain.layers[domain.layers.length - 1].domainValue;
+	const backingDomainValue = getFallbackDomainValue(domain);
 	return jsonUrl.replace(
 		`/data_spatial/${urlDomainValue}/`,
 		`/data_spatial/${backingDomainValue}/`
