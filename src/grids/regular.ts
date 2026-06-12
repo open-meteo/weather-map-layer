@@ -85,6 +85,17 @@ export class RegularGrid implements GridInterface {
 		return this.bounds;
 	}
 
+	getBoundaryPolygon(): Array<[number, number]> {
+		const [minLon, minLat, maxLon, maxLat] = this.bounds;
+		return [
+			[minLon, minLat],
+			[maxLon, minLat],
+			[maxLon, maxLat],
+			[minLon, maxLat],
+			[minLon, minLat]
+		];
+	}
+
 	getCenter(): { lng: number; lat: number } {
 		if (!this.center) {
 			this.center = {
