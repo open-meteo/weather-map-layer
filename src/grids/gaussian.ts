@@ -48,6 +48,11 @@ export class GaussianGrid implements GridInterface {
 		];
 	}
 
+	edgeDistanceDeg(lat: number, lon: number): number {
+		const [minLon, minLat, maxLon, maxLat] = this.getBounds();
+		return Math.min(lon - minLon, maxLon - lon, lat - minLat, maxLat - lat);
+	}
+
 	getCenter(): { lng: number; lat: number } {
 		// FIXME: Center hardcoded for now
 		return { lng: 0, lat: 0 };

@@ -35,6 +35,7 @@
 		"coverage": "vitest run --coverage",
 		"lint": "prettier --check . && eslint .",
 		"generate:colorscales": "tsx scripts/generate-colorscales.ts && prettier --write src/utils/color-scales.ts",
+		"generate:footprints": "tsx scripts/generate-domain-footprints.ts && prettier --write src/domain-footprints.ts",
 		"build:esm": "vite build",
 		"build:cjs": "vite build --config vite.config.cjs.ts",
 		"build:umd": "vite build --config vite.config.umd.ts",

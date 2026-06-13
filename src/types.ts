@@ -117,6 +117,12 @@ export interface SeamlessLayerRenderData {
 	/** Full geographic bounds of this domain (not viewport-cropped). */
 	domainBounds: Bounds;
 	blendWidthDeg: number;
+	/**
+	 * Stable identity (URL + ranges) of this layer's data, used by the worker to
+	 * cache its NaN-distance field so the blend can follow the real (non-NULL)
+	 * data shape. Only set for blending regular-grid layers; absent otherwise.
+	 */
+	nanFieldKey?: string;
 }
 
 export interface TileRequest {

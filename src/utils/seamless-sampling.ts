@@ -11,6 +11,7 @@
 import type { GridInterface } from '../grids/interface';
 
 import { degreesToRadians, radiansToDegrees } from './math';
+import { computeNanDistanceField } from './nan-distance';
 
 import type { SeamlessLayerRenderData } from '../types';
 
@@ -25,20 +26,62 @@ export interface VectorSample {
 
 export type VectorSampler = (lat: number, lon: number) => VectorSample;
 
+// Worker-side cache of NaN-distance fields, keyed by `layer.nanFieldKey` (stable
+// per data URL + ranges). Computed once per timestep/viewport and reused across
+// tiles. A `null` entry records "computed, no field" so non-padded grids aren't
+// rescanned on every tile.
+const nanFieldCache = new Map<string, Float32Array | null>();
+const MAX_NAN_FIELDS = 16;
+
+const getNanField = (layer: SeamlessLayerRenderData): Float32Array | undefined => {
+	const key = layer.nanFieldKey;
+	if (!key) return undefined;
+	if (nanFieldCache.has(key)) return nanFieldCache.get(key) ?? undefined;
+
+	let field: Float32Array | undefined;
+	const values = layer.data.values;
+	const grid = layer.domain.grid;
+	if (values && grid.type === 'regular') {
+		const nx = layer.ranges[1].end - layer.ranges[1].start;
+		const ny = layer.ranges[0].end - layer.ranges[0].start;
+		field = computeNanDistanceField(values, nx, ny, grid.dx, grid.dy);
+	}
+
+	if (nanFieldCache.size >= MAX_NAN_FIELDS) {
+		const oldest = nanFieldCache.keys().next().value;
+		if (oldest !== undefined) nanFieldCache.delete(oldest);
+	}
+	nanFieldCache.set(key, field ?? null);
+	return field;
+};
+
 /**
  * Smooth-step weight of `layer` at (lat, lon): 1 deep inside the layer, falling
  * to 0 at the edge of its blend zone.  Returns 1 when the layer does not blend
  * (global fallback / `blendWidthDeg <= 0`).
+ *
+ * The edge distance is the smaller of:
+ *  - the distance to the domain boundary (`fullGrid.edgeDistanceDeg`), which is
+ *    projection-aware so the band follows a curved boundary; and
+ *  - the distance to the nearest NaN cell (`field`), so the band also follows the
+ *    real data shape of NULL-padded regular grids.
  */
-const edgeBlendWeight = (layer: SeamlessLayerRenderData, lat: number, lon: number): number => {
+const edgeBlendWeight = (
+	fullGrid: GridInterface,
+	valueGrid: GridInterface,
+	field: Float32Array | undefined,
+	layer: SeamlessLayerRenderData,
+	lat: number,
+	lon: number
+): number => {
 	if (layer.blendWidthDeg <= 0) return 1;
-	const b = layer.domainBounds; // [lonMin, latMin, lonMax, latMax]
-	const d = Math.min(
-		(lon - b[0]) / layer.blendWidthDeg,
-		(b[2] - lon) / layer.blendWidthDeg,
-		(lat - b[1]) / layer.blendWidthDeg,
-		(b[3] - lat) / layer.blendWidthDeg
-	);
+	let dist = fullGrid.edgeDistanceDeg(lat, lon);
+	if (field) {
+		const nanDist = valueGrid.getLinearInterpolatedValue(field, lat, lon);
+		if (isFinite(nanDist)) dist = Math.min(dist, nanDist);
+	}
+	const d = dist / layer.blendWidthDeg;
+	if (d <= 0) return 0;
 	if (d >= 1) return 1;
 	return d * d * (3 - 2 * d); // smooth-step
 };
@@ -50,6 +93,8 @@ const edgeBlendWeight = (layer: SeamlessLayerRenderData, lat: number, lon: numbe
  */
 const blendValue = (
 	layerGrids: GridInterface[],
+	edgeGrids: GridInterface[],
+	fields: (Float32Array | undefined)[],
 	seamlessLayers: SeamlessLayerRenderData[],
 	lat: number,
 	lon: number,
@@ -64,22 +109,31 @@ const blendValue = (
 		if (!isFinite(value)) continue; // point not covered by this domain
 
 		if (i === seamlessLayers.length - 1) return value;
-		const t = edgeBlendWeight(layer, lat, lon);
+		const t = edgeBlendWeight(edgeGrids[i], layerGrids[i], fields[i], layer, lat, lon);
 		if (t >= 1) return value;
 
-		const fallback = blendValue(layerGrids, seamlessLayers, lat, lon, i + 1);
+		const fallback = blendValue(layerGrids, edgeGrids, fields, seamlessLayers, lat, lon, i + 1);
 		if (!isFinite(fallback)) return value;
 		return value * t + fallback * (1 - t);
 	}
 	return NaN;
 };
 
-/** Blends a scalar field across all seamless layers at (lat, lon). */
+/**
+ * Blends a scalar field across all seamless layers at (lat, lon).
+ *
+ * `layerGrids` index the (possibly viewport-cropped) data arrays; `edgeGrids` are
+ * the full-domain grids used to measure the blend edge distance, so the blend
+ * follows the real domain boundary rather than the tile/viewport crop. They
+ * default to `layerGrids` for callers that pass full-domain grids for both.
+ */
 export const sampleBlendedValue = (
 	layerGrids: GridInterface[],
-	seamlessLayers: SeamlessLayerRenderData[]
+	seamlessLayers: SeamlessLayerRenderData[],
+	edgeGrids: GridInterface[] = layerGrids
 ): ValueSampler => {
-	return (lat, lon) => blendValue(layerGrids, seamlessLayers, lat, lon, 0);
+	const fields = seamlessLayers.map(getNanField);
+	return (lat, lon) => blendValue(layerGrids, edgeGrids, fields, seamlessLayers, lat, lon, 0);
 };
 
 /**
@@ -89,6 +143,8 @@ export const sampleBlendedValue = (
  */
 const blendVector = (
 	layerGrids: GridInterface[],
+	edgeGrids: GridInterface[],
+	fields: (Float32Array | undefined)[],
 	seamlessLayers: SeamlessLayerRenderData[],
 	lat: number,
 	lon: number,
@@ -108,10 +164,10 @@ const blendVector = (
 		const v = speed * Math.cos(rad);
 
 		if (i === seamlessLayers.length - 1) return { u, v };
-		const t = edgeBlendWeight(layer, lat, lon);
+		const t = edgeBlendWeight(edgeGrids[i], layerGrids[i], fields[i], layer, lat, lon);
 		if (t >= 1) return { u, v };
 
-		const fallback = blendVector(layerGrids, seamlessLayers, lat, lon, i + 1);
+		const fallback = blendVector(layerGrids, edgeGrids, fields, seamlessLayers, lat, lon, i + 1);
 		if (!fallback) return { u, v };
 		return { u: u * t + fallback.u * (1 - t), v: v * t + fallback.v * (1 - t) };
 	}
@@ -121,10 +177,12 @@ const blendVector = (
 /** Blends a wind vector (magnitude + direction) across all seamless layers. */
 export const sampleBlendedVector = (
 	layerGrids: GridInterface[],
-	seamlessLayers: SeamlessLayerRenderData[]
+	seamlessLayers: SeamlessLayerRenderData[],
+	edgeGrids: GridInterface[] = layerGrids
 ): VectorSampler => {
+	const fields = seamlessLayers.map(getNanField);
 	return (lat, lon) => {
-		const uv = blendVector(layerGrids, seamlessLayers, lat, lon, 0);
+		const uv = blendVector(layerGrids, edgeGrids, fields, seamlessLayers, lat, lon, 0);
 		if (!uv) return { value: NaN, direction: NaN };
 		let direction = radiansToDegrees(Math.atan2(uv.u, uv.v));
 		if (direction < 0) direction += 360;

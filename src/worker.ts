@@ -54,7 +54,10 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 			const layerGrids = seamlessLayers.map((layer) =>
 				GridFactory.create(layer.domain.grid, layer.ranges)
 			);
-			getPixelValue = sampleBlendedValue(layerGrids, seamlessLayers);
+			// Full-domain grids (uncropped) so the blend edge distance follows the real
+			// domain boundary instead of the viewport crop.
+			const fullGrids = seamlessLayers.map((layer) => GridFactory.create(layer.domain.grid, null));
+			getPixelValue = sampleBlendedValue(layerGrids, seamlessLayers, fullGrids);
 		} else {
 			const grid = GridFactory.create((domain as Domain).grid, ranges);
 			getPixelValue = (lat, lon) => grid.getLinearInterpolatedValue(values!, lat, lon);
@@ -122,8 +125,11 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 			const layerGrids = seamlessLayers.map((layer) =>
 				GridFactory.create(layer.domain.grid, layer.ranges)
 			);
-			sampleValue = sampleBlendedValue(layerGrids, seamlessLayers);
-			sampleVector = sampleBlendedVector(layerGrids, seamlessLayers);
+			// Full-domain grids (uncropped) so the blend edge distance follows the real
+			// domain boundary instead of the viewport crop.
+			const fullGrids = seamlessLayers.map((layer) => GridFactory.create(layer.domain.grid, null));
+			sampleValue = sampleBlendedValue(layerGrids, seamlessLayers, fullGrids);
+			sampleVector = sampleBlendedVector(layerGrids, seamlessLayers, fullGrids);
 			gridSources = seamlessLayers.map((layer, i) => ({
 				grid: layerGrids[i],
 				values: layer.data.values ?? new Float32Array(0),

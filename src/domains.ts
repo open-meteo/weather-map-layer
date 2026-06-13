@@ -59,7 +59,7 @@ export const domainOptions: Array<AnyDomain> = [
 	 *
 	 * Automatically selects the best NCEP model for the current zoom level:
 	 *   zoom 0+  → ncep_gfs025     (global, 0.25°)
-	 *   zoom 3+  → ncep_hrrr_conus (CONUS, ~3 km, Lambert Conformal)
+	 *   zoom 2+  → ncep_hrrr_conus (CONUS, ~3 km, Lambert Conformal)
 	 */
 	{
 		type: 'seamless',
@@ -68,7 +68,7 @@ export const domainOptions: Array<AnyDomain> = [
 		time_interval: 'hourly',
 		model_interval: 'hourly',
 		layers: [
-			{ domainValue: 'ncep_hrrr_conus', minZoom: 3, blendWidthDeg: 3, maxForecastHours: 48 },
+			{ domainValue: 'ncep_hrrr_conus', minZoom: 2, blendWidthDeg: 3, maxForecastHours: 48 },
 			{ domainValue: 'ncep_gfs025', minZoom: 0, blendWidthDeg: 0 }
 		]
 	},
@@ -78,8 +78,8 @@ export const domainOptions: Array<AnyDomain> = [
 	 *
 	 * Automatically selects the best MF model for the current zoom level:
 	 *   zoom 0+  → meteofrance_arpege_world025   (global, 0.25°)
-	 *   zoom 3+  → meteofrance_arpege_europe      (Europe, 0.1°)
-	 *   zoom 5+  → meteofrance_arome_france0025   (France, 0.025°)
+	 *   zoom 2+  → meteofrance_arpege_europe      (Europe, 0.1°)
+	 *   zoom 4+  → meteofrance_arome_france0025   (France, 0.025°)
 	 */
 	{
 		type: 'seamless',
@@ -90,14 +90,14 @@ export const domainOptions: Array<AnyDomain> = [
 		layers: [
 			{
 				domainValue: 'meteofrance_arome_france0025',
-				minZoom: 5,
-				blendWidthDeg: 1,
+				minZoom: 4,
+				blendWidthDeg: 2,
 				maxForecastHours: 51
 			},
 			{
 				domainValue: 'meteofrance_arpege_europe',
-				minZoom: 3,
-				blendWidthDeg: 3,
+				minZoom: 2,
+				blendWidthDeg: 4,
 				maxForecastHours: 102
 			},
 			{ domainValue: 'meteofrance_arpege_world025', minZoom: 0, blendWidthDeg: 0 }
