@@ -248,7 +248,13 @@ export const handleSeamlessRequest = async (
 			data,
 			ranges: state.ranges,
 			domainBounds: fullGrid.getBounds() as Bounds,
-			blendWidthDeg: layer.blendWidthDeg
+			blendWidthDeg: layer.blendWidthDeg,
+			// Only blending layers need a NaN-distance field. Key it by the data's
+			// URL + ranges so the worker computes it once per timestep/viewport.
+			nanFieldKey:
+				layer.blendWidthDeg > 0
+					? `${concreteKey}@${state.ranges.map((r) => `${r.start}-${r.end}`).join(',')}`
+					: undefined
 		});
 	}
 

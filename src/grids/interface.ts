@@ -22,6 +22,15 @@ export interface GridInterface {
 	getBoundaryPolygon(): Array<[number, number]>;
 
 	/**
+	 * Approximate distance (in degrees, positive inside) from (lat, lon) to the
+	 * nearest edge of the grid's actual data region. For projected grids this is
+	 * measured in projection space, so the seamless blend zone follows the true
+	 * (curved) domain boundary instead of an axis-aligned lat/lon box. Regular and
+	 * gaussian grids return the distance to their bounds rectangle.
+	 */
+	edgeDistanceDeg(lat: number, lon: number): number;
+
+	/**
 	 * Iterates over grid points, invoking the callback with the flat array index
 	 * and the geographic coordinates for each point.
 	 * When `bounds` is provided, only points within the geographic bounding box

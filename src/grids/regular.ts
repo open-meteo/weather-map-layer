@@ -96,6 +96,11 @@ export class RegularGrid implements GridInterface {
 		];
 	}
 
+	edgeDistanceDeg(lat: number, lon: number): number {
+		const [minLon, minLat, maxLon, maxLat] = this.bounds;
+		return Math.min(lon - minLon, maxLon - lon, lat - minLat, maxLat - lat);
+	}
+
 	getCenter(): { lng: number; lat: number } {
 		if (!this.center) {
 			this.center = {
