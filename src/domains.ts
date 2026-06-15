@@ -750,17 +750,18 @@ export const domainOptions: Array<Domain> = [
 		value: 'cmc_gem_rdps_10km',
 		label: 'GEM Regional',
 		grid: {
-			type: 'projectedFromBounds',
-			nx: 935,
-			ny: 824,
-			latitudeBounds: [18.14503, 45.405453],
-			longitudeBounds: [217.10745, 349.8256],
+			type: 'projectedFromProjectedOrigin',
+			nx: 1140,
+			ny: 1045,
+			projectedLatitudeOrigin: -48.806,
+			projectedLongitudeOrigin: 306.141 - 360,
+			dx: 0.090298,
+			dy: 0.090298,
 			zoom: 1,
 			projection: {
-				latitude: 90,
-				longitude: 249,
-				radius: 6371229,
-				name: 'StereographicProjection'
+				rotatedLat: -31.7583 * -1,
+				rotatedLon: 267.597 + 180 - 360,
+				name: 'RotatedLatLonProjection'
 			}
 		},
 		time_interval: 'hourly',
