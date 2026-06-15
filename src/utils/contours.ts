@@ -1,4 +1,4 @@
-import Pbf from 'pbf';
+import { PbfWriter } from 'pbf';
 
 import { type ResolvedClippingOptions, createClippingTester } from './clipping';
 import { VECTOR_TILE_EXTENT } from './constants';
@@ -8,7 +8,7 @@ import type { ValueSampler } from './seamless-sampling';
 
 // prettier-ignore
 export const CASES: [number, number][][][] = [
-	[],					       // 0
+	[],					       			// 0
 	[[[1, 2],[0, 1]]],			  // 1
 	[[[2, 1],[1, 2]]],			  // 2
 	[[[2, 1],[0, 1]]],			  // 3
@@ -102,7 +102,7 @@ export const ratio = (a: number, b: number, c: number) => {
 };
 
 export const generateContours = (
-	pbf: Pbf,
+	pbf: PbfWriter,
 	sampleValue: ValueSampler,
 	x: number,
 	y: number,

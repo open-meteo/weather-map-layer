@@ -1,4 +1,4 @@
-import Pbf from 'pbf';
+import { PbfWriter } from 'pbf';
 
 interface Feature {
 	id: number;
@@ -33,7 +33,7 @@ interface GeometryFeature {
 }
 
 // writer for VectorTileLayer
-export const writeLayer = (layer: VectorTileLayer, pbf: Pbf) => {
+export const writeLayer = (layer: VectorTileLayer, pbf: PbfWriter) => {
 	pbf.writeVarintField(15, layer.version || 2);
 	pbf.writeStringField(1, layer.name);
 	pbf.writeVarintField(5, layer.extent);
@@ -62,7 +62,7 @@ export const writeLayer = (layer: VectorTileLayer, pbf: Pbf) => {
 	}
 };
 
-export const writeFeature = (context: Context, pbf: Pbf) => {
+export const writeFeature = (context: Context, pbf: PbfWriter) => {
 	const feature = context.feature as Feature;
 
 	if (feature.id !== undefined) {
@@ -82,7 +82,7 @@ export const zigzag = (n: number) => {
 	return (n << 1) ^ (n >> 31);
 };
 
-export const writeGeometry = (feature: GeometryFeature, pbf: Pbf) => {
+export const writeGeometry = (feature: GeometryFeature, pbf: PbfWriter) => {
 	const geometry = feature.loadGeometry();
 	const type = feature.type;
 	let x = 0;
@@ -114,7 +114,7 @@ export const writeGeometry = (feature: GeometryFeature, pbf: Pbf) => {
 	}
 };
 
-export const writeProperties = (context: Context, pbf: Pbf) => {
+export const writeProperties = (context: Context, pbf: PbfWriter) => {
 	const feature = context.feature!;
 	const keys = context.keys;
 	const values = context.values;
@@ -153,7 +153,7 @@ export const writeProperties = (context: Context, pbf: Pbf) => {
 	}
 };
 
-export const writeValue = (value: string | number | boolean, pbf: Pbf) => {
+export const writeValue = (value: string | number | boolean, pbf: PbfWriter) => {
 	const type = typeof value;
 	if (type === 'string') {
 		pbf.writeStringField(1, value as string);

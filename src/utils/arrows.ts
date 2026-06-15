@@ -1,4 +1,4 @@
-import Pbf from 'pbf';
+import { PbfWriter } from 'pbf';
 
 import { type ResolvedClippingOptions, createClippingTester } from './clipping';
 import { VECTOR_TILE_EXTENT } from './constants';
@@ -7,7 +7,7 @@ import { command, writeLayer, zigzag } from './pbf';
 import type { VectorSampler } from './seamless-sampling';
 
 export const generateArrows = (
-	pbf: Pbf,
+	pbf: PbfWriter,
 	sampleVector: VectorSampler,
 	x: number,
 	y: number,
