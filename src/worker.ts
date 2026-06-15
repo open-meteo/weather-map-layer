@@ -1,4 +1,4 @@
-import Pbf from 'pbf';
+import { PbfWriter } from 'pbf';
 
 import { generateArrows } from './utils/arrows';
 import { checkAgainstBounds } from './utils/bounds';
@@ -112,7 +112,7 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 		const directions = message.data.data.directions;
 		const renderOptions = message.data.renderOptions;
 
-		const pbf = new Pbf();
+		const pbf = new PbfWriter();
 
 		// Build per-point samplers + grid-point sources.  For seamless domains these
 		// blend across all active layers (finest-first) so arrows, contours and grid
