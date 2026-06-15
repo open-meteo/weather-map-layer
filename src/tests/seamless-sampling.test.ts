@@ -3,7 +3,7 @@ import type { GridInterface } from '../grids/interface';
 import { type GridPointSource, generateGridPoints } from '../utils/grid-points';
 import { sampleBlendedValue, sampleBlendedVector } from '../utils/seamless-sampling';
 import { VectorTile } from '@mapbox/vector-tile';
-import Pbf from 'pbf';
+import { PbfReader, PbfWriter } from 'pbf';
 import { describe, expect, it } from 'vitest';
 
 import type { Bounds, Domain, GridData, SeamlessLayerRenderData } from '../types';
@@ -116,9 +116,9 @@ describe('sampleBlendedVector', () => {
 
 describe('generateGridPoints across seamless layers', () => {
 	const decodeGrid = (sources: GridPointSource[]) => {
-		const pbf = new Pbf();
+		const pbf = new PbfWriter();
 		generateGridPoints(pbf, sources, 0, 0, 0, undefined);
-		const layer = new VectorTile(new Pbf(pbf.finish())).layers['grid'];
+		const layer = new VectorTile(new PbfReader(pbf.finish())).layers['grid'];
 		const values: number[] = [];
 		for (let i = 0; i < (layer?.length ?? 0); i++) {
 			values.push(layer.feature(i).properties.value as number);
