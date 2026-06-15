@@ -675,8 +675,24 @@ export const domainOptions: Array<Domain> = [
 
 	// GEM
 	{
-		value: 'cmc_gem_gdps',
+		value: 'cmc_gem_gdps_15km',
 		label: 'GEM Global',
+		grid: {
+			type: 'regular',
+			nx: 2400,
+			ny: 1201,
+			latMin: -90,
+			lonMin: -180,
+			dx: 0.15,
+			dy: 0.15,
+			zoom: 1
+		},
+		time_interval: '3_hourly',
+		model_interval: '12_hourly'
+	},
+	{
+		value: 'cmc_gem_gdps_15km_upper_level',
+		label: 'GEM Global Upper Level',
 		grid: {
 			type: 'regular',
 			nx: 2400,
@@ -731,7 +747,7 @@ export const domainOptions: Array<Domain> = [
 		model_interval: '12_hourly'
 	},
 	{
-		value: 'cmc_gem_rdps',
+		value: 'cmc_gem_rdps_10km',
 		label: 'GEM Regional',
 		grid: {
 			type: 'projectedFromBounds',
