@@ -406,16 +406,31 @@ describe('SeamlessDomain – URL substitution', () => {
 	});
 });
 
-describe('SeamlessDomain – postReadCallback isolation', () => {
-	it('postReadCallback is NOT called for seamless sub-layer loads', async () => {
+describe('SeamlessDomain – postReadCallback', () => {
+	it('is invoked once, only for the global fallback sub-layer', async () => {
 		const postReadCallback = vi.fn();
 		const settings = makeSettings({ postReadCallback });
 		const { omProtocol } = await import('../om-protocol');
 
 		await omProtocol(tileParams(5), new AbortController(), settings);
 
-		// Sub-layer loads pass undefined for postReadCallback to avoid racing
-		// setToOmFile calls on the shared reader.
+		// Regional sub-layers (d2, eu) load with postReadCallback === undefined to
+		// avoid racing setToOmFile on the shared reader. Only the global fallback —
+		// loaded last, with no sub-layer load following it — carries the host
+		// callback, giving the app a single, safe hook to warm the sub-layer caches.
+		expect(postReadCallback).toHaveBeenCalledTimes(1);
+		const state = postReadCallback.mock.calls[0][2];
+		expect(state.dataOptions.domain.value).toBe('test_global');
+	});
+
+	it('is not invoked when the global fallback fails to load', async () => {
+		const postReadCallback = vi.fn();
+		const settings = makeSettings({ postReadCallback });
+		mockShouldFail.substrings.add('/test_global/');
+		const { omProtocol } = await import('../om-protocol');
+
+		await omProtocol(tileParams(5), new AbortController(), settings);
+
 		expect(postReadCallback).not.toHaveBeenCalled();
 	});
 });
