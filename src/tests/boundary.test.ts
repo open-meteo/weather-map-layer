@@ -24,6 +24,28 @@ describe('getBoundaryPolygon', () => {
 		]);
 	});
 
+	it('keeps longitudes continuous across the antimeridian for a pole-enclosing grid', () => {
+		// CMC GEM RDPS is a rotated lat/lon grid whose rectangle contains the North
+		// Pole, so its lon/lat perimeter winds a full 360°. Normalizing each vertex
+		// to [-180, 180] would inject a ~360° jump that renders as a line clipping
+		// straight across the map; the perimeter must instead stay continuous.
+		const grid = gridOf('cmc_gem_rdps_10km');
+		const ring = grid.getBoundaryPolygon();
+
+		// No two consecutive vertices jump by more than 180° (no antimeridian tear).
+		for (let i = 1; i < ring.length; i++) {
+			expect(Math.abs(ring[i][0] - ring[i - 1][0])).toBeLessThan(180);
+		}
+
+		// The ring genuinely encircles the pole: longitudes span a full 360° and so
+		// reach beyond [-180, 180], and the closed ring's endpoints are the same
+		// geographic point exactly one turn (360°) apart.
+		const lons = ring.map(([lon]) => lon);
+		expect(Math.max(...lons) - Math.min(...lons)).toBeGreaterThan(359);
+		expect(Math.abs(ring[ring.length - 1][0] - ring[0][0])).toBeCloseTo(360, 1);
+		expect(ring[ring.length - 1][1]).toBeCloseTo(ring[0][1], 6);
+	});
+
 	it('traces the true curved perimeter for a projected grid', () => {
 		const grid = gridOf('ncep_hrrr_conus'); // Lambert Conformal Conic
 		const ring = grid.getBoundaryPolygon();
