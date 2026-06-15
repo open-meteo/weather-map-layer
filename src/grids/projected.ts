@@ -175,9 +175,16 @@ export class ProjectionGrid implements GridInterface {
 	 */
 	getBoundaryPolygon(maxPointsPerEdge = 64): Array<[number, number]> {
 		const ring: Array<[number, number]> = [];
+		let prevLon: number | null = null;
 		const add = (projX: number, projY: number): void => {
 			const [lat, lonRaw] = this.projection.reverse(projX, projY);
-			const lon = ((((lonRaw + 180) % 360) + 360) % 360) - 180; // normalize to [-180, 180]
+			let lon = ((((lonRaw + 180) % 360) + 360) % 360) - 180; // normalize to [-180, 180]
+			// Unwrap relative to the previous vertex so the ring stays continuous
+			// across the antimeridian / around a pole instead of jumping ~360°.
+			if (prevLon !== null) {
+				lon -= 360 * Math.round((lon - prevLon) / 360);
+			}
+			prevLon = lon;
 			ring.push([lon, lat]);
 		};
 
