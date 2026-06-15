@@ -6,7 +6,7 @@
  */
 import { type GetResourceResponse, type RequestParameters } from 'maplibre-gl';
 
-import { constrainBounds } from './utils/bounds';
+import { boundsIntersect, constrainBounds } from './utils/bounds';
 
 import { resolveConcreteDomain } from './domain-helpers';
 import { GridFactory } from './grids/index';
@@ -182,6 +182,12 @@ export const handleSeamlessRequest = async (
 	// requests for the same time-step return immediately with no serialization cost.
 	const seamlessLayers: SeamlessLayerRenderData[] = [];
 
+	// The global fallback (last layer) covers the whole world and must always be
+	// loaded — it is the only layer guaranteed to produce a value everywhere — so
+	// it is exempt from the viewport gate below.
+	const globalLayer = seamlessDomain.layers[seamlessDomain.layers.length - 1];
+	const viewportBounds = request.dataOptions.bounds;
+
 	for (const layer of activeLayers) {
 		if (signal.aborted) break;
 
@@ -189,6 +195,20 @@ export const handleSeamlessRequest = async (
 
 		if (!concreteDomain) {
 			console.warn(`[seamless] Domain not found: ${layer.domainValue}`);
+			continue;
+		}
+
+		// Full geographic bounds of this domain (not viewport-cropped) — needed both
+		// for the viewport gate here and for the blend math passed to the worker.
+		const fullGrid = GridFactory.create(concreteDomain.grid, null);
+		const domainBounds = fullGrid.getBounds() as Bounds;
+
+		// Viewport gate: a local (non-global) layer that does not even partially
+		// overlap the current map viewport contributes nothing to any visible tile,
+		// so skip loading and blending it entirely. This keeps composite domains that
+		// stack many regional models (e.g. om_global_seamless) cheap: only the models
+		// actually on screen are fetched and blended.
+		if (layer !== globalLayer && viewportBounds && !boundsIntersect(domainBounds, viewportBounds)) {
 			continue;
 		}
 
@@ -240,14 +260,11 @@ export const handleSeamlessRequest = async (
 			continue;
 		}
 
-		// Full geographic bounds of this domain (not viewport-cropped) for blend math
-		const fullGrid = GridFactory.create(concreteDomain.grid, null);
-
 		seamlessLayers.push({
 			domain: concreteDomain,
 			data,
 			ranges: state.ranges,
-			domainBounds: fullGrid.getBounds() as Bounds,
+			domainBounds,
 			blendWidthDeg: layer.blendWidthDeg,
 			// Only blending layers need a NaN-distance field. Key it by the data's
 			// URL + ranges so the worker computes it once per timestep/viewport.
