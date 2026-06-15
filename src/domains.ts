@@ -108,9 +108,10 @@ export const domainOptions: Array<AnyDomain> = [
 	 * GEM Canada Seamless
 	 *
 	 * Automatically selects the best GEM model for the current zoom level:
-	 *   zoom 0+  → cmc_gem_gdps  (global, 0.15°)
-	 *   zoom 2+  → cmc_gem_rdps  (North America, ~15 km, Stereographic)
-	 *   zoom 4+  → cmc_gem_hrdps (Canada, ~2.5 km, Rotated LatLon)
+	 *   zoom 0+  → cmc_gem_gdps_15km  (global, 0.15°)
+	 *   zoom 2+  → cmc_gem_rdps_10km  (North America, ~10 km, Rotated LatLon)
+	 *   zoom 3+  → cmc_gem_hrdps (Canada, ~2.5 km, Rotated LatLon)
+	 *   zoom 4+  → cmc_gem_hrdps_west (Canada, ~2.5 km, Rotated LatLon)
 	 */
 	{
 		type: 'seamless',
@@ -119,9 +120,10 @@ export const domainOptions: Array<AnyDomain> = [
 		time_interval: 'hourly',
 		model_interval: '6_hourly',
 		layers: [
-			{ domainValue: 'cmc_gem_hrdps', minZoom: 4, blendWidthDeg: 2, maxForecastHours: 48 },
-			{ domainValue: 'cmc_gem_rdps', minZoom: 2, blendWidthDeg: 4, maxForecastHours: 84 },
-			{ domainValue: 'cmc_gem_gdps', minZoom: 0, blendWidthDeg: 0 }
+			{ domainValue: 'cmc_gem_hrdps_west', minZoom: 4, blendWidthDeg: 2, maxForecastHours: 48 },
+			{ domainValue: 'cmc_gem_hrdps', minZoom: 3, blendWidthDeg: 3, maxForecastHours: 48 },
+			{ domainValue: 'cmc_gem_rdps_10km', minZoom: 2, blendWidthDeg: 4, maxForecastHours: 84 },
+			{ domainValue: 'cmc_gem_gdps_15km', minZoom: 0, blendWidthDeg: 0 }
 		]
 	},
 
