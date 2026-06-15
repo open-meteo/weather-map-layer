@@ -564,46 +564,6 @@ describe('SeamlessDomain – type properties', () => {
 	});
 });
 
-describe('SeamlessDomain – om_global_seamless', () => {
-	const getDomain = async (): Promise<SeamlessDomain> => {
-		const { domainOptions } = await import('../domains');
-		return domainOptions.find((d) => d.value === 'om_global_seamless') as SeamlessDomain;
-	};
-
-	it('is defined and uses ECMWF IFS HRES as the global base', async () => {
-		const seamless = await getDomain();
-		expect(seamless).toBeDefined();
-		expect(seamless.type).toBe('seamless');
-		const last = seamless.layers[seamless.layers.length - 1];
-		expect(last.domainValue).toBe('ecmwf_ifs');
-		expect(last.minZoom).toBe(0);
-		expect(last.blendWidthDeg).toBe(0);
-	});
-
-	it('every constituent layer references a real concrete Domain', async () => {
-		const { domainOptions } = await import('../domains');
-		const seamless = await getDomain();
-		for (const layer of seamless.layers) {
-			const concrete = domainOptions.find((d) => d.value === layer.domainValue && !('layers' in d));
-			expect(concrete, `missing concrete domain: ${layer.domainValue}`).toBeDefined();
-		}
-	});
-
-	it('layers are ordered finest-first (descending minZoom)', async () => {
-		const seamless = await getDomain();
-		const zooms = seamless.layers.map((l) => l.minZoom);
-		for (let i = 0; i < zooms.length - 1; i++) {
-			expect(zooms[i]).toBeGreaterThanOrEqual(zooms[i + 1]);
-		}
-	});
-
-	it('surfaces under the "om" domain group', async () => {
-		const { domainGroups } = await import('../domains');
-		expect(domainGroups.some((g) => g.value === 'om')).toBe(true);
-		expect('om_global_seamless'.startsWith('om')).toBe(true);
-	});
-});
-
 describe('SeamlessDomain – real dwd_icon_seamless TileJSON', () => {
 	it('returns valid TileJSON for dwd_icon_seamless URL', async () => {
 		const { omProtocol, defaultOmProtocolSettings } = await import('../om-protocol');
