@@ -17,6 +17,7 @@
  *  - SeamlessDomain exposes time_interval and model_interval
  */
 import { defaultOmProtocolSettings } from '../om-protocol';
+import { updateCurrentBounds } from '../utils/bounds';
 import { RequestParameters } from 'maplibre-gl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -96,6 +97,9 @@ beforeEach(() => {
 	mockReadUrlLog.calls = [];
 	mockShouldFail.substrings.clear();
 	mockOnSetToOmFile.fn = undefined;
+	// Default to a world-covering viewport so the seamless viewport gate never
+	// excludes a layer; tests that exercise the gate override this explicitly.
+	updateCurrentBounds([-180, -90, 180, 90]);
 });
 
 afterEach(() => {
@@ -311,6 +315,52 @@ describe('SeamlessDomain – zoom-level layer filtering', () => {
 	});
 });
 
+describe('SeamlessDomain – viewport gating', () => {
+	// test_d2 covers lon/lat ~[-1, 1.4]; test_eu ~[-5, 5]; test_global ~[-20, 18].
+
+	it('loads regional layers that overlap the viewport', async () => {
+		updateCurrentBounds([-2, -2, 0, 0]); // overlaps d2, eu and global
+		const { omProtocol } = await import('../om-protocol');
+		await omProtocol(tileParams(5), new AbortController(), makeSettings());
+
+		const domainValues = mockSetToOmFileSpy.calls.map(
+			(u) => u.match(/\/data_spatial\/([^/]+)\//)?.[1]
+		);
+		expect(domainValues).toContain('test_d2');
+		expect(domainValues).toContain('test_eu');
+		expect(domainValues).toContain('test_global');
+	});
+
+	it('skips a regional layer entirely when it is off-screen', async () => {
+		updateCurrentBounds([100, 50, 110, 60]); // far from every regional domain
+		const { omProtocol } = await import('../om-protocol');
+		await omProtocol(tileParams(5), new AbortController(), makeSettings());
+
+		const domainValues = mockSetToOmFileSpy.calls.map(
+			(u) => u.match(/\/data_spatial\/([^/]+)\//)?.[1]
+		);
+		// Off-screen regional layers are never fetched...
+		expect(domainValues).not.toContain('test_d2');
+		expect(domainValues).not.toContain('test_eu');
+		// ...but the global fallback is always loaded, even out of its (test) bounds.
+		expect(domainValues).toContain('test_global');
+	});
+
+	it('loads only the regional layers that overlap a partial viewport', async () => {
+		// Overlaps eu (lon ≤ 5) but not d2 (lon ≤ 1.4): a viewport east of d2.
+		updateCurrentBounds([3, 3, 5, 5]);
+		const { omProtocol } = await import('../om-protocol');
+		await omProtocol(tileParams(5), new AbortController(), makeSettings());
+
+		const domainValues = mockSetToOmFileSpy.calls.map(
+			(u) => u.match(/\/data_spatial\/([^/]+)\//)?.[1]
+		);
+		expect(domainValues).not.toContain('test_d2');
+		expect(domainValues).toContain('test_eu');
+		expect(domainValues).toContain('test_global');
+	});
+});
+
 describe('SeamlessDomain – sequential data loading / no race condition', () => {
 	it('setToOmFile calls are sequential, never concurrent', async () => {
 		// Each setToOmFile call must complete before the next starts.
@@ -511,6 +561,46 @@ describe('SeamlessDomain – type properties', () => {
 		const seamless = domainOptions.find((d) => d.value === 'dwd_icon_seamless') as SeamlessDomain;
 		const last = seamless.layers[seamless.layers.length - 1];
 		expect(last.blendWidthDeg).toBe(0);
+	});
+});
+
+describe('SeamlessDomain – om_global_seamless', () => {
+	const getDomain = async (): Promise<SeamlessDomain> => {
+		const { domainOptions } = await import('../domains');
+		return domainOptions.find((d) => d.value === 'om_global_seamless') as SeamlessDomain;
+	};
+
+	it('is defined and uses ECMWF IFS HRES as the global base', async () => {
+		const seamless = await getDomain();
+		expect(seamless).toBeDefined();
+		expect(seamless.type).toBe('seamless');
+		const last = seamless.layers[seamless.layers.length - 1];
+		expect(last.domainValue).toBe('ecmwf_ifs');
+		expect(last.minZoom).toBe(0);
+		expect(last.blendWidthDeg).toBe(0);
+	});
+
+	it('every constituent layer references a real concrete Domain', async () => {
+		const { domainOptions } = await import('../domains');
+		const seamless = await getDomain();
+		for (const layer of seamless.layers) {
+			const concrete = domainOptions.find((d) => d.value === layer.domainValue && !('layers' in d));
+			expect(concrete, `missing concrete domain: ${layer.domainValue}`).toBeDefined();
+		}
+	});
+
+	it('layers are ordered finest-first (descending minZoom)', async () => {
+		const seamless = await getDomain();
+		const zooms = seamless.layers.map((l) => l.minZoom);
+		for (let i = 0; i < zooms.length - 1; i++) {
+			expect(zooms[i]).toBeGreaterThanOrEqual(zooms[i + 1]);
+		}
+	});
+
+	it('surfaces under the "om" domain group', async () => {
+		const { domainGroups } = await import('../domains');
+		expect(domainGroups.some((g) => g.value === 'om')).toBe(true);
+		expect('om_global_seamless'.startsWith('om')).toBe(true);
 	});
 });
 
