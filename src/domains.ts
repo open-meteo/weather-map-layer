@@ -31,8 +31,8 @@ export const domainOptions: Array<AnyDomain> = [
 	 * Automatically selects the best-available DWD model for the current zoom
 	 * level and blends values near domain boundaries:
 	 *   zoom 0+  → dwd_icon   (global, 0.125°)
-	 *   zoom 3+  → dwd_icon_eu (Europe, 0.0625°) blended over 1.5° at its edges
-	 *   zoom 5+  → dwd_icon_d2 (Germany, 0.02°)  blended over 0.5° at its edges
+	 *   zoom 2+  → dwd_icon_eu (Europe, 0.0625°)
+	 *   zoom 3+  → dwd_icon_d2 (Germany, 0.02°)
 	 *
 	 * The URL format is identical to a regular domain – just replace the domain
 	 * name segment with 'dwd_icon_seamless':
@@ -48,7 +48,7 @@ export const domainOptions: Array<AnyDomain> = [
 		time_interval: 'hourly',
 		model_interval: '3_hourly',
 		layers: [
-			{ domainValue: 'dwd_icon_d2', minZoom: 4, blendWidthDeg: 0, maxForecastHours: 48 },
+			{ domainValue: 'dwd_icon_d2', minZoom: 3, blendWidthDeg: 0, maxForecastHours: 48 },
 			{ domainValue: 'dwd_icon_eu', minZoom: 2, blendWidthDeg: 0, maxForecastHours: 120 },
 			{ domainValue: 'dwd_icon', minZoom: 0, blendWidthDeg: 0 }
 		]
@@ -111,7 +111,7 @@ export const domainOptions: Array<AnyDomain> = [
 	 *   zoom 0+  → cmc_gem_gdps_15km  (global, 0.15°)
 	 *   zoom 2+  → cmc_gem_rdps_10km  (North America, ~10 km, Rotated LatLon)
 	 *   zoom 3+  → cmc_gem_hrdps (Canada, ~2.5 km, Rotated LatLon)
-	 *   zoom 4+  → cmc_gem_hrdps_west (Canada, ~2.5 km, Rotated LatLon)
+	 *   zoom 4+  → cmc_gem_hrdps_west (Canada, ~1 km, Rotated LatLon)
 	 */
 	{
 		type: 'seamless',
@@ -132,7 +132,7 @@ export const domainOptions: Array<AnyDomain> = [
 	 *
 	 * Automatically selects the best JMA model for the current zoom level:
 	 *   zoom 0+  → jma_gsm  (global, 0.5°)
-	 *   zoom 4+  → jma_msm  (Japan, 0.0625°/0.05°)
+	 *   zoom 3+  → jma_msm  (Japan, 0.0625°/0.05°)
 	 */
 	{
 		type: 'seamless',
@@ -151,7 +151,7 @@ export const domainOptions: Array<AnyDomain> = [
 	 *
 	 * Automatically selects the best UKMO model for the current zoom level:
 	 *   zoom 0+  → ukmo_global_deterministic_10km  (global, ~10 km)
-	 *   zoom 4+  → ukmo_uk_deterministic_2km        (UK, 2 km, LAEA)
+	 *   zoom 3+  → ukmo_uk_deterministic_2km        (UK, 2 km, LAEA)
 	 */
 	{
 		type: 'seamless',
@@ -175,7 +175,7 @@ export const domainOptions: Array<AnyDomain> = [
 	 *
 	 * Automatically selects the best KNMI model for the current zoom level:
 	 *   zoom 0+  → knmi_harmonie_arome_europe       (Europe, ~2.5 km, Rotated LatLon)
-	 *   zoom 4+  → knmi_harmonie_arome_netherlands  (Netherlands, 0.029°/0.018°)
+	 *   zoom 3+  → knmi_harmonie_arome_netherlands  (Netherlands, 0.029°/0.018°)
 	 */
 	{
 		type: 'seamless',
@@ -186,7 +186,7 @@ export const domainOptions: Array<AnyDomain> = [
 		layers: [
 			{
 				domainValue: 'knmi_harmonie_arome_netherlands',
-				minZoom: 4,
+				minZoom: 3,
 				blendWidthDeg: 0,
 				maxForecastHours: 48
 			},
