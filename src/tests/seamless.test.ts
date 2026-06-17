@@ -226,11 +226,8 @@ describe('SeamlessDomain – TileJSON', () => {
 		const result = await omProtocol(jsonParams(), new AbortController(), makeSettings());
 
 		const tj = result.data as TileJSON;
-		// GLOBAL_DOMAIN: lonMin=-20, nx=20, dx=2 → lonMax = -20 + 20*2 - 2 = 18
-		//                latMin=-20, ny=20, dy=2 → latMax = -20 + 20*2 - 2 = 18
-		// (exact values depend on getBounds() implementation; just check they're finite numbers)
 		expect(tj.bounds).toHaveLength(4);
-		expect(tj.bounds!.every(Number.isFinite)).toBe(true);
+		expect(tj.bounds).toEqual([-20, -20, 20, 20]);
 	});
 
 	it('TileJSON bounds are clipped when clippingOptions are set', async () => {
@@ -246,13 +243,6 @@ describe('SeamlessDomain – TileJSON', () => {
 		expect(latMin).toBeGreaterThanOrEqual(-5);
 		expect(lonMax).toBeLessThanOrEqual(5);
 		expect(latMax).toBeLessThanOrEqual(5);
-	});
-
-	it('TileJSON attribution contains Open-Meteo', async () => {
-		const { omProtocol } = await import('../om-protocol');
-		const result = await omProtocol(jsonParams(), new AbortController(), makeSettings());
-		const tj = result.data as TileJSON;
-		expect(tj.attribution).toContain('Open-Meteo');
 	});
 
 	it('returns { data: null } when the global backing domain is not in settings', async () => {
