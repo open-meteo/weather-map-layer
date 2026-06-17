@@ -12,17 +12,6 @@ import type { AnyDomain, Domain, SeamlessDomain } from './types';
 export const isSeamlessDomain = (domain: AnyDomain): domain is SeamlessDomain => 'layers' in domain;
 
 /**
- * Returns the `value` of the concrete domain that should back `domain`:
- *  - for a `SeamlessDomain`, the last layer's `domainValue` (the global fallback);
- *  - for a regular `Domain`, its own `value`.
- *
- * Useful when a seamless domain needs to be mapped to a real server path or grid,
- * e.g. for metadata fetches and initial map positioning.
- */
-export const getFallbackDomainValue = (domain: AnyDomain): string =>
-	isSeamlessDomain(domain) ? domain.layers[domain.layers.length - 1].domainValue : domain.value;
-
-/**
  * Looks up the concrete (non-seamless) `Domain` whose `value` matches `domainValue`.
  * Returns `undefined` when no matching concrete domain exists.
  */
@@ -47,3 +36,14 @@ export const getFallbackDomain = (
 	isSeamlessDomain(domain)
 		? resolveConcreteDomain(getFallbackDomainValue(domain), domainOptions)
 		: domain;
+
+/**
+ * Returns the `value` of the concrete domain that should back `domain`:
+ *  - for a `SeamlessDomain`, the last layer's `domainValue` (the global fallback);
+ *  - for a regular `Domain`, its own `value`.
+ *
+ * Useful when a seamless domain needs to be mapped to a real server path or grid,
+ * e.g. for metadata fetches and initial map positioning.
+ */
+export const getFallbackDomainValue = (domain: AnyDomain): string =>
+	isSeamlessDomain(domain) ? domain.layers[domain.layers.length - 1].domainValue : domain.value;
