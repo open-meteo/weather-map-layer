@@ -90,7 +90,7 @@ export const domainOptions: Array<AnyDomain> = [
 		layers: [
 			{
 				domainValue: 'meteofrance_arome_france0025',
-				minZoom: 4,
+				minZoom: 3,
 				blendWidthDeg: 0,
 				maxForecastHours: 51
 			},
@@ -141,7 +141,7 @@ export const domainOptions: Array<AnyDomain> = [
 		time_interval: 'hourly',
 		model_interval: '3_hourly',
 		layers: [
-			{ domainValue: 'jma_msm', minZoom: 4, blendWidthDeg: 0, maxForecastHours: 78 },
+			{ domainValue: 'jma_msm', minZoom: 3, blendWidthDeg: 0, maxForecastHours: 78 },
 			{ domainValue: 'jma_gsm', minZoom: 0, blendWidthDeg: 0 }
 		]
 	},
@@ -162,7 +162,7 @@ export const domainOptions: Array<AnyDomain> = [
 		layers: [
 			{
 				domainValue: 'ukmo_uk_deterministic_2km',
-				minZoom: 4,
+				minZoom: 3,
 				blendWidthDeg: 0,
 				maxForecastHours: 126
 			},
@@ -175,7 +175,7 @@ export const domainOptions: Array<AnyDomain> = [
 	 *
 	 * Automatically selects the best KNMI model for the current zoom level:
 	 *   zoom 0+  → knmi_harmonie_arome_europe       (Europe, ~2.5 km, Rotated LatLon)
-	 *   zoom 5+  → knmi_harmonie_arome_netherlands  (Netherlands, 0.029°/0.018°)
+	 *   zoom 4+  → knmi_harmonie_arome_netherlands  (Netherlands, 0.029°/0.018°)
 	 */
 	{
 		type: 'seamless',
@@ -186,7 +186,7 @@ export const domainOptions: Array<AnyDomain> = [
 		layers: [
 			{
 				domainValue: 'knmi_harmonie_arome_netherlands',
-				minZoom: 5,
+				minZoom: 4,
 				blendWidthDeg: 0,
 				maxForecastHours: 48
 			},
