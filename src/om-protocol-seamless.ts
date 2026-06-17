@@ -249,16 +249,7 @@ export const handleSeamlessRequest = async (
 
 		let data: Data;
 		try {
-			// Regional sub-layers load with postReadCallback === undefined on purpose:
-			// the host callback calls setToOmFile() fire-and-forget, which would race
-			// the *next* sequential ensureData call on the shared omFileReader.
-			//
-			// The global fallback is the last layer loaded (no sub-layer load follows
-			// it), so it is safe to run the host callback there. The host uses it to
-			// warm the cache for all seamless sub-layers (via its own reader); doing it
-			// once, here, also avoids redundant per-layer warm-ups.
-			const postReadCallback = layer === globalLayer ? settings.postReadCallback : undefined;
-			data = await ensureData(state, instance.omFileReader, postReadCallback, signal);
+			data = await ensureData(state, instance.omFileReader, undefined, signal);
 		} catch {
 			continue;
 		}
