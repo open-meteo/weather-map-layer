@@ -1,4 +1,4 @@
-import Pbf from 'pbf';
+import { PbfWriter } from 'pbf';
 
 import { generateArrows } from './utils/arrows';
 import { checkAgainstBounds } from './utils/bounds';
@@ -88,7 +88,7 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 	} else if (message.data.type == 'getArrayBuffer') {
 		const directions = message.data.data.directions;
 
-		const pbf = new Pbf();
+		const pbf = new PbfWriter();
 
 		const grid = GridFactory.create(domain.grid, ranges);
 		if (message.data.renderOptions.drawGrid) {

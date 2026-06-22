@@ -41,7 +41,7 @@
  * ```
  */
 import { VectorTile } from '@mapbox/vector-tile';
-import Pbf from 'pbf';
+import { PbfReader } from 'pbf';
 
 import { buildTileUrl, createProtocolRegistry, extractProtocol } from './helpers';
 import { renderInWorker } from './leaflet-worker/leaflet-pbf-worker-pool';
@@ -463,7 +463,7 @@ export const addLeafletProtocolSupport = (L: LeafletLib): LeafletProtocolAdapter
 							}
 
 							// Decode MVT features from PBF bytes.
-							const pbfData = new Pbf(data as ArrayBuffer);
+							const pbfData = new PbfReader(data as ArrayBuffer);
 							const vectorTile = new VectorTile(pbfData);
 							const extracted = extractRenderFeatures(vectorTile, tileSize, styleFn);
 
