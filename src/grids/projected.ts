@@ -1,11 +1,15 @@
+import { DEFAULT_SMOOTH_FOOTPRINT } from '../utils/constants';
+
+import { SummedAreaTable, areaAverage, buildSummedAreaTable } from './area-average';
 import { GridInterface, GridPoint } from './interface';
-import { interpolateLinear } from './interpolations';
+import { interpolateCubic, interpolateLinear, interpolateNearest } from './interpolations';
 import { Projection, createProjection } from './projections';
 
 import {
 	Bounds,
 	Center,
 	DimensionRange,
+	InterpolationMethod,
 	ProjectionGridFromBounds,
 	ProjectionGridFromGeographicOrigin,
 	ProjectionGridFromProjectedOrigin
@@ -27,6 +31,10 @@ export class ProjectionGrid implements GridInterface {
 
 	private bounds?: Bounds;
 	private center?: { lng: number; lat: number };
+
+	// Lazily-built summed-area table for the 'smooth' method (see area-average.ts)
+	private sat?: SummedAreaTable;
+	private satSource?: Float32Array;
 
 	constructor(
 		data:
@@ -81,8 +89,70 @@ export class ProjectionGrid implements GridInterface {
 	}
 
 	getLinearInterpolatedValue(values: Float32Array, lat: number, lon: number): number {
+		return this.getInterpolatedValue(values, lat, lon, 'linear');
+	}
+
+	getInterpolatedValue(
+		values: Float32Array,
+		lat: number,
+		lon: number,
+		method: InterpolationMethod,
+		smoothFootprint: number = DEFAULT_SMOOTH_FOOTPRINT
+	): number {
 		const idx = this.findPointInterpolated(lat, lon);
-		return interpolateLinear(values, idx.x, idx.y, idx.xFraction, idx.yFraction, this.nx);
+		switch (method) {
+			// 'none' and 'nearest' both return the closest grid node, centred.
+			case 'none':
+			case 'nearest':
+				return interpolateNearest(
+					values,
+					idx.x,
+					idx.y,
+					idx.xFraction,
+					idx.yFraction,
+					this.nx,
+					this.ny
+				);
+			case 'cubic':
+				return interpolateCubic(
+					values,
+					idx.x,
+					idx.y,
+					idx.xFraction,
+					idx.yFraction,
+					this.nx,
+					this.ny
+				);
+			case 'smooth':
+				return this.getAreaAveragedValue(
+					values,
+					idx.x + idx.xFraction,
+					idx.y + idx.yFraction,
+					smoothFootprint
+				);
+			case 'linear':
+			default:
+				return interpolateLinear(values, idx.x, idx.y, idx.xFraction, idx.yFraction, this.nx);
+		}
+	}
+
+	// Projected grids are (near) uniform in projected space, so the smoothing
+	// footprint is isotropic in grid cells — no 1/cos(lat) stretch needed.
+	private getAreaAveragedValue(
+		values: Float32Array,
+		xc: number,
+		yc: number,
+		footprint: number
+	): number {
+		if (this.sat === undefined || this.satSource !== values) {
+			this.sat = buildSummedAreaTable(values, this.nx, this.ny);
+			this.satSource = values;
+		}
+		const half = footprint;
+		// +0.5 centres the box on the node (value[i] occupies SAT interval [i, i+1)).
+		const cx = xc + 0.5;
+		const cy = yc + 0.5;
+		return areaAverage(this.sat, cx - half, cy - half, cx + half, cy + half);
 	}
 
 	getBounds(): Bounds {

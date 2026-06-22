@@ -26,6 +26,9 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 	const ranges = message.data.ranges;
 	const domain = message.data.dataOptions.domain;
 	const tileSize = message.data.renderOptions.tileSize;
+	const interpolation = message.data.renderOptions.interpolation;
+	const smoothFootprint = message.data.renderOptions.smoothFootprint;
+	const colorBlend = message.data.renderOptions.colorBlend;
 	const colorScale = message.data.renderOptions.colorScale;
 	const clippingOptions = message.data.clippingOptions;
 
@@ -54,10 +57,10 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 					if (checkAgainstBounds(lon, clippingOptions.bounds[0], clippingOptions.bounds[2]))
 						continue;
 
-				const px = grid.getLinearInterpolatedValue(values, lat, lon);
+				const px = grid.getInterpolatedValue(values, lat, lon, interpolation, smoothFootprint);
 
 				if (isFinite(px)) {
-					const color = getColor(colorScale, px);
+					const color = getColor(colorScale, px, colorBlend);
 					rgba[4 * ind] = color[0];
 					rgba[4 * ind + 1] = color[1];
 					rgba[4 * ind + 2] = color[2];

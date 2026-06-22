@@ -1,4 +1,5 @@
 import { domainOptions } from '../domains';
+import { areaAverage, buildSummedAreaTable } from '../grids/area-average';
 import { ProjectionGrid } from '../grids/projected';
 import { LambertConformalConicProjection, RotatedLatLonProjection } from '../grids/projections';
 import { RegularGrid } from '../grids/regular';
@@ -135,6 +136,66 @@ describe('RegularGrid', () => {
 		expect(ranges[0].end).toBe(gridData.ny);
 		expect(ranges[1].start).toBe(1);
 		expect(ranges[1].end).toBe(4);
+	});
+});
+
+describe('interpolation methods', () => {
+	const methodGridData: RegularGridData = {
+		type: 'regular',
+		nx: 8,
+		ny: 8,
+		lonMin: 10,
+		latMin: 50,
+		dx: 1,
+		dy: 1
+	};
+
+	test('summed-area table averages correctly', () => {
+		const values = new Float32Array([1, 2, 3, 4, 5, 6]); // nx=3, ny=2
+		const sat = buildSummedAreaTable(values, 3, 2);
+		expect(areaAverage(sat, 0, 0, 3, 2)).toBeCloseTo(3.5); // mean of all cells
+		expect(areaAverage(sat, 0, 0, 3, 1)).toBeCloseTo(2); // mean of first row
+	});
+
+	test('area average ignores NaN (masked) cells', () => {
+		const values = new Float32Array([1, NaN, 3, 4, 5, 6]); // nx=3, ny=2
+		const sat = buildSummedAreaTable(values, 3, 2);
+		// mean of valid {1,3,4,5,6} = 19 / 5
+		expect(areaAverage(sat, 0, 0, 3, 2)).toBeCloseTo(3.8);
+	});
+
+	test('all methods preserve a uniform field', () => {
+		const grid = new RegularGrid(methodGridData);
+		const values = new Float32Array(64).fill(7);
+		for (const method of ['none', 'nearest', 'linear', 'cubic', 'smooth'] as const) {
+			expect(grid.getInterpolatedValue(values, 53.5, 13.5, method)).toBeCloseTo(7);
+		}
+	});
+
+	test("'none' returns the closest grid node, centred (round, not floor)", () => {
+		const grid = new RegularGrid(methodGridData);
+		const values = new Float32Array(Array.from({ length: 64 }, (_, i) => i));
+		// lat 53.4 -> row 3, lon 12.6 -> rounds to col 3  =>  index 3*8 + 3 = 27
+		// (flooring would give col 2 => 26, i.e. the old half-cell offset)
+		expect(grid.getInterpolatedValue(values, 53.4, 12.6, 'none')).toBe(27);
+		// 'none' and 'nearest' are now the same operation
+		expect(grid.getInterpolatedValue(values, 53.4, 12.6, 'nearest')).toBe(27);
+	});
+
+	test("'smooth' returns NaN when the whole footprint is masked", () => {
+		const grid = new RegularGrid(methodGridData);
+		const values = new Float32Array(64).fill(NaN);
+		expect(grid.getInterpolatedValue(values, 53.5, 13.5, 'smooth')).toBeNaN();
+	});
+
+	test("'smooth' stays centred on the node (no half-cell shift)", () => {
+		const grid = new RegularGrid(methodGridData);
+		// ramp purely in x: value at node (i, j) = i
+		const values = new Float32Array(64);
+		for (let j = 0; j < 8; j++) for (let i = 0; i < 8; i++) values[j * 8 + i] = i;
+		// at node lon 14 -> i = 4: the area-average of a linear ramp equals the
+		// node value (4). Without the +0.5 SAT centring it would be 3.5.
+		expect(grid.getInterpolatedValue(values, 53, 14, 'smooth')).toBeCloseTo(4, 4);
 	});
 });
 

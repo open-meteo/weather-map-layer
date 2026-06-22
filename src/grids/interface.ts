@@ -1,4 +1,4 @@
-import { Bounds, DimensionRange } from '../types';
+import { Bounds, DimensionRange, InterpolationMethod } from '../types';
 
 export interface GridPoint {
 	index: number; // Index into the flat values array
@@ -8,6 +8,19 @@ export interface GridPoint {
 
 export interface GridInterface {
 	getLinearInterpolatedValue(values: Float32Array, lat: number, lon: number): number;
+
+	/**
+	 * Samples the grid at the given geographic coordinate using the requested
+	 * interpolation method. `smoothFootprint` is the box half-width in grid
+	 * cells used only by the 'smooth' (area-average) method.
+	 */
+	getInterpolatedValue(
+		values: Float32Array,
+		lat: number,
+		lon: number,
+		method: InterpolationMethod,
+		smoothFootprint?: number
+	): number;
 
 	getBounds(): Bounds;
 	getCenter(): { lng: number; lat: number };

@@ -2,10 +2,6 @@ import { roundWithPrecision } from '../utils/math';
 
 import type { DimensionRange } from '../types';
 
-export const noInterpolation = (values: Float32Array, index: number): number => {
-	return Number(values[index]);
-};
-
 export const interpolateLinear = (
 	values: Float32Array,
 	x: number,
@@ -92,6 +88,22 @@ export const interpolateLinear = (
 	return NaN;
 };
 
+export const interpolateNearest = (
+	values: Float32Array,
+	x: number,
+	y: number,
+	xFraction: number,
+	yFraction: number,
+	nx: number,
+	ny: number,
+	longitudeWrap: boolean = false
+): number => {
+	let xi = xFraction >= 0.5 ? x + 1 : x;
+	const yi = yFraction >= 0.5 ? Math.min(y + 1, ny - 1) : y;
+	if (xi >= nx) xi = longitudeWrap ? xi % nx : nx - 1;
+	return Number(values[yi * nx + xi]);
+};
+
 // 1D Cardinal Spline for 4 values
 const cardinalSpline = (
 	t: number,
@@ -112,6 +124,61 @@ const cardinalSpline = (
 		s * (t3 - 2 * t2 + t) * p2 +
 		(-2 * t3 + 3 * t2) * p2 +
 		s * (t3 - t2) * p3
+	);
+};
+
+// Separable bicubic (Catmull-Rom) interpolation.
+// Unlike bilinear (which is only C0 — its gradient jumps at every grid line)
+// this is C1-continuous, so the faceted "staircase" kinks that become very
+// visible towards the poles on regular lat/lon grids disappear.
+// The 4x4 stencil is unavailable at the grid border, and cubic would smear
+// values across masked (NaN) cells, so in those cases we fall back to the
+// NaN-aware bilinear interpolation.
+export const interpolateCubic = (
+	values: Float32Array,
+	x: number,
+	y: number,
+	xFraction: number,
+	yFraction: number,
+	nx: number,
+	ny: number,
+	longitudeWrap: boolean = false
+): number => {
+	// Rows y-1 .. y+2 must all exist
+	if (y < 1 || y >= ny - 2) {
+		return interpolateLinear(values, x, y, xFraction, yFraction, nx, longitudeWrap);
+	}
+
+	// Column indices, wrapping in longitude for global grids
+	let cols: [number, number, number, number];
+	if (longitudeWrap) {
+		cols = [(x - 1 + nx) % nx, x % nx, (x + 1) % nx, (x + 2) % nx];
+	} else if (x < 1 || x >= nx - 2) {
+		return interpolateLinear(values, x, y, xFraction, yFraction, nx, longitudeWrap);
+	} else {
+		cols = [x - 1, x, x + 1, x + 2];
+	}
+
+	const rows = [y - 1, y, y + 1, y + 2];
+
+	// Interpolate each of the 4 rows in X (tension = 0 -> Catmull-Rom)
+	const rowResults = new Array<number>(4);
+	for (let r = 0; r < 4; r++) {
+		const base = rows[r] * nx;
+		const p0 = values[base + cols[0]];
+		const p1 = values[base + cols[1]];
+		const p2 = values[base + cols[2]];
+		const p3 = values[base + cols[3]];
+		// Any missing sample -> fall back to NaN-aware bilinear
+		if (!isFinite(p0) || !isFinite(p1) || !isFinite(p2) || !isFinite(p3)) {
+			return interpolateLinear(values, x, y, xFraction, yFraction, nx, longitudeWrap);
+		}
+		rowResults[r] = cardinalSpline(xFraction, p0, p1, p2, p3, 0);
+	}
+
+	// Interpolate the 4 row-results in Y
+	return roundWithPrecision(
+		cardinalSpline(yFraction, rowResults[0], rowResults[1], rowResults[2], rowResults[3], 0)
 	);
 };
 

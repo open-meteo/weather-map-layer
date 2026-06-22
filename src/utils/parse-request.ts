@@ -1,9 +1,12 @@
 import { currentBounds, setClippingBounds } from './bounds';
 import { type ResolvedClippingOptions, resolveClippingOptions } from './clipping';
 import {
+	DEFAULT_INTERPOLATION,
 	DEFAULT_INTERVAL,
+	DEFAULT_SMOOTH_FOOTPRINT,
 	DEFAULT_TILE_SIZE,
 	RESOLVE_DOMAIN_REGEX,
+	VALID_INTERPOLATIONS,
 	VALID_TILE_SIZES
 } from './constants';
 import { parseUrlComponents } from './parse-url';
@@ -14,6 +17,7 @@ import type {
 	ColorScales,
 	DataIdentityOptions,
 	Domain,
+	InterpolationMethod,
 	OmProtocolSettings,
 	ParsedRequest,
 	ParsedUrlComponents,
@@ -113,6 +117,9 @@ const defaultResolveRenderOptions = (
 	}
 
 	const tileSize = parseTileSize(params.get('tile_size'));
+	const interpolation = parseInterpolation(params.get('interpolation'));
+	const smoothFootprint = parseSmoothFootprint(params.get('smooth_footprint'));
+	const colorBlend = params.get('color_blend') === 'true';
 
 	let intervals = [DEFAULT_INTERVAL];
 	if (params.get('intervals')) {
@@ -130,6 +137,9 @@ const defaultResolveRenderOptions = (
 
 	return {
 		tileSize,
+		interpolation,
+		smoothFootprint,
+		colorBlend,
 		drawGrid,
 		drawArrows,
 		drawContours,
@@ -144,4 +154,21 @@ const parseTileSize = (value: string | null): 64 | 128 | 256 | 512 | 1024 => {
 		throw new Error(`Invalid tile size, please use one of: ${VALID_TILE_SIZES.join(', ')}`);
 	}
 	return tileSize as 64 | 128 | 256 | 512 | 1024;
+};
+
+const parseInterpolation = (value: string | null): InterpolationMethod => {
+	const interpolation = value ?? DEFAULT_INTERPOLATION;
+	if (!VALID_INTERPOLATIONS.includes(interpolation as InterpolationMethod)) {
+		throw new Error(`Invalid interpolation, please use one of: ${VALID_INTERPOLATIONS.join(', ')}`);
+	}
+	return interpolation as InterpolationMethod;
+};
+
+const parseSmoothFootprint = (value: string | null): number => {
+	if (!value) return DEFAULT_SMOOTH_FOOTPRINT;
+	const footprint = Number(value);
+	if (!isFinite(footprint) || footprint <= 0 || footprint > 16) {
+		throw new Error('Invalid smooth_footprint, please use a number in (0, 16]');
+	}
+	return footprint;
 };

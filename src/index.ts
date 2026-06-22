@@ -11,6 +11,7 @@ export type {
 	GeoJsonFeature,
 	GeoJsonGeometry,
 	GeoJsonPosition,
+	InterpolationMethod,
 	OmProtocolSettings,
 	OmUrlState,
 	RenderableColorScale

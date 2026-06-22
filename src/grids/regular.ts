@@ -1,7 +1,10 @@
-import { GridInterface, GridPoint } from './interface';
-import { interpolateLinear } from './interpolations';
+import { DEFAULT_SMOOTH_FOOTPRINT } from '../utils/constants';
 
-import { Bounds, DimensionRange, RegularGridData } from '../types';
+import { SummedAreaTable, areaAverage, buildSummedAreaTable } from './area-average';
+import { GridInterface, GridPoint } from './interface';
+import { interpolateCubic, interpolateLinear, interpolateNearest } from './interpolations';
+
+import { Bounds, DimensionRange, InterpolationMethod, RegularGridData } from '../types';
 
 // Regular grid implementation
 export class RegularGrid implements GridInterface {
@@ -13,6 +16,11 @@ export class RegularGrid implements GridInterface {
 	private bounds: Bounds;
 	private longitudeWrap: boolean;
 	private center?: { lng: number; lat: number };
+
+	// Lazily-built summed-area table for the 'smooth' method, cached per data
+	// array so all pixels of a tile reuse a single O(nx·ny) build.
+	private sat?: SummedAreaTable;
+	private satSource?: Float32Array;
 
 	constructor(data: RegularGridData, ranges: DimensionRange[] | null = null) {
 		this.dx = data.dx;
@@ -58,6 +66,16 @@ export class RegularGrid implements GridInterface {
 	}
 
 	getLinearInterpolatedValue(values: Float32Array, lat: number, lon: number): number {
+		return this.getInterpolatedValue(values, lat, lon, 'linear');
+	}
+
+	getInterpolatedValue(
+		values: Float32Array,
+		lat: number,
+		lon: number,
+		method: InterpolationMethod,
+		smoothFootprint: number = DEFAULT_SMOOTH_FOOTPRINT
+	): number {
 		// check longitude is within bounds
 		if (!this.longitudeWrap) {
 			if (lon < this.bounds[0] || lon > this.bounds[2]) {
@@ -78,7 +96,74 @@ export class RegularGrid implements GridInterface {
 		const dx = this.longitudeWrap && lon >= this.bounds[2] - this.dx ? this.dx * 2 : this.dx;
 		const xFraction = ((lon - this.bounds[0]) % dx) / dx;
 
-		return interpolateLinear(values, x, y, xFraction, yFraction, this.nx, this.longitudeWrap);
+		switch (method) {
+			// 'none' and 'nearest' are the same operation: the value of the
+			// closest grid node (round), centred on the node exactly like the
+			// interpolating methods. Flooring would offset every cell by half a
+			// cell up/right (RegularGrid.swift registers values at lonMin+i*dx).
+			case 'none':
+			case 'nearest':
+				return interpolateNearest(
+					values,
+					x,
+					y,
+					xFraction,
+					yFraction,
+					this.nx,
+					this.ny,
+					this.longitudeWrap
+				);
+			case 'cubic':
+				return interpolateCubic(
+					values,
+					x,
+					y,
+					xFraction,
+					yFraction,
+					this.nx,
+					this.ny,
+					this.longitudeWrap
+				);
+			case 'smooth':
+				return this.getAreaAveragedValue(
+					values,
+					lat,
+					x + xFraction,
+					y + yFraction,
+					smoothFootprint
+				);
+			case 'linear':
+			default:
+				return interpolateLinear(values, x, y, xFraction, yFraction, this.nx, this.longitudeWrap);
+		}
+	}
+
+	// Area-average over a footprint that is isotropic in physical space: a
+	// `footprint` cell half-width tall, and ∝ 1/cos(lat) wide so it spans the
+	// longitudinal regridding plateaus that grow towards the poles.
+	private getAreaAveragedValue(
+		values: Float32Array,
+		lat: number,
+		xc: number,
+		yc: number,
+		footprint: number
+	): number {
+		if (this.sat === undefined || this.satSource !== values) {
+			this.sat = buildSummedAreaTable(values, this.nx, this.ny);
+			this.satSource = values;
+		}
+
+		const cosLat = Math.max(Math.cos((lat * Math.PI) / 180), 0.1);
+		const halfLon = footprint / cosLat;
+		const halfLat = footprint;
+
+		// In the SAT, value[i] occupies the integral interval [i, i+1) — its
+		// centre is at i+0.5 — so shift the box centre by +0.5 to keep the
+		// average on the node (otherwise it lands half a cell down-left).
+		const cx = xc + 0.5;
+		const cy = yc + 0.5;
+
+		return areaAverage(this.sat, cx - halfLon, cy - halfLat, cx + halfLon, cy + halfLat);
 	}
 
 	getBounds(): Bounds {

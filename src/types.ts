@@ -15,8 +15,15 @@ export interface DataIdentityOptions {
 	bounds: Bounds | undefined;
 }
 
+export type InterpolationMethod = 'none' | 'nearest' | 'linear' | 'cubic' | 'smooth';
+
 export interface RenderOptions {
 	tileSize: 64 | 128 | 256 | 512 | 1024 | 2048;
+	interpolation: InterpolationMethod;
+	// 'smooth' area-average box half-width in grid cells.
+	smoothFootprint: number;
+	// Interpolate colours between colour-scale breakpoints instead of hard bands.
+	colorBlend: boolean;
 	drawGrid: boolean;
 	drawArrows: boolean;
 	drawContours: boolean;

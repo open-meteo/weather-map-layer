@@ -2,7 +2,7 @@ import { modPositive, roundWithPrecision } from '../utils/math';
 
 import { GridInterface, GridPoint } from './interface';
 
-import { Bounds, DimensionRange, GaussianGridData } from '../types';
+import { Bounds, DimensionRange, GaussianGridData, InterpolationMethod } from '../types';
 
 /**
  * Implementation of a Gaussian grid projection for mapping, specifically the O1280 version used by ECMWF IFS
@@ -141,6 +141,19 @@ export class GaussianGrid implements GridInterface {
 
 		return { y, x, nx };
 	}*/
+
+	getInterpolatedValue(
+		values: Float32Array,
+		lat: number,
+		lon: number,
+		_method: InterpolationMethod,
+		_smoothFootprint?: number
+	): number {
+		// Reduced Gaussian grids have a varying number of longitude points per
+		// latitude row, so the regular-grid nearest/cubic stencils don't apply.
+		// Fall back to the (bi)linear sampler for every method.
+		return this.getLinearInterpolatedValue(values, lat, lon);
+	}
 
 	/// Values is the 1D array of all HRES values (6 million something values)
 	getLinearInterpolatedValue(values: Float32Array, lat: number, lon: number): number {

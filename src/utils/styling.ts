@@ -25,22 +25,43 @@ function findLastIndexLE(arr: number[], value: number): number {
 	return res;
 }
 
+const lerpColor = (
+	a: [number, number, number, number],
+	b: [number, number, number, number],
+	t: number
+): [number, number, number, number] => [
+	a[0] + (b[0] - a[0]) * t,
+	a[1] + (b[1] - a[1]) * t,
+	a[2] + (b[2] - a[2]) * t,
+	a[3] + (b[3] - a[3]) * t
+];
+
 export const getColor = (
 	colorScale: RenderableColorScale,
-	px: number
+	px: number,
+	blend: boolean = false
 ): [number, number, number, number] => {
 	switch (colorScale.type) {
 		case 'rgba': {
-			const deltaPerIndex = (colorScale.max - colorScale.min) / colorScale.colors.length;
-			const index = Math.min(
-				colorScale.colors.length - 1,
-				Math.max(0, Math.floor((px - colorScale.min) / deltaPerIndex))
-			);
-			return colorScale.colors[index];
+			const colors = colorScale.colors;
+			const deltaPerIndex = (colorScale.max - colorScale.min) / colors.length;
+			const pos = (px - colorScale.min) / deltaPerIndex;
+			const index = Math.min(colors.length - 1, Math.max(0, Math.floor(pos)));
+			if (!blend) return colors[index];
+			const next = Math.min(colors.length - 1, index + 1);
+			const t = Math.min(1, Math.max(0, pos - index));
+			return lerpColor(colors[index], colors[next], t);
 		}
 		case 'breakpoint': {
-			const index = Math.max(0, findLastIndexLE(colorScale.breakpoints, px));
-			return colorScale.colors[index];
+			const breakpoints = colorScale.breakpoints;
+			const colors = colorScale.colors;
+			const index = Math.max(0, findLastIndexLE(breakpoints, px));
+			if (!blend) return colors[index];
+			const next = Math.min(colors.length - 1, index + 1);
+			const lo = breakpoints[index];
+			const hi = breakpoints[next];
+			const t = hi > lo ? Math.min(1, Math.max(0, (px - lo) / (hi - lo))) : 0;
+			return lerpColor(colors[index], colors[next], t);
 		}
 		default: {
 			// This ensures exhaustiveness checking
