@@ -163,7 +163,15 @@ export class RegularGrid implements GridInterface {
 		const cx = xc + 0.5;
 		const cy = yc + 0.5;
 
-		return areaAverage(this.sat, cx - halfLon, cy - halfLat, cx + halfLon, cy + halfLat);
+		// wrap the longitude box across the antimeridian for global grids
+		return areaAverage(
+			this.sat,
+			cx - halfLon,
+			cy - halfLat,
+			cx + halfLon,
+			cy + halfLat,
+			this.longitudeWrap
+		);
 	}
 
 	getBounds(): Bounds {

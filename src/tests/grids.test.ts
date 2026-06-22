@@ -243,6 +243,29 @@ describe('interpolation methods', () => {
 			expect(v).toBeLessThanOrEqual(14.15);
 		}
 	});
+
+	test("'smooth' is continuous across the antimeridian on a global grid", () => {
+		// longitudeWrap = true (lonMax - lonMin = 360)
+		const nx = 36;
+		const ny = 10;
+		const grid = new RegularGrid({
+			type: 'regular',
+			nx,
+			ny,
+			lonMin: -180,
+			latMin: -45,
+			dx: 10,
+			dy: 10
+		});
+		const values = new Float32Array(nx * ny);
+		for (let j = 0; j < ny; j++)
+			for (let i = 0; i < nx; i++) values[j * nx + i] = Math.sin(((-180 + i * 10) * Math.PI) / 180);
+		// two points 0.02° apart across the 180° seam must be ~equal; without the
+		// SAT longitude wrap the box clamps to one side and they jump apart.
+		const below = grid.getInterpolatedValue(values, 5, 179.99, 'smooth');
+		const above = grid.getInterpolatedValue(values, 5, -179.99, 'smooth');
+		expect(Math.abs(below - above)).toBeLessThan(0.01);
+	});
 });
 
 describe('ProjectionGrid', () => {

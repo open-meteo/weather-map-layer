@@ -70,32 +70,61 @@ const sampleIntegral = (arr: Float64Array | Float32Array, w: number, x: number, 
 	return a * (1 - fx) * (1 - fy) + b * fx * (1 - fy) + c * (1 - fx) * fy + d * fx * fy;
 };
 
-// Average over the box [x0, x1] x [y0, y1] given in fractional cell coordinates.
-// Returns NaN when the box contains no valid samples.
-export const areaAverage = (
+// Raw {sum, count} over the box [x0, x1] x [y0, y1] (clamped to the grid).
+const boxSums = (
 	sat: SummedAreaTable,
 	x0: number,
 	y0: number,
 	x1: number,
 	y1: number
-): number => {
+): { sum: number; count: number } => {
 	const w = sat.nx + 1;
-
 	x0 = Math.min(Math.max(x0, 0), sat.nx);
 	x1 = Math.min(Math.max(x1, 0), sat.nx);
 	y0 = Math.min(Math.max(y0, 0), sat.ny);
 	y1 = Math.min(Math.max(y1, 0), sat.ny);
 
-	const s =
+	const sum =
 		sampleIntegral(sat.sum, w, x1, y1) -
 		sampleIntegral(sat.sum, w, x0, y1) -
 		sampleIntegral(sat.sum, w, x1, y0) +
 		sampleIntegral(sat.sum, w, x0, y0);
-	const c =
+	const count =
 		sampleIntegral(sat.count, w, x1, y1) -
 		sampleIntegral(sat.count, w, x0, y1) -
 		sampleIntegral(sat.count, w, x1, y0) +
 		sampleIntegral(sat.count, w, x0, y0);
+	return { sum, count };
+};
+
+// Average over the box [x0, x1] x [y0, y1] given in fractional cell coordinates.
+// When `wrapX` is set, a box that runs off the left/right edge wraps around in
+// longitude (global grids) so the average is continuous across the antimeridian
+// instead of being clamped to one side of the seam. Returns NaN when the box
+// contains no valid samples.
+export const areaAverage = (
+	sat: SummedAreaTable,
+	x0: number,
+	y0: number,
+	x1: number,
+	y1: number,
+	wrapX: boolean = false
+): number => {
+	let s: number;
+	let c: number;
+
+	if (wrapX && (x0 < 0 || x1 > sat.nx)) {
+		const a = boxSums(sat, Math.max(x0, 0), y0, Math.min(x1, sat.nx), y1);
+		// the part that ran off one edge re-enters on the other
+		const b =
+			x0 < 0 ? boxSums(sat, sat.nx + x0, y0, sat.nx, y1) : boxSums(sat, 0, y0, x1 - sat.nx, y1);
+		s = a.sum + b.sum;
+		c = a.count + b.count;
+	} else {
+		const r = boxSums(sat, x0, y0, x1, y1);
+		s = r.sum;
+		c = r.count;
+	}
 
 	// Round to the same precision as the bilinear/bicubic samplers. The SAT
 	// differences of large integral values leave ~1e-9 of float noise, which —
