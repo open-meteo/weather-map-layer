@@ -1,3 +1,5 @@
+import { roundWithPrecision } from '../utils/math';
+
 // Summed-area table (integral image) based area averaging.
 //
 // Bilinear/cubic interpolation reconstruct a value at a single point. When the
@@ -95,5 +97,9 @@ export const areaAverage = (
 		sampleIntegral(sat.count, w, x1, y0) +
 		sampleIntegral(sat.count, w, x0, y0);
 
-	return c > 1e-6 ? s / c : NaN;
+	// Round to the same precision as the bilinear/bicubic samplers. The SAT
+	// differences of large integral values leave ~1e-9 of float noise, which —
+	// on a flat plateau whose value coincides with a colour breakpoint — would
+	// otherwise dither the colour bucket and speckle the band edge.
+	return c > 1e-6 ? roundWithPrecision(s / c) : NaN;
 };

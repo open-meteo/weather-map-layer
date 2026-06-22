@@ -197,6 +197,52 @@ describe('interpolation methods', () => {
 		// node value (4). Without the +0.5 SAT centring it would be 3.5.
 		expect(grid.getInterpolatedValue(values, 53, 14, 'smooth')).toBeCloseTo(4, 4);
 	});
+
+	// A gentle ramp quantised to 0.05 (temperature scalefactor 20). When a colour
+	// breakpoint coincides with the plateau value, float noise in the sampler
+	// used to dither the bucket and speckle the band edge.
+	const quantizedRamp = () => {
+		const nx = 80;
+		const ny = 6;
+		const grid = new RegularGrid({
+			type: 'regular',
+			nx,
+			ny,
+			lonMin: 0,
+			latMin: 0,
+			dx: 0.02,
+			dy: 0.02
+		});
+		const values = new Float32Array(nx * ny);
+		for (let j = 0; j < ny; j++)
+			for (let i = 0; i < nx; i++) values[j * nx + i] = Math.round((14 + 0.002 * i) / 0.05) * 0.05;
+		return { grid, values, nx };
+	};
+
+	test("'smooth' does not dither across a breakpoint on a quantized plateau", () => {
+		const { grid, values, nx } = quantizedRamp();
+		let crossings = 0;
+		let prev: boolean | null = null;
+		for (let s = 0; s < 400; s++) {
+			const lon = (s / 400) * (nx - 1) * 0.02;
+			const side = grid.getInterpolatedValue(values, 0.05, lon, 'smooth') >= 14.0;
+			if (prev !== null && side !== prev) crossings++;
+			prev = side;
+		}
+		// the ramp crosses 14.0 once; >2 means the float-noise speckle is back
+		expect(crossings).toBeLessThanOrEqual(2);
+	});
+
+	test("'cubic' does not overshoot the local data range", () => {
+		const { grid, values, nx } = quantizedRamp();
+		for (let s = 0; s < 400; s++) {
+			const lon = (s / 400) * (nx - 1) * 0.02;
+			const v = grid.getInterpolatedValue(values, 0.05, lon, 'cubic');
+			// data is in [14.0, 14.15]; Catmull-Rom overshoot must be clamped away
+			expect(v).toBeGreaterThanOrEqual(14.0);
+			expect(v).toBeLessThanOrEqual(14.15);
+		}
+	});
 });
 
 describe('ProjectionGrid', () => {

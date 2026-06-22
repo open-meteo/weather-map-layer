@@ -5,7 +5,7 @@ import { checkAgainstBounds } from './utils/bounds';
 import { clipRasterToPolygons } from './utils/clipping';
 import { generateContours } from './utils/contours';
 import { generateGridPoints } from './utils/grid-points';
-import { tile2lat, tile2lon } from './utils/math';
+import { estimateQuantum, tile2lat, tile2lon } from './utils/math';
 import { getColor } from './utils/styling';
 
 import { GridFactory } from './grids/index';
@@ -43,15 +43,23 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 
 		const grid = GridFactory.create(domain.grid, ranges);
 
+		// Offset the colour threshold by half the data's quantization step so
+		// band edges fall inside grid cells (smooth) instead of snapping to the
+		// cell corners when a breakpoint coincides with a quantization level.
+		const halfQuantum = estimateQuantum(values) / 2;
+
 		for (let i = 0; i < tileSize; i++) {
-			const lat = tile2lat(y + i / tileSize, z);
+			// sample at the pixel centre ((i+0.5)/tileSize), not the top-left
+			// corner, so the value is registered where the pixel is displayed
+			// (fixes the half-pixel up-left shift visible when zooming)
+			const lat = tile2lat(y + (i + 0.5) / tileSize, z);
 
 			if (clippingOptions?.bounds)
 				if (checkAgainstBounds(lat, clippingOptions.bounds[1], clippingOptions.bounds[3])) continue;
 
 			for (let j = 0; j < tileSize; j++) {
 				const ind = j + i * tileSize;
-				const lon = tile2lon(x + j / tileSize, z);
+				const lon = tile2lon(x + (j + 0.5) / tileSize, z);
 
 				if (clippingOptions?.bounds)
 					if (checkAgainstBounds(lon, clippingOptions.bounds[0], clippingOptions.bounds[2]))
@@ -60,7 +68,7 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 				const px = grid.getInterpolatedValue(values, lat, lon, interpolation, smoothFootprint);
 
 				if (isFinite(px)) {
-					const color = getColor(colorScale, px, colorBlend);
+					const color = getColor(colorScale, px + halfQuantum, colorBlend);
 					rgba[4 * ind] = color[0];
 					rgba[4 * ind + 1] = color[1];
 					rgba[4 * ind + 2] = color[2];
@@ -98,11 +106,35 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 			generateGridPoints(pbf, grid, values, directions, x, y, z, clippingOptions);
 		}
 		if (message.data.renderOptions.drawArrows && directions) {
-			generateArrows(pbf, values, directions, grid, x, y, z, clippingOptions);
+			generateArrows(
+				pbf,
+				values,
+				directions,
+				grid,
+				x,
+				y,
+				z,
+				clippingOptions,
+				interpolation,
+				smoothFootprint
+			);
 		}
 		if (message.data.renderOptions.drawContours) {
 			const intervals = message.data.renderOptions.intervals;
-			generateContours(pbf, values, grid, x, y, z, tileSize, intervals, clippingOptions);
+			generateContours(
+				pbf,
+				values,
+				grid,
+				x,
+				y,
+				z,
+				tileSize,
+				intervals,
+				clippingOptions,
+				interpolation,
+				smoothFootprint,
+				estimateQuantum(values) / 2
+			);
 		}
 
 		const arrayBuffer = pbf.finish();

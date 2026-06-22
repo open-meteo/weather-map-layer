@@ -4,6 +4,30 @@ export const roundWithPrecision = (value: number, precision: number = 1_000_000)
 	return Math.round((value + Number.EPSILON) * precision) / precision;
 };
 
+/**
+ * Estimate the storage quantization step of a field as the smallest significant
+ * difference between adjacent samples (a gentle gradient steps by exactly one
+ * quantum wherever it crosses a level). Returns 0 for (near-)continuous data.
+ *
+ * Colour/contour thresholds that coincide with this quantum produce a blocky,
+ * cell-aligned band boundary; offsetting the threshold by half the quantum lets
+ * interpolation place the crossing inside the cells -> a smooth boundary.
+ */
+export const estimateQuantum = (values: Float32Array): number => {
+	let min = Infinity;
+	const n = values.length;
+	const stride = Math.max(1, Math.floor(n / 4096)); // sample for speed
+	for (let i = 1; i < n; i += stride) {
+		const a = values[i];
+		const b = values[i - 1];
+		if (!isFinite(a) || !isFinite(b)) continue;
+		const d = Math.abs(a - b);
+		// ignore 0 (flat) and sub-1e-4 float-representation noise
+		if (d >= 1e-4 && d < min) min = d;
+	}
+	return isFinite(min) ? min : 0;
+};
+
 export const degreesToRadians = (degree: number) => {
 	return degree * (PI / 180);
 };

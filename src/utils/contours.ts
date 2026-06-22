@@ -2,9 +2,11 @@ import { GridInterface } from '../grids/index';
 import { PbfWriter } from 'pbf';
 
 import { type ResolvedClippingOptions, createClippingTester } from './clipping';
-import { VECTOR_TILE_EXTENT } from './constants';
+import { DEFAULT_SMOOTH_FOOTPRINT, VECTOR_TILE_EXTENT } from './constants';
 import { tile2lat, tile2lon } from './math';
 import { command, writeLayer, zigzag } from './pbf';
+
+import { InterpolationMethod } from '../types';
 
 // prettier-ignore
 export const CASES: [number, number][][][] = [
@@ -111,6 +113,12 @@ export const generateContours = (
 	tileSize: number,
 	intervals: number[],
 	clippingOptions: ResolvedClippingOptions | undefined,
+	interpolation: InterpolationMethod = 'linear',
+	smoothFootprint: number = DEFAULT_SMOOTH_FOOTPRINT,
+	// Added to every sample so contour crossings fall off the quantization grid,
+	// matching the raster (see estimateQuantum / worker). Keeps contours aligned
+	// with the colour band edges.
+	valueOffset: number = 0,
 	extent: number = VECTOR_TILE_EXTENT
 ) => {
 	const features = [];
@@ -136,8 +144,12 @@ export const generateContours = (
 		// const lonTop = tile2lon(x + i / width, z);
 		const lonBottom = tile2lon(x + (i - 1) / width, z);
 
-		let trd = grid.getLinearInterpolatedValue(values, latBottom, lonBottom);
-		let brd = grid.getLinearInterpolatedValue(values, latTop, lonBottom);
+		let trd =
+			grid.getInterpolatedValue(values, latBottom, lonBottom, interpolation, smoothFootprint) +
+			valueOffset;
+		let brd =
+			grid.getInterpolatedValue(values, latTop, lonBottom, interpolation, smoothFootprint) +
+			valueOffset;
 
 		let minR = Math.min(trd, brd);
 		let maxR = Math.max(trd, brd);
@@ -148,8 +160,12 @@ export const generateContours = (
 			tld = trd;
 			bld = brd;
 
-			trd = grid.getLinearInterpolatedValue(values, latBottom, lon);
-			brd = grid.getLinearInterpolatedValue(values, latTop, lon);
+			trd =
+				grid.getInterpolatedValue(values, latBottom, lon, interpolation, smoothFootprint) +
+				valueOffset;
+			brd =
+				grid.getInterpolatedValue(values, latTop, lon, interpolation, smoothFootprint) +
+				valueOffset;
 
 			const minL = minR;
 			const maxL = maxR;

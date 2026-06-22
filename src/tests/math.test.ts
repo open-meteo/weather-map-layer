@@ -1,5 +1,24 @@
-import { fastAtan2, tile2lat, tile2lon } from '../utils/math';
+import { estimateQuantum, fastAtan2, tile2lat, tile2lon } from '../utils/math';
 import { describe, expect, test } from 'vitest';
+
+describe('estimateQuantum', () => {
+	test('returns the storage step of a quantized gentle ramp', () => {
+		// values quantized to 0.05 (temperature scalefactor 20)
+		const v = new Float32Array(200);
+		for (let i = 0; i < v.length; i++) v[i] = Math.round((14 + 0.01 * i) / 0.05) * 0.05;
+		expect(estimateQuantum(v)).toBeCloseTo(0.05, 4);
+	});
+
+	test('returns 0 for a flat field (no significant steps)', () => {
+		expect(estimateQuantum(new Float32Array(100).fill(14))).toBe(0);
+	});
+
+	test('ignores sub-1e-4 float-representation noise', () => {
+		const v = new Float32Array(100);
+		for (let i = 0; i < v.length; i++) v[i] = 14 + i * 1e-6; // below the 1e-4 floor
+		expect(estimateQuantum(v)).toBe(0);
+	});
+});
 
 describe('tile2lon', () => {
 	test('returns -180 for x=0 at any zoom level', () => {

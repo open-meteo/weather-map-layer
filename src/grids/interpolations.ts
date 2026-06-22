@@ -161,8 +161,13 @@ export const interpolateCubic = (
 
 	const rows = [y - 1, y, y + 1, y + 2];
 
-	// Interpolate each of the 4 rows in X (tension = 0 -> Catmull-Rom)
+	// Interpolate each of the 4 rows in X (tension = 0 -> Catmull-Rom).
+	// Track the min/max of the inner 2x2 cell (the cell containing the sample)
+	// to clamp overshoot: Catmull-Rom can ring past the local data range, which
+	// near a colour breakpoint produces spurious extra bands / contour wiggles.
 	const rowResults = new Array<number>(4);
+	let lo = Infinity;
+	let hi = -Infinity;
 	for (let r = 0; r < 4; r++) {
 		const base = rows[r] * nx;
 		const p0 = values[base + cols[0]];
@@ -174,12 +179,25 @@ export const interpolateCubic = (
 			return interpolateLinear(values, x, y, xFraction, yFraction, nx, longitudeWrap);
 		}
 		rowResults[r] = cardinalSpline(xFraction, p0, p1, p2, p3, 0);
+		// inner cell = columns cols[1]/cols[2] of rows y (r=1) and y+1 (r=2)
+		if (r === 1 || r === 2) {
+			if (p1 < lo) lo = p1;
+			if (p2 < lo) lo = p2;
+			if (p1 > hi) hi = p1;
+			if (p2 > hi) hi = p2;
+		}
 	}
 
-	// Interpolate the 4 row-results in Y
-	return roundWithPrecision(
-		cardinalSpline(yFraction, rowResults[0], rowResults[1], rowResults[2], rowResults[3], 0)
+	// Interpolate the 4 row-results in Y, then clamp to the cell range
+	const result = cardinalSpline(
+		yFraction,
+		rowResults[0],
+		rowResults[1],
+		rowResults[2],
+		rowResults[3],
+		0
 	);
+	return roundWithPrecision(Math.min(Math.max(result, lo), hi));
 };
 
 export const interpolateCardinal2D = (
