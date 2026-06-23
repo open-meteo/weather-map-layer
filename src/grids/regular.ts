@@ -15,8 +15,21 @@ export class RegularGrid implements GridInterface {
 	private center?: { lng: number; lat: number };
 
 	constructor(data: RegularGridData, ranges: DimensionRange[] | null = null) {
-		this.dx = data.dx;
-		this.dy = data.dy;
+		// normalise both forms to an origin (lonMin/latMin) + spacing (dx/dy)
+		let originLon: number;
+		let originLat: number;
+		if (data.latitude && data.longitude) {
+			originLon = data.longitude[0];
+			originLat = data.latitude[0];
+			// inclusive bounds: divide by (n - 1) so the last node lands on the upper bound
+			this.dx = (data.longitude[1] - data.longitude[0]) / (data.nx - 1);
+			this.dy = (data.latitude[1] - data.latitude[0]) / (data.ny - 1);
+		} else {
+			originLon = data.lonMin;
+			originLat = data.latMin;
+			this.dx = data.dx;
+			this.dy = data.dy;
+		}
 
 		if (!ranges) {
 			// if ranges are not provided, use the full grid dimensions
@@ -47,10 +60,10 @@ export class RegularGrid implements GridInterface {
 		this.nx = ranges[1].end - ranges[1].start;
 		this.ny = ranges[0].end - ranges[0].start;
 
-		const lonMin = data.lonMin + this.dx * ranges[1].start;
-		const latMin = data.latMin + this.dy * ranges[0].start;
-		const lonMax = data.lonMin + this.dx * ranges[1].end;
-		const latMax = data.latMin + this.dy * ranges[0].end;
+		const lonMin = originLon + this.dx * ranges[1].start;
+		const latMin = originLat + this.dy * ranges[0].start;
+		const lonMax = originLon + this.dx * ranges[1].end;
+		const latMax = originLat + this.dy * ranges[0].end;
 		this.bounds = [lonMin, latMin, lonMax, latMax];
 
 		// icon global is one grid point short, therefore compare to 359.875
