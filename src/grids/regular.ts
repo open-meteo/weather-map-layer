@@ -18,12 +18,12 @@ export class RegularGrid implements GridInterface {
 		// normalise both forms to an origin (lonMin/latMin) + spacing (dx/dy)
 		let originLon: number;
 		let originLat: number;
-		if (data.latitudeBounds && data.longitudeBounds) {
-			originLon = data.longitudeBounds[0];
-			originLat = data.latitudeBounds[0];
+		if (data.latitude && data.longitude) {
+			originLon = data.longitude[0];
+			originLat = data.latitude[0];
 			// inclusive bounds: divide by (n - 1) so the last node lands on the upper bound
-			this.dx = (data.longitudeBounds[1] - data.longitudeBounds[0]) / (data.nx - 1);
-			this.dy = (data.latitudeBounds[1] - data.latitudeBounds[0]) / (data.ny - 1);
+			this.dx = (data.longitude[1] - data.longitude[0]) / (data.nx - 1);
+			this.dy = (data.latitude[1] - data.latitude[0]) / (data.ny - 1);
 		} else {
 			originLon = data.lonMin;
 			originLat = data.latMin;

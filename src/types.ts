@@ -202,14 +202,14 @@ export interface RegularGridFromOrigin extends BaseGridData {
 	latMin: number;
 	dx: number;
 	dy: number;
-	latitudeBounds?: never;
-	longitudeBounds?: never;
+	latitude?: never;
+	longitude?: never;
 }
 
 export interface RegularGridFromBounds extends BaseGridData {
 	type: 'regular';
-	latitudeBounds: [min: number, max: number];
-	longitudeBounds: [min: number, max: number];
+	latitude: [min: number, max: number];
+	longitude: [min: number, max: number];
 	lonMin?: never;
 	latMin?: never;
 	dx?: never;
@@ -226,8 +226,8 @@ export interface ProjectionGridFromBounds extends BaseGridData {
 	projection: ProjectionData;
 	nx: number;
 	ny: number;
-	latitudeBounds: [min: number, max: number];
-	longitudeBounds: [min: number, max: number];
+	latitude: [min: number, max: number];
+	longitude: [min: number, max: number];
 }
 
 export interface ProjectionGridFromGeographicOrigin extends BaseGridData {
@@ -248,8 +248,8 @@ export interface ProjectionGridFromProjectedOrigin extends BaseGridData {
 	ny: number;
 	dx: number;
 	dy: number;
-	projectedLatitudeOrigin: number;
-	projectedLongitudeOrigin: number;
+	latitudeProjectionOrigin: number;
+	longitudeProjectionOrigin: number;
 }
 
 export type ProjectionData =

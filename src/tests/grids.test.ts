@@ -86,8 +86,8 @@ describe('RegularGrid', () => {
 			type: 'regular',
 			nx: 10,
 			ny: 3,
-			longitudeBounds: [10, 19],
-			latitudeBounds: [50, 54]
+			longitude: [10, 19],
+			latitude: [50, 54]
 		});
 		expect(grid.getBounds()).toEqual([10, 50, 20, 56]);
 
