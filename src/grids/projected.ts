@@ -101,8 +101,7 @@ export class ProjectionGrid implements GridInterface {
 	): number {
 		const idx = this.findPointInterpolated(lat, lon);
 		switch (method) {
-			// 'none' and 'nearest' both return the closest grid node, centred.
-			case 'none':
+			// 'nearest' returns the value of the closest grid node.
 			case 'nearest':
 				return interpolateNearest(
 					values,

@@ -16,7 +16,7 @@ describe('raster pixel sampling registration', () => {
 	const i = 200;
 	const j = 300;
 
-	test('values are sampled at the pixel corner, half a pixel NW of the centre', () => {
+	test('sampling at the pixel corner is half a pixel NW of the centre', () => {
 		// what the worker samples for pixel (i, j)
 		const sampleLat = tile2lat(y + i / tileSize, z);
 		const sampleLon = tile2lon(x + j / tileSize, z);

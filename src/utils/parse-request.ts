@@ -1,6 +1,7 @@
 import { currentBounds, setClippingBounds } from './bounds';
 import { type ResolvedClippingOptions, resolveClippingOptions } from './clipping';
 import {
+	DEFAULT_COLOR_BLEND,
 	DEFAULT_INTERPOLATION,
 	DEFAULT_INTERVAL,
 	DEFAULT_SMOOTH_FOOTPRINT,
@@ -22,7 +23,8 @@ import type {
 	ParsedRequest,
 	ParsedUrlComponents,
 	RenderOptions,
-	RenderableColorScale
+	RenderableColorScale,
+	TileSize
 } from '../types';
 
 let cachedClippingInput: ClippingOptions = undefined;
@@ -119,7 +121,8 @@ const defaultResolveRenderOptions = (
 	const tileSize = parseTileSize(params.get('tile_size'));
 	const interpolation = parseInterpolation(params.get('interpolation'));
 	const smoothFootprint = parseSmoothFootprint(params.get('smooth_footprint'));
-	const colorBlend = params.get('color_blend') === 'true';
+	const colorBlend =
+		params.get('color_blend') === null ? DEFAULT_COLOR_BLEND : params.get('color_blend') === 'true';
 
 	let intervals = [DEFAULT_INTERVAL];
 	if (params.get('intervals')) {
@@ -148,12 +151,12 @@ const defaultResolveRenderOptions = (
 	};
 };
 
-const parseTileSize = (value: string | null): 64 | 128 | 256 | 512 | 1024 => {
+const parseTileSize = (value: string | null): TileSize => {
 	const tileSize = value ? Number(value) : DEFAULT_TILE_SIZE;
 	if (!VALID_TILE_SIZES.includes(tileSize)) {
 		throw new Error(`Invalid tile size, please use one of: ${VALID_TILE_SIZES.join(', ')}`);
 	}
-	return tileSize as 64 | 128 | 256 | 512 | 1024;
+	return tileSize as TileSize;
 };
 
 const parseInterpolation = (value: string | null): InterpolationMethod => {

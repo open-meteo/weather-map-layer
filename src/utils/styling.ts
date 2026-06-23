@@ -28,18 +28,24 @@ function findLastIndexLE(arr: number[], value: number): number {
 const lerpColor = (
 	a: [number, number, number, number],
 	b: [number, number, number, number],
-	t: number
-): [number, number, number, number] => [
-	a[0] + (b[0] - a[0]) * t,
-	a[1] + (b[1] - a[1]) * t,
-	a[2] + (b[2] - a[2]) * t,
-	a[3] + (b[3] - a[3]) * t
-];
+	t: number,
+	out: [number, number, number, number] = [0, 0, 0, 0]
+): [number, number, number, number] => {
+	out[0] = a[0] + (b[0] - a[0]) * t;
+	out[1] = a[1] + (b[1] - a[1]) * t;
+	out[2] = a[2] + (b[2] - a[2]) * t;
+	out[3] = a[3] + (b[3] - a[3]) * t;
+	return out;
+};
 
 export const getColor = (
 	colorScale: RenderableColorScale,
 	px: number,
-	blend: boolean = false
+	blend: boolean = false,
+	// Optional reusable buffer for the blended result. Hot paths (the raster
+	// worker's per-pixel loop) pass one to avoid allocating an array per pixel.
+	// The non-blend path returns the scale's own colour, so `out` is ignored there.
+	out?: [number, number, number, number]
 ): [number, number, number, number] => {
 	switch (colorScale.type) {
 		case 'rgba': {
@@ -50,7 +56,7 @@ export const getColor = (
 			if (!blend) return colors[index];
 			const next = Math.min(colors.length - 1, index + 1);
 			const t = Math.min(1, Math.max(0, pos - index));
-			return lerpColor(colors[index], colors[next], t);
+			return lerpColor(colors[index], colors[next], t, out);
 		}
 		case 'breakpoint': {
 			const breakpoints = colorScale.breakpoints;
@@ -61,7 +67,7 @@ export const getColor = (
 			const lo = breakpoints[index];
 			const hi = breakpoints[next];
 			const t = hi > lo ? Math.min(1, Math.max(0, (px - lo) / (hi - lo))) : 0;
-			return lerpColor(colors[index], colors[next], t);
+			return lerpColor(colors[index], colors[next], t, out);
 		}
 		default: {
 			// This ensures exhaustiveness checking

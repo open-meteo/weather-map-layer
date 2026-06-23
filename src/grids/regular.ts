@@ -97,11 +97,9 @@ export class RegularGrid implements GridInterface {
 		const xFraction = ((lon - this.bounds[0]) % dx) / dx;
 
 		switch (method) {
-			// 'none' and 'nearest' are the same operation: the value of the
-			// closest grid node (round), centred on the node exactly like the
+			// 'nearest' returns the value of the closest grid node (round), centred on the node exactly like the
 			// interpolating methods. Flooring would offset every cell by half a
 			// cell up/right (RegularGrid.swift registers values at lonMin+i*dx).
-			case 'none':
 			case 'nearest':
 				return interpolateNearest(
 					values,

@@ -15,10 +15,12 @@ export interface DataIdentityOptions {
 	bounds: Bounds | undefined;
 }
 
-export type InterpolationMethod = 'none' | 'nearest' | 'linear' | 'cubic' | 'smooth';
+export type InterpolationMethod = 'nearest' | 'linear' | 'cubic' | 'smooth';
+
+export type TileSize = 64 | 128 | 256 | 512 | 1024 | 2048;
 
 export interface RenderOptions {
-	tileSize: 64 | 128 | 256 | 512 | 1024 | 2048;
+	tileSize: TileSize;
 	interpolation: InterpolationMethod;
 	// 'smooth' area-average box half-width in grid cells.
 	smoothFootprint: number;

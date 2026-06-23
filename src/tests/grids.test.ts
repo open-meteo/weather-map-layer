@@ -167,18 +167,16 @@ describe('interpolation methods', () => {
 	test('all methods preserve a uniform field', () => {
 		const grid = new RegularGrid(methodGridData);
 		const values = new Float32Array(64).fill(7);
-		for (const method of ['none', 'nearest', 'linear', 'cubic', 'smooth'] as const) {
+		for (const method of ['nearest', 'linear', 'cubic', 'smooth'] as const) {
 			expect(grid.getInterpolatedValue(values, 53.5, 13.5, method)).toBeCloseTo(7);
 		}
 	});
 
-	test("'none' returns the closest grid node, centred (round, not floor)", () => {
+	test("'nearest' returns the closest grid node, centred (round, not floor)", () => {
 		const grid = new RegularGrid(methodGridData);
 		const values = new Float32Array(Array.from({ length: 64 }, (_, i) => i));
 		// lat 53.4 -> row 3, lon 12.6 -> rounds to col 3  =>  index 3*8 + 3 = 27
 		// (flooring would give col 2 => 26, i.e. the old half-cell offset)
-		expect(grid.getInterpolatedValue(values, 53.4, 12.6, 'none')).toBe(27);
-		// 'none' and 'nearest' are now the same operation
 		expect(grid.getInterpolatedValue(values, 53.4, 12.6, 'nearest')).toBe(27);
 	});
 

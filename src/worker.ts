@@ -48,6 +48,9 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 		// cell corners when a breakpoint coincides with a quantization level.
 		const halfQuantum = estimateQuantum(values) / 2;
 
+		// Reused per-pixel so colour blending doesn't allocate an array per pixel.
+		const colorOut: [number, number, number, number] = [0, 0, 0, 0];
+
 		for (let i = 0; i < tileSize; i++) {
 			// sample at the pixel centre ((i+0.5)/tileSize), not the top-left
 			// corner, so the value is registered where the pixel is displayed
@@ -68,7 +71,7 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 				const px = grid.getInterpolatedValue(values, lat, lon, interpolation, smoothFootprint);
 
 				if (isFinite(px)) {
-					const color = getColor(colorScale, px + halfQuantum, colorBlend);
+					const color = getColor(colorScale, px + halfQuantum, colorBlend, colorOut);
 					rgba[4 * ind] = color[0];
 					rgba[4 * ind + 1] = color[1];
 					rgba[4 * ind + 2] = color[2];
