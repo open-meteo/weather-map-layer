@@ -198,12 +198,31 @@ export interface GaussianGridData extends BaseGridData {
 	gaussianGridLatitudeLines: number;
 }
 
-export interface RegularGridData extends BaseGridData {
+// A regular lat/lon grid can be defined either by an origin + spacing
+// (lonMin/latMin/dx/dy) or by its inclusive lat/lon bounds. With bounds the
+// spacing is (max - min) / (n - 1), so the last grid point lands exactly on the
+// upper bound (matching the open-meteo Swift RegularGrid range initializer and
+// the 'projectedFromBounds' grid).
+export type RegularGridData = RegularGridFromOrigin | RegularGridFromBounds;
+
+export interface RegularGridFromOrigin extends BaseGridData {
 	type: 'regular';
 	lonMin: number;
 	latMin: number;
 	dx: number;
 	dy: number;
+	latitude?: never;
+	longitude?: never;
+}
+
+export interface RegularGridFromBounds extends BaseGridData {
+	type: 'regular';
+	latitude: [min: number, max: number];
+	longitude: [min: number, max: number];
+	lonMin?: never;
+	latMin?: never;
+	dx?: never;
+	dy?: never;
 }
 
 export type AnyProjectionGridData =
@@ -216,8 +235,8 @@ export interface ProjectionGridFromBounds extends BaseGridData {
 	projection: ProjectionData;
 	nx: number;
 	ny: number;
-	latitudeBounds: [min: number, max: number];
-	longitudeBounds: [min: number, max: number];
+	latitude: [min: number, max: number];
+	longitude: [min: number, max: number];
 }
 
 export interface ProjectionGridFromGeographicOrigin extends BaseGridData {
@@ -238,8 +257,8 @@ export interface ProjectionGridFromProjectedOrigin extends BaseGridData {
 	ny: number;
 	dx: number;
 	dy: number;
-	projectedLatitudeOrigin: number;
-	projectedLongitudeOrigin: number;
+	latitudeProjectionOrigin: number;
+	longitudeProjectionOrigin: number;
 }
 
 export type ProjectionData =

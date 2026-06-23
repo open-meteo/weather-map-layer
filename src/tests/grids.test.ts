@@ -80,6 +80,23 @@ describe('RegularGrid', () => {
 		expect(grid.getBounds()).toEqual([10, 50, 20, 56]);
 	});
 
+	test('constructs from inclusive lat/lon bounds', () => {
+		// last node lands on the upper bound: dx = (19-10)/(10-1) = 1, dy = (54-50)/(3-1) = 2,
+		// giving identical geometry to `gridData`
+		const grid = new RegularGrid({
+			type: 'regular',
+			nx: 10,
+			ny: 3,
+			longitude: [10, 19],
+			latitude: [50, 54]
+		});
+		expect(grid.getBounds()).toEqual([10, 50, 20, 56]);
+
+		const values = new Float32Array(Array.from({ length: 30 }, (_, index) => index));
+		// node (x=1, y=1) is at lon 11, lat 52 => index 11
+		expect(grid.getLinearInterpolatedValue(values, 52, 11)).toBe(11);
+	});
+
 	test('construct a new partial grid', () => {
 		const ranges: DimensionRange[] = [
 			{ start: 0, end: 3 },

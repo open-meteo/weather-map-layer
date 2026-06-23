@@ -91,9 +91,14 @@ const transformScale = (
 	};
 };
 
+const freezingLevelHeightScale = transformScale(
+	COLOR_SCALES['temperature'] as BreakpointColorScale,
+	(b) => (b + 15) * 80,
+	'm'
+);
+
 export const COLOR_SCALES_WITH_ALIASES: ColorScales = {
 	...COLOR_SCALES,
-	albedo: COLOR_SCALES['cloud_cover'],
 	boundary_layer_height: transformScale(
 		COLOR_SCALES['convective_cloud_top'] as BreakpointColorScale,
 		(b) => b / 2
@@ -104,11 +109,7 @@ export const COLOR_SCALES_WITH_ALIASES: ColorScales = {
 	dew_point: COLOR_SCALES['temperature'],
 	diffuse_radiation: COLOR_SCALES['shortwave'],
 	direct_radiation: COLOR_SCALES['shortwave'],
-	freezing_level_height: transformScale(
-		COLOR_SCALES['temperature'] as BreakpointColorScale,
-		(b) => (b + 20) * 80,
-		'm'
-	),
+	freezing_level_height: freezingLevelHeightScale,
 	latent_heat_flux: {
 		...COLOR_SCALES['temperature'],
 		unit: 'W/m²'
@@ -124,6 +125,7 @@ export const COLOR_SCALES_WITH_ALIASES: ColorScales = {
 		COLOR_SCALES['precipitation'] as BreakpointColorScale,
 		(b) => b * 200
 	),
+	snowfall_height: freezingLevelHeightScale,
 	snowfall_water_equivalent: COLOR_SCALES['precipitation'],
 	visibility: {
 		...COLOR_SCALES['geopotential_height'],
