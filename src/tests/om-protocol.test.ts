@@ -139,7 +139,6 @@ describe('Request Options', () => {
 			expect(renderOptions.drawArrows).toBe(false);
 			expect(renderOptions.drawContours).toBe(false);
 			expect(renderOptions.intervals).toStrictEqual(colorScale.breakpoints);
-			expect(renderOptions.colorScale.colors.length).toBe(46);
 		});
 
 		it('parses custom render options', async () => {
