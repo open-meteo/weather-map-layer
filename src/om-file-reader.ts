@@ -130,7 +130,17 @@ export class WeatherMapLayerFileReader {
 		const [primaryData, secondaryData] = await Promise.all([primaryPromise, secondaryPromise]);
 
 		// Process using the rule
-		return rule.process(primaryData, secondaryData);
+		const data = rule.process(primaryData, secondaryData);
+
+		// When the rule passes the primary variable's values through unchanged
+		// (e.g. speed/direction, wave height/direction), its stored scale factor
+		// still describes the quantization of `values`. Derived values (e.g. wind
+		// speed from u/v) have no single scale factor, so leave it undefined.
+		if (rule.preservesPrimaryScale) {
+			data.scaleFactor = primaryReader.scaleFactor();
+		}
+
+		return data;
 	}
 
 	/**
@@ -160,7 +170,7 @@ export class WeatherMapLayerFileReader {
 			signal
 		})) as Float32Array;
 
-		return { values, directions: undefined };
+		return { values, directions: undefined, scaleFactor: variableReader.scaleFactor() };
 	}
 
 	/**
@@ -239,6 +249,13 @@ interface VariableDerivationRule {
 	getSourceVars: (variable: string) => [string, string];
 
 	/**
+	 * Whether `values` in the processed result is the primary source variable
+	 * passed through unchanged. When true, the primary variable's stored scale
+	 * factor is attached to the result so the quantization step can be derived.
+	 */
+	preservesPrimaryScale?: boolean;
+
+	/**
 	 * Process the raw data from source variables into values and directions.
 	 * @param primary - Data from the primary source variable
 	 * @param secondary - Data from the secondary source variable
@@ -282,6 +299,7 @@ const DEFAULT_DERIVATION_RULES: VariableDerivationRule[] = [
 	// Speed/Direction pairs (already stored separately)
 	{
 		pattern: /_(?:speed|direction)_/,
+		preservesPrimaryScale: true,
 		getSourceVars: (variable: string) => [
 			variable.includes('_speed_') ? variable : variable.replace('_direction_', '_speed_'),
 			variable.includes('_direction_') ? variable : variable.replace('_speed_', '_direction_')
@@ -295,6 +313,7 @@ const DEFAULT_DERIVATION_RULES: VariableDerivationRule[] = [
 	// Wave height and direction
 	{
 		pattern: /wave_(?:height|direction)/,
+		preservesPrimaryScale: true,
 		getSourceVars: (variable: string) => [
 			variable.replace('wave_direction', 'wave_height'),
 			variable.replace('wave_height', 'wave_direction')

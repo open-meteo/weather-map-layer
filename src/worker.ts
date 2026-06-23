@@ -5,7 +5,7 @@ import { checkAgainstBounds } from './utils/bounds';
 import { clipRasterToPolygons } from './utils/clipping';
 import { generateContours } from './utils/contours';
 import { generateGridPoints } from './utils/grid-points';
-import { estimateQuantum, tile2lat, tile2lon } from './utils/math';
+import { halfQuantum as computeHalfQuantum, tile2lat, tile2lon } from './utils/math';
 import { getColor } from './utils/styling';
 
 import { GridFactory } from './grids/index';
@@ -46,7 +46,7 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 		// Offset the colour threshold by half the data's quantization step so
 		// band edges fall inside grid cells (smooth) instead of snapping to the
 		// cell corners when a breakpoint coincides with a quantization level.
-		const halfQuantum = estimateQuantum(values) / 2;
+		const halfQuantum = computeHalfQuantum(values, message.data.data.scaleFactor);
 
 		// Reused per-pixel so colour blending doesn't allocate an array per pixel.
 		const colorOut: [number, number, number, number] = [0, 0, 0, 0];
@@ -136,7 +136,7 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 				clippingOptions,
 				interpolation,
 				smoothFootprint,
-				estimateQuantum(values) / 2
+				computeHalfQuantum(values, message.data.data.scaleFactor)
 			);
 		}
 

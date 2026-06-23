@@ -7,7 +7,7 @@ export const VALID_INTERPOLATIONS = ['nearest', 'linear', 'cubic', 'smooth'] as 
 export const DEFAULT_INTERPOLATION = 'linear';
 
 // 'smooth' area-average box half-width in grid cells (∝ 1/cos lat in longitude).
-export const DEFAULT_SMOOTH_FOOTPRINT = 0.75;
+export const DEFAULT_SMOOTH_FOOTPRINT = 0.5;
 
 // Interpolate colours between colour-scale breakpoints instead of hard bands.
 export const DEFAULT_COLOR_BLEND = false;

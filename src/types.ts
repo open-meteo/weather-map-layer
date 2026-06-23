@@ -92,6 +92,11 @@ export interface OmProtocolSettings {
 export interface Data {
 	values: Float32Array | undefined;
 	directions: Float32Array | undefined;
+	// Storage scale factor of `values` from the .om file: stored ints are
+	// `round(value * scaleFactor)`, so the quantization step is 1 / scaleFactor.
+	// Undefined when the values are derived (e.g. wind speed from u/v) and have
+	// no single well-defined scale factor.
+	scaleFactor?: number;
 }
 
 export type TileJSON = {

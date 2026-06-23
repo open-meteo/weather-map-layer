@@ -28,6 +28,22 @@ export const estimateQuantum = (values: Float32Array): number => {
 	return isFinite(min) ? min : 0;
 };
 
+/**
+ * Half the data's quantization step, used to offset colour/contour thresholds so
+ * band edges fall inside grid cells (smooth) instead of snapping to cell corners.
+ *
+ * The .om storage scale factor gives the step exactly (stored ints are
+ * `round(value * scaleFactor)`, so the step is 1 / scaleFactor). When it isn't
+ * available (derived values have no single scale factor), fall back to estimating
+ * the step from the sample data.
+ */
+export const halfQuantum = (values: Float32Array, scaleFactor?: number): number => {
+	if (scaleFactor && isFinite(scaleFactor) && scaleFactor > 0) {
+		return 0.5 / scaleFactor;
+	}
+	return estimateQuantum(values) / 2;
+};
+
 export const degreesToRadians = (degree: number) => {
 	return degree * (PI / 180);
 };
