@@ -195,6 +195,30 @@ export const domainOptions: Array<AnyDomain> = [
 		]
 	},
 
+	/**
+	 * CHMI Seamless
+	 *
+	 * Automatically selects the best CHMI model for the current zoom level:
+	 *   zoom 0+  → chmi_aladin_central_europe_2km       (Europe, ~2.5 km, Rotated LatLon)
+	 *   zoom 3+  → chmi_aladin_cz_1km  (Czech Republic, 0.029°/0.018°)
+	 */
+	{
+		type: 'seamless',
+		value: 'chmi_seamless',
+		label: 'Aladin Seamless',
+		time_interval: 'hourly',
+		model_interval: '3_hourly',
+		layers: [
+			{
+				domainValue: 'chmi_aladin_cz_1km',
+				minZoom: 3,
+				blendWidthDeg: 0,
+				maxForecastHours: 48
+			},
+			{ domainValue: 'chmi_aladin_central_europe_2km', minZoom: 0, blendWidthDeg: 0 }
+		]
+	},
+
 	// BOM
 	// {
 	// 	value: 'bom_access_global',
