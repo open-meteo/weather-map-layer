@@ -68,7 +68,6 @@ export class RegularGrid implements GridInterface {
 		const south = this.dy >= 0 ? this.originLat : endLat;
 		const north = this.dy >= 0 ? endLat : this.originLat;
 		this.bounds = [west, south, east, north];
-		console.log(this.bounds);
 
 		// icon global is one grid point short, therefore compare to 359.875
 		this.longitudeWrap = Math.abs(this.nx * this.dx) >= 359.875;
