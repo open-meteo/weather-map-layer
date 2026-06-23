@@ -3,6 +3,7 @@ import type { Domain } from './types';
 export const domainGroups = [
 	// { value: 'bom', label: 'BOM Australia' },
 	{ value: 'cams', label: 'CAMS' },
+	{ value: 'chmi', label: 'CHMI' },
 	{ value: 'cma', label: 'CMA China' },
 	{ value: 'dmi', label: 'DMI Denmark' },
 	{ value: 'dwd', label: 'DWD Germany' },
@@ -87,6 +88,46 @@ export const domainOptions: Array<Domain> = [
 	// 	time_interval: 'hourly',
 	// 	model_interval: 'daily'
 	// },
+
+	// CHMI
+	{
+		value: 'chmi_aladin_central_europe_2km',
+		label: 'Aladin Central Europe 2km',
+		grid: {
+			type: 'projectedFromGeographicOrigin',
+			nx: 1053,
+			ny: 837,
+			latitude: 38.599,
+			longitude: 1.334,
+			dx: 2325,
+			dy: 2325,
+			zoom: 4,
+			projection: {
+				λ0: 17,
+				ϕ0: 46.244,
+				ϕ1: 46.244,
+				ϕ2: 46.244,
+				radius: 6371229,
+				name: 'LambertConformalConicProjection'
+			}
+		},
+		time_interval: 'hourly',
+		model_interval: '6_hourly'
+	},
+	{
+		value: 'chmi_aladin_cz_1km',
+		label: 'Aladin CZ 1km',
+		grid: {
+			type: 'regular',
+			nx: 501,
+			ny: 290,
+			latitudeBounds: [48.5, 51.098],
+			longitudeBounds: [12.0, 18.995],
+			zoom: 4
+		},
+		time_interval: 'hourly',
+		model_interval: '6_hourly'
+	},
 
 	// CMA
 	{
