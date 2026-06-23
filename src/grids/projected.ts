@@ -48,8 +48,8 @@ export class ProjectionGrid implements GridInterface {
 		switch (data.type) {
 			case 'projectedFromBounds': {
 				this.projection = createProjection(data.projection);
-				const sw = this.projection.forward(data.latitudeBounds[0], data.longitudeBounds[0]);
-				const ne = this.projection.forward(data.latitudeBounds[1], data.longitudeBounds[1]);
+				const sw = this.projection.forward(data.latitude[0], data.longitude[0]);
+				const ne = this.projection.forward(data.latitude[1], data.longitude[1]);
 				this.origin = sw;
 				this.dx = (ne[0] - sw[0]) / (data.nx - 1);
 				this.dy = (ne[1] - sw[1]) / (data.ny - 1);
@@ -64,7 +64,7 @@ export class ProjectionGrid implements GridInterface {
 			}
 			case 'projectedFromProjectedOrigin': {
 				this.projection = createProjection(data.projection);
-				this.origin = [data.projectedLongitudeOrigin, data.projectedLatitudeOrigin];
+				this.origin = [data.longitudeProjectionOrigin, data.latitudeProjectionOrigin];
 				this.dx = data.dx;
 				this.dy = data.dy;
 				break;

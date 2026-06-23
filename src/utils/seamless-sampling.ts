@@ -44,7 +44,7 @@ const getNanField = (layer: SeamlessLayerRenderData): Float32Array | undefined =
 	if (values && grid.type === 'regular') {
 		const nx = layer.ranges[1].end - layer.ranges[1].start;
 		const ny = layer.ranges[0].end - layer.ranges[0].start;
-		field = computeNanDistanceField(values, nx, ny, grid.dx, grid.dy);
+		field = computeNanDistanceField(values, nx, ny, grid.dx!, grid.dy!);
 	}
 
 	if (nanFieldCache.size >= MAX_NAN_FIELDS) {
