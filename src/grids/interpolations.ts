@@ -206,13 +206,33 @@ export const interpolateCubic = (
 	return roundWithPrecision(Math.min(Math.max(result, lo), hi));
 };
 
+// 1D Catmull-Rom (tension-0 cardinal spline) over the middle interval [p1, p2]
+// of a uniform 4-point stencil, evaluated at t ∈ [0,1]. Exported for grids that
+// interpolate per-row before combining (e.g. the reduced-Gaussian grid).
+export const catmullRom1D = (t: number, p0: number, p1: number, p2: number, p3: number): number => {
+	const t2 = t * t;
+	const t3 = t2 * t;
+	return (
+		0.5 * (-t3 + 2 * t2 - t) * p0 +
+		0.5 * (3 * t3 - 5 * t2 + 2) * p1 +
+		0.5 * (-3 * t3 + 4 * t2 + t) * p2 +
+		0.5 * (t3 - t2) * p3
+	);
+};
+
 // 1D monotone cubic Hermite (Fritsch–Carlson / PCHIP) over the middle interval
 // [p1, p2] of a uniform 4-point stencil, evaluated at t ∈ [0,1]. The endpoint
 // tangents are the harmonic mean of the neighbouring secant slopes and are
 // zeroed at a local extremum (sign change or flat run). This makes the segment
 // shape-preserving: the result stays within [min(p1,p2), max(p1,p2)] and cannot
 // ring past a local extremum.
-const monotoneHermite = (t: number, p0: number, p1: number, p2: number, p3: number): number => {
+export const monotoneHermite = (
+	t: number,
+	p0: number,
+	p1: number,
+	p2: number,
+	p3: number
+): number => {
 	const d0 = p1 - p0; // left secant
 	const d1 = p2 - p1; // middle secant (the interval, h = 1)
 	const d2 = p3 - p2; // right secant

@@ -1,6 +1,7 @@
 import { modPositive, roundWithPrecision } from '../utils/math';
 
 import { GridInterface, GridPoint } from './interface';
+import { catmullRom1D, monotoneHermite } from './interpolations';
 
 import { Bounds, DimensionRange, GaussianGridData, InterpolationMethod } from '../types';
 
@@ -146,13 +147,97 @@ export class GaussianGrid implements GridInterface {
 		values: Float32Array,
 		lat: number,
 		lon: number,
-		_method: InterpolationMethod,
+		method: InterpolationMethod,
 		_smoothFootprint?: number
 	): number {
-		// Reduced Gaussian grids have a varying number of longitude points per
-		// latitude row, so the regular-grid nearest/cubic stencils don't apply.
-		// Fall back to the (bi)linear sampler for every method.
-		return this.getLinearInterpolatedValue(values, lat, lon);
+		switch (method) {
+			case 'nearest':
+				return this.getNearestNeighborValue(values, lat, lon);
+			case 'cubic':
+				return this.getCubicValue(values, lat, lon, false);
+			case 'monotone':
+				return this.getCubicValue(values, lat, lon, true);
+			// 'smooth' needs a summed-area table, which assumes a rectangular grid;
+			// a reduced Gaussian grid is a ragged 1D array, so it has no cheap
+			// equivalent. Fall back to bilinear for 'smooth' (and 'linear').
+			case 'smooth':
+			case 'linear':
+			default:
+				return this.getLinearInterpolatedValue(values, lat, lon);
+		}
+	}
+
+	// Separable bicubic on the reduced Gaussian grid. Because every latitude row
+	// has its own number of longitude points (nxOf), the 4x4 stencil used on a
+	// regular grid does not line up across rows. Instead we interpolate each of
+	// the 4 surrounding latitude rows independently in longitude (a 4-point stencil
+	// that wraps around the row), then combine those 4 row-results in latitude.
+	// `monotone` selects shape-preserving PCHIP slopes; otherwise Catmull-Rom with
+	// the same inner-cell overshoot clamp the regular grid uses. The 4-row latitude
+	// stencil is unavailable near the poles and a missing (NaN) sample would smear,
+	// so both cases fall back to NaN-aware bilinear.
+	private getCubicValue(values: Float32Array, lat: number, lon: number, monotone: boolean): number {
+		const latitudeLines = this.latitudeLines;
+		const rows = 2 * latitudeLines;
+		const dy = 180 / (rows + 0.5);
+		const yReal = latitudeLines - 1 - (lat - dy / 2) / dy;
+		const yLower = Math.floor(yReal);
+		const yFraction = yReal - yLower;
+
+		// Need latitude rows yLower-1 .. yLower+2; latitude does not wrap, so near
+		// the poles fall back to bilinear (which clamps to the two edge rows).
+		if (yLower < 1 || yLower >= rows - 2) {
+			return this.getLinearInterpolatedValue(values, lat, lon);
+		}
+
+		const r0 = this.interpRowLon(values, yLower - 1, lon, monotone);
+		const r1 = this.interpRowLon(values, yLower, lon, monotone);
+		const r2 = this.interpRowLon(values, yLower + 1, lon, monotone);
+		const r3 = this.interpRowLon(values, yLower + 2, lon, monotone);
+		if (!isFinite(r0.v) || !isFinite(r1.v) || !isFinite(r2.v) || !isFinite(r3.v)) {
+			return this.getLinearInterpolatedValue(values, lat, lon);
+		}
+
+		if (monotone) {
+			return roundWithPrecision(monotoneHermite(yFraction, r0.v, r1.v, r2.v, r3.v));
+		}
+
+		// Catmull-Rom can ring past the data; clamp to the inner cell (the two
+		// latitude rows that bracket the sample, and their bracketing longitude
+		// samples) exactly like interpolateCubic on the regular grid.
+		const result = catmullRom1D(yFraction, r0.v, r1.v, r2.v, r3.v);
+		const lo = Math.min(r1.p0, r1.p1, r2.p0, r2.p1);
+		const hi = Math.max(r1.p0, r1.p1, r2.p0, r2.p1);
+		return roundWithPrecision(Math.min(Math.max(result, lo), hi));
+	}
+
+	// Interpolate `lon` within a single latitude row using a wrapping 4-point
+	// cubic stencil. Returns the interpolated value `v` plus the two raw samples
+	// (`p0`, `p1`) that bracket lon, which the caller uses for overshoot clamping.
+	// `v` is NaN if any of the 4 stencil samples is missing.
+	private interpRowLon(
+		values: Float32Array,
+		y: number,
+		lon: number,
+		monotone: boolean
+	): { v: number; p0: number; p1: number } {
+		const nx = this.nxOf(y);
+		const dx = 360 / nx;
+		const x0 = modPositive(Math.floor(lon / dx), nx);
+		const t = modPositive(lon / dx, 1);
+		const base = this.integral(y);
+
+		const pm1 = values[base + modPositive(x0 - 1, nx)];
+		const p0 = values[base + x0];
+		const p1 = values[base + ((x0 + 1) % nx)];
+		const p2 = values[base + ((x0 + 2) % nx)];
+
+		if (!isFinite(pm1) || !isFinite(p0) || !isFinite(p1) || !isFinite(p2)) {
+			return { v: NaN, p0, p1 };
+		}
+
+		const v = monotone ? monotoneHermite(t, pm1, p0, p1, p2) : catmullRom1D(t, pm1, p0, p1, p2);
+		return { v, p0, p1 };
 	}
 
 	/// Values is the 1D array of all HRES values (6 million something values)
