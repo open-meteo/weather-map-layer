@@ -53,24 +53,32 @@ export const buildSummedAreaTable = (
 	return { nx, ny, sum, count };
 };
 
-// Bilinearly sample an integral image at a fractional corner (x in [0, nx],
-// y in [0, ny]) so that the averaging box edges move continuously instead of
-// snapping to whole cells (which would re-introduce faint banding).
-const sampleIntegral = (arr: Float64Array | Float32Array, w: number, x: number, y: number) => {
-	const h = arr.length / w; // (ny + 1)
-	const x0 = Math.min(Math.max(Math.floor(x), 0), w - 2);
-	const y0 = Math.min(Math.max(Math.floor(y), 0), h - 2);
-	const fx = x - x0;
-	const fy = y - y0;
-	const i00 = y0 * w + x0;
-	const a = arr[i00];
-	const b = arr[i00 + 1];
-	const c = arr[i00 + w];
-	const d = arr[i00 + w + 1];
-	return a * (1 - fx) * (1 - fy) + b * fx * (1 - fy) + c * (1 - fx) * fy + d * fx * fy;
+// Bilinearly sample an integral image at a precomputed fractional corner. The
+// integer cell (ix, iy) and the fractions (fx, fy) are shared by the `sum` and
+// `count` arrays and across the four box corners, so they are resolved once in
+// boxSums (Math.floor/clamp are the bulk of the per-pixel cost) and passed in.
+const sampleCorner = (
+	arr: Float64Array | Float32Array,
+	w: number,
+	ix: number,
+	iy: number,
+	fx: number,
+	fy: number
+) => {
+	const i00 = iy * w + ix;
+	const omx = 1 - fx;
+	const omy = 1 - fy;
+	return (
+		arr[i00] * omx * omy +
+		arr[i00 + 1] * fx * omy +
+		arr[i00 + w] * omx * fy +
+		arr[i00 + w + 1] * fx * fy
+	);
 };
 
-// Raw {sum, count} over the box [x0, x1] x [y0, y1] (clamped to the grid).
+// Raw {sum, count} over the box [x0, x1] x [y0, y1] (clamped to the grid). The
+// box edges move continuously (fractional corners are bilinearly sampled)
+// instead of snapping to whole cells, which would re-introduce faint banding.
 const boxSums = (
 	sat: SummedAreaTable,
 	x0: number,
@@ -78,22 +86,38 @@ const boxSums = (
 	x1: number,
 	y1: number
 ): { sum: number; count: number } => {
-	const w = sat.nx + 1;
-	x0 = Math.min(Math.max(x0, 0), sat.nx);
-	x1 = Math.min(Math.max(x1, 0), sat.nx);
-	y0 = Math.min(Math.max(y0, 0), sat.ny);
-	y1 = Math.min(Math.max(y1, 0), sat.ny);
+	const nx = sat.nx;
+	const ny = sat.ny;
+	const w = nx + 1;
 
+	// Resolve each of the four distinct edge coordinates to a cell index + frac
+	// once. Clamp the coordinate to [0, n] and the cell to [0, n-1] (so the +1
+	// neighbour stays in range), matching the old sampleIntegral bounds.
+	const cx0 = Math.min(Math.max(x0, 0), nx);
+	const cx1 = Math.min(Math.max(x1, 0), nx);
+	const cy0 = Math.min(Math.max(y0, 0), ny);
+	const cy1 = Math.min(Math.max(y1, 0), ny);
+	const ix0 = Math.min(cx0 | 0, nx - 1);
+	const ix1 = Math.min(cx1 | 0, nx - 1);
+	const iy0 = Math.min(cy0 | 0, ny - 1);
+	const iy1 = Math.min(cy1 | 0, ny - 1);
+	const fx0 = cx0 - ix0;
+	const fx1 = cx1 - ix1;
+	const fy0 = cy0 - iy0;
+	const fy1 = cy1 - iy1;
+
+	const s = sat.sum;
+	const c = sat.count;
 	const sum =
-		sampleIntegral(sat.sum, w, x1, y1) -
-		sampleIntegral(sat.sum, w, x0, y1) -
-		sampleIntegral(sat.sum, w, x1, y0) +
-		sampleIntegral(sat.sum, w, x0, y0);
+		sampleCorner(s, w, ix1, iy1, fx1, fy1) -
+		sampleCorner(s, w, ix0, iy1, fx0, fy1) -
+		sampleCorner(s, w, ix1, iy0, fx1, fy0) +
+		sampleCorner(s, w, ix0, iy0, fx0, fy0);
 	const count =
-		sampleIntegral(sat.count, w, x1, y1) -
-		sampleIntegral(sat.count, w, x0, y1) -
-		sampleIntegral(sat.count, w, x1, y0) +
-		sampleIntegral(sat.count, w, x0, y0);
+		sampleCorner(c, w, ix1, iy1, fx1, fy1) -
+		sampleCorner(c, w, ix0, iy1, fx0, fy1) -
+		sampleCorner(c, w, ix1, iy0, fx1, fy0) +
+		sampleCorner(c, w, ix0, iy0, fx0, fy0);
 	return { sum, count };
 };
 

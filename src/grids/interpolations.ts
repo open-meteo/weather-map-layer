@@ -101,7 +101,7 @@ export const interpolateNearest = (
 	let xi = xFraction >= 0.5 ? x + 1 : x;
 	const yi = yFraction >= 0.5 ? Math.min(y + 1, ny - 1) : y;
 	if (xi >= nx) xi = longitudeWrap ? xi % nx : nx - 1;
-	return Number(values[yi * nx + xi]);
+	return values[yi * nx + xi];
 };
 
 // 1D Cardinal Spline for 4 values
@@ -150,53 +150,84 @@ export const interpolateCubic = (
 	}
 
 	// Column indices, wrapping in longitude for global grids
-	let cols: [number, number, number, number];
+	let c0: number, c1: number, c2: number, c3: number;
 	if (longitudeWrap) {
-		cols = [(x - 1 + nx) % nx, x % nx, (x + 1) % nx, (x + 2) % nx];
+		c0 = (x - 1 + nx) % nx;
+		c1 = x % nx;
+		c2 = (x + 1) % nx;
+		c3 = (x + 2) % nx;
 	} else if (x < 1 || x >= nx - 2) {
 		return interpolateLinear(values, x, y, xFraction, yFraction, nx, longitudeWrap);
 	} else {
-		cols = [x - 1, x, x + 1, x + 2];
+		c0 = x - 1;
+		c1 = x;
+		c2 = x + 1;
+		c3 = x + 2;
 	}
 
-	const rows = [y - 1, y, y + 1, y + 2];
+	// Catmull-Rom (tension 0) basis weights for xFraction. All 4 rows share the
+	// same xFraction, so compute the weights once and reuse them as a dot product
+	// instead of re-evaluating the spline (t^2/t^3 + 6 mults) per row.
+	const tx2 = xFraction * xFraction;
+	const tx3 = tx2 * xFraction;
+	const wx0 = 0.5 * (-tx3 + 2 * tx2 - xFraction);
+	const wx1 = 0.5 * (3 * tx3 - 5 * tx2 + 2);
+	const wx2 = 0.5 * (-3 * tx3 + 4 * tx2 + xFraction);
+	const wx3 = 0.5 * (tx3 - tx2);
 
-	// Interpolate each of the 4 rows in X (tension = 0 -> Catmull-Rom).
-	// Track the min/max of the inner 2x2 cell (the cell containing the sample)
-	// to clamp overshoot: Catmull-Rom can ring past the local data range, which
-	// near a colour breakpoint produces spurious extra bands / contour wiggles.
-	const rowResults = new Array<number>(4);
-	let lo = Infinity;
-	let hi = -Infinity;
-	for (let r = 0; r < 4; r++) {
-		const base = rows[r] * nx;
-		const p0 = values[base + cols[0]];
-		const p1 = values[base + cols[1]];
-		const p2 = values[base + cols[2]];
-		const p3 = values[base + cols[3]];
-		// Any missing sample -> fall back to NaN-aware bilinear
-		if (!isFinite(p0) || !isFinite(p1) || !isFinite(p2) || !isFinite(p3)) {
-			return interpolateLinear(values, x, y, xFraction, yFraction, nx, longitudeWrap);
-		}
-		rowResults[r] = cardinalSpline(xFraction, p0, p1, p2, p3, 0);
-		// inner cell = columns cols[1]/cols[2] of rows y (r=1) and y+1 (r=2)
-		if (r === 1 || r === 2) {
-			if (p1 < lo) lo = p1;
-			if (p2 < lo) lo = p2;
-			if (p1 > hi) hi = p1;
-			if (p2 > hi) hi = p2;
-		}
-	}
+	// Interpolate each of the 4 rows in X. Track the min/max of the inner 2x2
+	// cell (rows y and y+1, columns c1/c2) to clamp overshoot: Catmull-Rom can
+	// ring past the local data range, which near a colour breakpoint produces
+	// spurious extra bands / contour wiggles.
+	// Any missing sample -> fall back to NaN-aware bilinear.
+	const b0 = (y - 1) * nx;
+	let p0 = values[b0 + c0];
+	let p1 = values[b0 + c1];
+	let p2 = values[b0 + c2];
+	let p3 = values[b0 + c3];
+	if (!isFinite(p0) || !isFinite(p1) || !isFinite(p2) || !isFinite(p3))
+		return interpolateLinear(values, x, y, xFraction, yFraction, nx, longitudeWrap);
+	const r0 = wx0 * p0 + wx1 * p1 + wx2 * p2 + wx3 * p3;
+
+	const b1 = y * nx;
+	p0 = values[b1 + c0];
+	p1 = values[b1 + c1];
+	p2 = values[b1 + c2];
+	p3 = values[b1 + c3];
+	if (!isFinite(p0) || !isFinite(p1) || !isFinite(p2) || !isFinite(p3))
+		return interpolateLinear(values, x, y, xFraction, yFraction, nx, longitudeWrap);
+	const r1 = wx0 * p0 + wx1 * p1 + wx2 * p2 + wx3 * p3;
+	let lo = Math.min(p1, p2);
+	let hi = Math.max(p1, p2);
+
+	const b2 = (y + 1) * nx;
+	p0 = values[b2 + c0];
+	p1 = values[b2 + c1];
+	p2 = values[b2 + c2];
+	p3 = values[b2 + c3];
+	if (!isFinite(p0) || !isFinite(p1) || !isFinite(p2) || !isFinite(p3))
+		return interpolateLinear(values, x, y, xFraction, yFraction, nx, longitudeWrap);
+	const r2 = wx0 * p0 + wx1 * p1 + wx2 * p2 + wx3 * p3;
+	lo = Math.min(lo, p1, p2);
+	hi = Math.max(hi, p1, p2);
+
+	const b3 = (y + 2) * nx;
+	p0 = values[b3 + c0];
+	p1 = values[b3 + c1];
+	p2 = values[b3 + c2];
+	p3 = values[b3 + c3];
+	if (!isFinite(p0) || !isFinite(p1) || !isFinite(p2) || !isFinite(p3))
+		return interpolateLinear(values, x, y, xFraction, yFraction, nx, longitudeWrap);
+	const r3 = wx0 * p0 + wx1 * p1 + wx2 * p2 + wx3 * p3;
 
 	// Interpolate the 4 row-results in Y, then clamp to the cell range
-	const result = cardinalSpline(
-		yFraction,
-		rowResults[0],
-		rowResults[1],
-		rowResults[2],
-		rowResults[3],
-		0
-	);
+	const ty2 = yFraction * yFraction;
+	const ty3 = ty2 * yFraction;
+	const result =
+		0.5 * (-ty3 + 2 * ty2 - yFraction) * r0 +
+		0.5 * (3 * ty3 - 5 * ty2 + 2) * r1 +
+		0.5 * (-3 * ty3 + 4 * ty2 + yFraction) * r2 +
+		0.5 * (ty3 - ty2) * r3;
 	return roundWithPrecision(Math.min(Math.max(result, lo), hi));
 };
 
