@@ -1,7 +1,7 @@
 import { modPositive, roundWithPrecision } from '../utils/math';
 
 import { GridInterface, GridPoint } from './interface';
-import { catmullRom1D, monotoneHermite } from './interpolations';
+import { bilinearNaNAware, catmullRom1D, monotoneHermite } from './interpolations';
 
 import { Bounds, DimensionRange, GaussianGridData, InterpolationMethod } from '../types';
 
@@ -93,55 +93,6 @@ export class GaussianGrid implements GridInterface {
 						18 * (2 * this.latitudeLines - y)) -
 					this.nxStart;
 	}
-
-	/**
-	 * Get the latitude and longitude coordinates for a grid point
-	 */
-	/*getCoordinates(gridpoint: number): { latitude: number; longitude: number } {
-		const { y: y, x: x, nx: nx } = this.getPos(gridpoint);
-
-		const dx = 360 / nx;
-		const dy = 180 / (2 * this.latitudeLines + 0.5);
-
-		const lon = x * dx;
-		const adjustedLon = lon >= 180 ? lon - 360 : lon;
-
-		return {
-			latitude: (this.latitudeLines - y - 1) * dy + dy / 2,
-			longitude: adjustedLon
-		};
-	}*/
-
-	/**
-	 * Find the grid point index for given latitude and longitude
-	 */
-	/*findPoint(lat: number, lon: number): number {
-		const dy = 180 / (2 * this.latitudeLines + 0.5);
-		const y =
-			(Math.round(this.latitudeLines - 1 - (lat - dy / 2) / dy) + 2 * this.latitudeLines) %
-			(2 * this.latitudeLines);
-
-		const nx = this.nxOf(y);
-		const dx = 360 / nx;
-
-		const x = (Math.round(lon / dx) + nx) % nx;
-		return this.integral(y) + x;
-	}*/
-
-	/*getPos(gridpoint: number): { y: number; x: number; nx: number } {
-		const y =
-			gridpoint < this.count / 2
-				? Math.floor((Math.sqrt(2 * gridpoint + 81) - 9) / 2)
-				: 2 * this.latitudeLines -
-					1 -
-					Math.floor((Math.sqrt(2 * (this.count - gridpoint - 1) + 81) - 9) / 2);
-
-		const integral = this.integral(y);
-		const x = gridpoint - integral;
-		const nx = this.nxOf(y);
-
-		return { y, x, nx };
-	}*/
 
 	getInterpolatedValue(
 		values: Float32Array,
@@ -261,65 +212,18 @@ export class GaussianGrid implements GridInterface {
 		const xFractionLower = modPositive(lon / dxLower, 1);
 		const xFractionUpper = modPositive(lon / dxUpper, 1);
 
-		//    yUpper    p2 ---- p3
-		//             /       /
-		//            /       /
-		//    yLower  p0 ---- p1
-		const p0 = values[integralLower + xLower0];
-		const p1 = values[integralLower + ((xLower0 + 1) % nxLower)];
-		const p2 = values[integralUpper + xUpper0];
-		const p3 = values[integralUpper + ((xUpper0 + 1) % nxUpper)];
-
-		const w0 = (1 - xFractionLower) * (1 - yFraction);
-		const w1 = xFractionLower * (1 - yFraction);
-		const w2 = (1 - xFractionUpper) * yFraction;
-		const w3 = xFractionUpper * yFraction;
-
-		const n0 = !isFinite(p0);
-		const n1 = !isFinite(p1);
-		const n2 = !isFinite(p2);
-		const n3 = !isFinite(p3);
-
-		// If none are NaN → normal bilinear interpolation
-		if (!n0 && !n1 && !n2 && !n3) {
-			return roundWithPrecision(p0 * w0 + p1 * w1 + p2 * w2 + p3 * w3);
-		}
-
-		const xFraction = (1 - yFraction) * xFractionLower + yFraction * xFractionUpper;
-
-		// --- EXACTLY ONE POINT MISSING CASES ---
-		// ------------------
-		// p0 is missing → valid triangle = (p1, p2, p3)
-		// ------------------
-		if (n0 && !n1 && !n2 && !n3) {
-			if (xFractionLower < xFractionUpper || xFraction + yFraction < 1) return NaN; // Not in triangle
-			const ws = w1 + w2 + w3;
-			return roundWithPrecision((p1 * w1 + p2 * w2 + p3 * w3) / ws);
-		}
-
-		// p1 is missing → valid triangle = (p0, p2, p3)
-		if (!n0 && n1 && !n2 && !n3) {
-			if (xFractionLower > xFractionUpper || xFraction + 1 - yFraction > 1) return NaN; // Not in triangle
-			const ws = w0 + w2 + w3;
-			return roundWithPrecision((p0 * w0 + p2 * w2 + p3 * w3) / ws);
-		}
-
-		// p2 is missing → valid triangle = (p0, p1, p3)
-		if (!n0 && !n1 && n2 && !n3) {
-			if (xFractionLower > xFractionUpper || xFraction + 1 - yFraction < 1) return NaN; // Not in triangle
-			const ws = w0 + w1 + w3;
-			return roundWithPrecision((p0 * w0 + p1 * w1 + p3 * w3) / ws);
-		}
-
-		// p3 is missing → valid triangle = (p0, p1, p2)
-		if (!n0 && !n1 && !n2 && n3) {
-			if (xFractionLower < xFractionUpper || xFraction + yFraction > 1) return NaN; // Not in triangle
-			const ws = w0 + w1 + w2;
-			return roundWithPrecision((p0 * w0 + p1 * w1 + p2 * w2) / ws);
-		}
-
-		// More than 1 point missing → no valid triangle
-		return NaN;
+		// The two rows have a different number of longitude points, so the cell is
+		// a trapezoid (xFractionLower != xFractionUpper); the shared NaN-aware
+		// bilinear handles that and the masked-corner triangle cases.
+		return bilinearNaNAware(
+			values[integralLower + xLower0],
+			values[integralLower + ((xLower0 + 1) % nxLower)],
+			values[integralUpper + xUpper0],
+			values[integralUpper + ((xUpper0 + 1) % nxUpper)],
+			xFractionLower,
+			xFractionUpper,
+			yFraction
+		);
 	}
 
 	/// Values is the 1D array of all HRES values (6 million something values)
@@ -329,7 +233,7 @@ export class GaussianGrid implements GridInterface {
 		const y = modPositive(Math.round(latitudeLines - 1 - (lat - dy / 2) / dy), 2 * latitudeLines);
 		const nx = this.nxOf(y);
 		const dx = 360 / nx;
-		const x = modPositive(Math.floor(lon / dx), nx);
+		const x = modPositive(Math.round(lon / dx), nx);
 		const integral = this.integral(y);
 		const index = integral + x;
 		return values[index];

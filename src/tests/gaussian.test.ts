@@ -58,6 +58,24 @@ describe('GaussianGrid interpolation', () => {
 		expect(present.has(v)).toBe(true);
 	});
 
+	test("'nearest' snaps to the closest node, not the one on the left", () => {
+		// Row at lat ~10.588° has 32 longitude points, dx = 11.25°. A sample 0.6 of
+		// a cell past node 5 (56.25°) is closest to node 6 (67.5°); flooring would
+		// wrongly return node 5 and shift the field half a cell to the right.
+		const grid = new GaussianGrid(data);
+		const values = fill(grid, (_lat, lon) => lon);
+		const lat = 10.588;
+		const dx = 11.25;
+		expect(grid.getInterpolatedValue(values, lat, 5 * dx + 0.6 * dx, 'nearest')).toBeCloseTo(
+			6 * dx,
+			3
+		);
+		expect(grid.getInterpolatedValue(values, lat, 5 * dx + 0.4 * dx, 'nearest')).toBeCloseTo(
+			5 * dx,
+			3
+		);
+	});
+
 	test("'cubic' and 'monotone' stay within the local data range (no wild overshoot)", () => {
 		const grid = new GaussianGrid(data);
 		// A smooth longitudinal wave, sampled away from the ±180° seam.

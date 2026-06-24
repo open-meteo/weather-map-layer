@@ -1,5 +1,92 @@
 import { roundWithPrecision } from '../utils/math';
 
+export const interpolateNearest = (
+	values: Float32Array,
+	x: number,
+	y: number,
+	xFraction: number,
+	yFraction: number,
+	nx: number,
+	ny: number,
+	longitudeWrap: boolean = false
+): number => {
+	let xi = xFraction >= 0.5 ? x + 1 : x;
+	const yi = yFraction >= 0.5 ? Math.min(y + 1, ny - 1) : y;
+	if (xi >= nx) xi = longitudeWrap ? xi % nx : nx - 1;
+	return values[yi * nx + xi];
+};
+
+// NaN-aware bilinear over a possibly-trapezoidal cell. The bottom edge is sampled
+// at fraction `xfLower`, the top edge at `xfUpper`; they are equal for a regular
+// (rectangular) grid and differ on a reduced-Gaussian grid where the two rows have
+// a different number of longitude points. When exactly one corner is missing it
+// interpolates over the remaining triangle if the sample lies inside it, otherwise
+// returns NaN; more than one missing corner is always NaN.
+//
+//   yUpper (xfUpper)   p2 ---- p3
+//                     /       /
+//   yLower (xfLower)  p0 ---- p1
+export const bilinearNaNAware = (
+	p0: number,
+	p1: number,
+	p2: number,
+	p3: number,
+	xfLower: number,
+	xfUpper: number,
+	yFraction: number
+): number => {
+	const w0 = (1 - xfLower) * (1 - yFraction);
+	const w1 = xfLower * (1 - yFraction);
+	const w2 = (1 - xfUpper) * yFraction;
+	const w3 = xfUpper * yFraction;
+
+	const n0 = !isFinite(p0);
+	const n1 = !isFinite(p1);
+	const n2 = !isFinite(p2);
+	const n3 = !isFinite(p3);
+
+	// If none are NaN → normal bilinear interpolation
+	if (!n0 && !n1 && !n2 && !n3) {
+		return roundWithPrecision(p0 * w0 + p1 * w1 + p2 * w2 + p3 * w3);
+	}
+
+	// Effective horizontal fraction at the sample's latitude (xfLower == xfUpper
+	// on a rectangular grid, so this collapses to the single xFraction there).
+	const xFraction = (1 - yFraction) * xfLower + yFraction * xfUpper;
+
+	// --- EXACTLY ONE POINT MISSING CASES ---
+	// p0 is missing → valid triangle = (p1, p2, p3)
+	if (n0 && !n1 && !n2 && !n3) {
+		if (xfLower < xfUpper || xFraction + yFraction < 1) return NaN; // Not in triangle
+		const ws = w1 + w2 + w3;
+		return roundWithPrecision((p1 * w1 + p2 * w2 + p3 * w3) / ws);
+	}
+
+	// p1 is missing → valid triangle = (p0, p2, p3)
+	if (!n0 && n1 && !n2 && !n3) {
+		if (xfLower > xfUpper || xFraction + 1 - yFraction > 1) return NaN; // Not in triangle
+		const ws = w0 + w2 + w3;
+		return roundWithPrecision((p0 * w0 + p2 * w2 + p3 * w3) / ws);
+	}
+
+	// p2 is missing → valid triangle = (p0, p1, p3)
+	if (!n0 && !n1 && n2 && !n3) {
+		if (xfLower > xfUpper || xFraction + 1 - yFraction < 1) return NaN; // Not in triangle
+		const ws = w0 + w1 + w3;
+		return roundWithPrecision((p0 * w0 + p1 * w1 + p3 * w3) / ws);
+	}
+
+	// p3 is missing → valid triangle = (p0, p1, p2)
+	if (!n0 && !n1 && !n2 && n3) {
+		if (xfLower < xfUpper || xFraction + yFraction > 1) return NaN; // Not in triangle
+		const ws = w0 + w1 + w2;
+		return roundWithPrecision((p0 * w0 + p1 * w1 + p2 * w2) / ws);
+	}
+
+	// More than 1 point missing → no valid triangle
+	return NaN;
+};
+
 export const interpolateLinear = (
 	values: Float32Array,
 	x: number,
@@ -28,78 +115,16 @@ export const interpolateLinear = (
 		return NaN;
 	}
 
-	// p2 ---- p3
-	// |       |
-	// p0 ---- p1
-	const p0 = values[index];
-	const p1 = values[nextIndex];
-	const p2 = values[index + nx];
-	const p3 = values[nextIndex + nx];
-
-	const w0 = (1 - xFraction) * (1 - yFraction);
-	const w1 = xFraction * (1 - yFraction);
-	const w2 = (1 - xFraction) * yFraction;
-	const w3 = xFraction * yFraction;
-
-	const n0 = !isFinite(p0);
-	const n1 = !isFinite(p1);
-	const n2 = !isFinite(p2);
-	const n3 = !isFinite(p3);
-
-	// If none are NaN → normal bilinear interpolation
-	if (!n0 && !n1 && !n2 && !n3) {
-		return roundWithPrecision(p0 * w0 + p1 * w1 + p2 * w2 + p3 * w3);
-	}
-
-	// --- EXACTLY ONE POINT MISSING CASES ---
-	// ------------------
-	// p0 is missing → valid triangle = (p1, p2, p3)
-	// ------------------
-	if (n0 && !n1 && !n2 && !n3) {
-		if (xFraction + yFraction < 1) return NaN; // Not in triangle
-		const ws = w1 + w2 + w3;
-		return roundWithPrecision((p1 * w1 + p2 * w2 + p3 * w3) / ws);
-	}
-
-	// p1 is missing → valid triangle = (p0, p2, p3)
-	if (!n0 && n1 && !n2 && !n3) {
-		if (1 - xFraction + yFraction < 1) return NaN; // Not in triangle
-		const ws = w0 + w2 + w3;
-		return roundWithPrecision((p0 * w0 + p2 * w2 + p3 * w3) / ws);
-	}
-
-	// p2 is missing → valid triangle = (p0, p1, p3)
-	if (!n0 && !n1 && n2 && !n3) {
-		if (xFraction + 1 - yFraction < 1) return NaN; // Not in triangle
-		const ws = w0 + w1 + w3;
-		return roundWithPrecision((p0 * w0 + p1 * w1 + p3 * w3) / ws);
-	}
-
-	// p3 is missing → valid triangle = (p0, p1, p2)
-	if (!n0 && !n1 && !n2 && n3) {
-		if (1 - xFraction + 1 - yFraction < 1) return NaN; // Not in triangle
-		const ws = w0 + w1 + w2;
-		return roundWithPrecision((p0 * w0 + p1 * w1 + p2 * w2) / ws);
-	}
-
-	// More than 1 point missing → no valid triangle
-	return NaN;
-};
-
-export const interpolateNearest = (
-	values: Float32Array,
-	x: number,
-	y: number,
-	xFraction: number,
-	yFraction: number,
-	nx: number,
-	ny: number,
-	longitudeWrap: boolean = false
-): number => {
-	let xi = xFraction >= 0.5 ? x + 1 : x;
-	const yi = yFraction >= 0.5 ? Math.min(y + 1, ny - 1) : y;
-	if (xi >= nx) xi = longitudeWrap ? xi % nx : nx - 1;
-	return values[yi * nx + xi];
+	// Rectangular cell: both edges share the same horizontal fraction.
+	return bilinearNaNAware(
+		values[index],
+		values[nextIndex],
+		values[index + nx],
+		values[nextIndex + nx],
+		xFraction,
+		xFraction,
+		yFraction
+	);
 };
 
 // Separable bicubic (Catmull-Rom) interpolation.
