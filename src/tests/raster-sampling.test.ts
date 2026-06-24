@@ -1,13 +1,15 @@
 import { tile2lat, tile2lon } from '../utils/math';
 import { describe, expect, test } from 'vitest';
 
-// The raster worker now samples pixel (i, j) of tile (x, y, z) at its CENTRE,
+// The raster worker samples pixel (i, j) of tile (x, y, z) at its CENTRE,
 //   lat = tile2lat(y + (i + 0.5) / tileSize, z)
 //   lon = tile2lon(x + (j + 0.5) / tileSize, z)
-// These tests document why: sampling at the pixel's top-left (NW) corner — the
-// previous behaviour — reads the value half a pixel up-and-left of where the
-// pixel is displayed, a constant half-pixel registration offset (the "shift"
-// that became visible when a tile was magnified while zooming in).
+// These tests pin that registration. A pixel covers the geographic span
+// [i, i+1) x [j, j+1); its displayed colour should come from the point it
+// actually covers, i.e. its centre at (i+0.5, j+0.5). Sampling at the pixel
+// corner instead reads the value half a pixel up-and-left (NW) of where the
+// pixel is shown — a constant half-pixel offset that surfaces as a visible
+// shift when a tile is magnified on zoom-in.
 describe('raster pixel sampling registration', () => {
 	const tileSize = 512;
 	const z = 8;
