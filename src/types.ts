@@ -15,7 +15,7 @@ export interface DataIdentityOptions {
 	bounds: Bounds | undefined;
 }
 
-export type InterpolationMethod = 'nearest' | 'linear' | 'cubic' | 'smooth';
+export type InterpolationMethod = 'nearest' | 'linear' | 'cubic' | 'monotone' | 'smooth';
 
 export type TileSize = 64 | 128 | 256 | 512 | 1024 | 2048;
 

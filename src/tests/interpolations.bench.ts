@@ -41,7 +41,7 @@ const tileX = 64;
 const tileY = 63;
 const contourIntervals = [10, 12, 14, 16, 18, 20];
 
-const methods: InterpolationMethod[] = ['nearest', 'linear', 'cubic', 'smooth'];
+const methods: InterpolationMethod[] = ['nearest', 'linear', 'cubic', 'monotone', 'smooth'];
 
 // prevent the optimiser from discarding the work (intentionally unread)
 let _sink = 0;

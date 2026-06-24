@@ -259,6 +259,21 @@ describe('interpolation methods', () => {
 		}
 	});
 
+	test("'monotone' is shape-preserving: no overshoot and stays monotonic", () => {
+		const { grid, values, nx } = quantizedRamp();
+		let prev = -Infinity;
+		for (let s = 0; s < 400; s++) {
+			const lon = (s / 400) * (nx - 1) * 0.02;
+			const v = grid.getInterpolatedValue(values, 0.05, lon, 'monotone');
+			// PCHIP cannot overshoot the surrounding samples (no clamp needed)
+			expect(v).toBeGreaterThanOrEqual(14.0);
+			expect(v).toBeLessThanOrEqual(14.15);
+			// the field never decreases in lon, so neither may the interpolant
+			expect(v).toBeGreaterThanOrEqual(prev - 1e-9);
+			prev = v;
+		}
+	});
+
 	test("'smooth' is continuous across the antimeridian on a global grid", () => {
 		// longitudeWrap = true (lonMax - lonMin = 360)
 		const nx = 36;
@@ -280,6 +295,54 @@ describe('interpolation methods', () => {
 		const below = grid.getInterpolatedValue(values, 5, 179.99, 'smooth');
 		const above = grid.getInterpolatedValue(values, 5, -179.99, 'smooth');
 		expect(Math.abs(below - above)).toBeLessThan(0.01);
+	});
+
+	test('one-grid-point-short global grid wraps (no NaN column at the antimeridian)', () => {
+		// dwd_icon_eps shape: 0.25° grid stored one point short (nx=1439, span 359.75°).
+		// The old hardcoded 359.875 threshold left this un-wrapped, producing a
+		// missing column at the antimeridian.
+		const nx = 1439;
+		const ny = 721;
+		const grid = new RegularGrid({
+			type: 'regular',
+			nx,
+			ny,
+			lonMin: -180,
+			latMin: -90,
+			dx: 0.25,
+			dy: 0.25
+		});
+		const values = new Float32Array(nx * ny).fill(7);
+		// Longitudes inside the wrapped final cell (179.5°..180°) must resolve, not NaN.
+		for (const lon of [179.5, 179.6, 179.75, 179.9, 179.99]) {
+			expect(isFinite(grid.getInterpolatedValue(values, 0, lon, 'linear'))).toBe(true);
+		}
+	});
+
+	test('complete global grid keeps a full-width final cell at the antimeridian', () => {
+		// ncep_gefs025/ncep_gfs025 shape: complete 0.25° grid (nx=1440, span 360°).
+		// Its final cell must not be widened to 2*dx — doing so shifts the last
+		// column and smears the data near the seam. A linear ramp in longitude
+		// must stay linear right up to the seam.
+		const nx = 1440;
+		const ny = 4;
+		const grid = new RegularGrid({
+			type: 'regular',
+			nx,
+			ny,
+			lonMin: -180,
+			latMin: -1,
+			dx: 0.25,
+			dy: 0.25
+		});
+		// value == longitude index, so the seam wraps 1439 -> 0.
+		const values = new Float32Array(nx * ny);
+		for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) values[j * nx + i] = i;
+		// At the last node (179.75° == column 1439) we should read ~1439 exactly,
+		// not a value pulled halfway toward column 0 by a doubled cell.
+		expect(grid.getInterpolatedValue(values, -0.5, 179.75, 'linear')).toBeCloseTo(1439, 5);
+		// Halfway across the final cell wraps toward column 0: mean of 1439 and 0.
+		expect(grid.getInterpolatedValue(values, -0.5, 179.875, 'linear')).toBeCloseTo(1439 / 2, 5);
 	});
 });
 

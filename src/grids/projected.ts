@@ -2,7 +2,12 @@ import { DEFAULT_SMOOTH_FOOTPRINT } from '../utils/constants';
 
 import { SummedAreaTable, areaAverage, buildSummedAreaTable } from './area-average';
 import { GridInterface, GridPoint } from './interface';
-import { interpolateCubic, interpolateLinear, interpolateNearest } from './interpolations';
+import {
+	interpolateCubic,
+	interpolateLinear,
+	interpolateMonotone,
+	interpolateNearest
+} from './interpolations';
 import { Projection, createProjection } from './projections';
 
 import {
@@ -114,6 +119,16 @@ export class ProjectionGrid implements GridInterface {
 				);
 			case 'cubic':
 				return interpolateCubic(
+					values,
+					idx.x,
+					idx.y,
+					idx.xFraction,
+					idx.yFraction,
+					this.nx,
+					this.ny
+				);
+			case 'monotone':
+				return interpolateMonotone(
 					values,
 					idx.x,
 					idx.y,

@@ -3,7 +3,7 @@ export const DEFAULT_INTERVAL = 2;
 export const VALID_TILE_SIZES = [64, 128, 256, 512, 1024, 2048];
 export const DEFAULT_TILE_SIZE = 512;
 
-export const VALID_INTERPOLATIONS = ['nearest', 'linear', 'cubic', 'smooth'] as const;
+export const VALID_INTERPOLATIONS = ['nearest', 'linear', 'cubic', 'monotone', 'smooth'] as const;
 export const DEFAULT_INTERPOLATION = 'linear';
 
 // 'smooth' area-average box half-width in grid cells (∝ 1/cos lat in longitude).

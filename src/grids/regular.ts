@@ -2,7 +2,12 @@ import { DEFAULT_SMOOTH_FOOTPRINT } from '../utils/constants';
 
 import { SummedAreaTable, areaAverage, buildSummedAreaTable } from './area-average';
 import { GridInterface, GridPoint } from './interface';
-import { interpolateCubic, interpolateLinear, interpolateNearest } from './interpolations';
+import {
+	interpolateCubic,
+	interpolateLinear,
+	interpolateMonotone,
+	interpolateNearest
+} from './interpolations';
 
 import { Bounds, DimensionRange, InterpolationMethod, RegularGridData } from '../types';
 
@@ -15,6 +20,10 @@ export class RegularGrid implements GridInterface {
 
 	private bounds: Bounds;
 	private longitudeWrap: boolean;
+	// True only for global grids stored one grid point short of the seam (e.g.
+	// ICON), whose final cell is physically 2*dx wide. Complete global grids
+	// (e.g. GFS/GEFS) keep a normal final cell.
+	private wrapLastCellDouble: boolean;
 	private center?: { lng: number; lat: number };
 
 	// Lazily-built summed-area table for the 'smooth' method, cached per data
@@ -74,8 +83,21 @@ export class RegularGrid implements GridInterface {
 		const latMax = originLat + this.dy * ranges[0].end;
 		this.bounds = [lonMin, latMin, lonMax, latMax];
 
-		// icon global is one grid point short, therefore compare to 359.875
-		this.longitudeWrap = lonMax - lonMin >= 359.875 ? true : false;
+		// Detect global longitude wrapping relative to the grid resolution so it
+		// holds at any dx. A complete global grid spans dx*nx == 360; some grids
+		// (ICON family) are stored one grid point short, spanning dx*nx == 360 - dx.
+		// Both must wrap across the antimeridian — anything ≥2 cells short is
+		// regional. The old hardcoded 359.875 threshold only matched the 0.125°
+		// ICON grid, so e.g. dwd_icon_eps (0.25°, 359.75°) failed to wrap and left
+		// a missing column at the antimeridian.
+		const lonSpan = lonMax - lonMin;
+		this.longitudeWrap = lonSpan >= 360 - 1.5 * this.dx;
+		// Only the one-grid-point-short grids have a final cell that is physically
+		// 2*dx wide (the seam node is missing and bridged by the wrap column). A
+		// truly complete global grid already has a full-width final cell, so
+		// widening it shifts the last column and smears the data near the
+		// antimeridian (the artefact seen on e.g. ncep_gefs025/ncep_gfs025).
+		this.wrapLastCellDouble = this.longitudeWrap && lonSpan < 360 - 0.5 * this.dx;
 	}
 
 	getLinearInterpolatedValue(values: Float32Array, lat: number, lon: number): number {
@@ -106,7 +128,7 @@ export class RegularGrid implements GridInterface {
 		// small visual hack for "incomplete" icon global grids
 		// compare: https://github.com/open-meteo/weather-map-layer/pull/148#discussion_r2681391084
 		const x = Math.min(Math.floor((lon - this.bounds[0]) / this.dx), this.nx - 1);
-		const dx = this.longitudeWrap && lon >= this.bounds[2] - this.dx ? this.dx * 2 : this.dx;
+		const dx = this.wrapLastCellDouble && lon >= this.bounds[2] - this.dx ? this.dx * 2 : this.dx;
 		const xFraction = ((lon - this.bounds[0]) % dx) / dx;
 
 		switch (method) {
@@ -126,6 +148,17 @@ export class RegularGrid implements GridInterface {
 				);
 			case 'cubic':
 				return interpolateCubic(
+					values,
+					x,
+					y,
+					xFraction,
+					yFraction,
+					this.nx,
+					this.ny,
+					this.longitudeWrap
+				);
+			case 'monotone':
+				return interpolateMonotone(
 					values,
 					x,
 					y,
