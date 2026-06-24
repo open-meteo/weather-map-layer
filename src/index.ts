@@ -30,9 +30,20 @@ export { domainStep, closestModelRun } from './utils/model-runs';
 export { getCachedResolvedClipping } from './utils/parse-request';
 export { getColor, getColorScale } from './utils/styling';
 
+// Local files (drag-and-drop)
+
+export {
+	registerLocalOmFile,
+	unregisterLocalOmFile,
+	getLocalOmFile,
+	isLocalOmUrl
+} from './local-files';
+export { wktToGridData } from './utils/wkt';
+
 // Classes
 
 export { GridFactory } from './grids/index';
+export { WeatherMapLayerFileReader } from './om-file-reader';
 
 // Objects / Constants
 

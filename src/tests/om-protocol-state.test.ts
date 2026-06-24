@@ -39,12 +39,17 @@ const makeDomain = (): Domain => ({
 	model_interval: '3_hourly'
 });
 
-const makeDataOptions = (overrides: Partial<DataIdentityOptions> = {}): DataIdentityOptions => ({
-	domain: makeDomain(),
-	variable: 'temp',
-	bounds: undefined,
-	...overrides
-});
+const makeDataOptions = (overrides: Partial<DataIdentityOptions> = {}): DataIdentityOptions => {
+	const domain = makeDomain();
+	return {
+		baseUrl: 'https://example.com/file.om',
+		grid: domain.grid,
+		domain,
+		variable: 'temp',
+		bounds: undefined,
+		...overrides
+	};
+};
 
 const makeMockData = (size = 100): Data => ({
 	values: new Float32Array(size),

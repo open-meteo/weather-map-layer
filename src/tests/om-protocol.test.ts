@@ -74,6 +74,10 @@ const createTestSettings = (overrides: Partial<OmProtocolSettings> = {}): OmProt
 	...overrides
 });
 
+// The default resolver only touches the reader for local (om://local/...) urls,
+// so a bare stub is enough for the server-url cases exercised here.
+const reader = {} as unknown as Parameters<typeof parseRequest>[2];
+
 describe('Request Options', () => {
 	describe('parseRequest', () => {
 		it('resolves data identity and render options from URL', async () => {
@@ -82,9 +86,9 @@ describe('Request Options', () => {
 
 			const url =
 				'om://https://example.com/data_spatial/domain1/file.om?variable=temperature&dark=true&intervals=2';
-			const { dataOptions, renderOptions } = parseRequest(url, settings);
+			const { dataOptions, renderOptions } = await parseRequest(url, settings, reader);
 
-			expect(dataOptions.domain.value).toBe('domain1');
+			expect(dataOptions.domain?.value).toBe('domain1');
 			expect(dataOptions.variable).toBe('temperature');
 			expect(renderOptions.intervals).toStrictEqual([2]);
 		});
@@ -103,8 +107,8 @@ describe('Request Options', () => {
 				'om://https://example.com/nested/bucket/structure/data_spatial/domain1/file.om?variable=temperature&dark=true&intervals=2';
 
 			for (const url of [url1, url2, url3]) {
-				const { dataOptions, renderOptions } = parseRequest(url, settings);
-				expect(dataOptions.domain.value).toBe('domain1');
+				const { dataOptions, renderOptions } = await parseRequest(url, settings, reader);
+				expect(dataOptions.domain?.value).toBe('domain1');
 				expect(dataOptions.variable).toBe('temperature');
 				expect(renderOptions.intervals).toStrictEqual([2]);
 			}
@@ -114,7 +118,7 @@ describe('Request Options', () => {
 			const settings = createTestSettings({ domainOptions: [] });
 			const url = 'om://https://example.com/data_spatial/unknown/file.om?variable=temp';
 
-			expect(() => parseRequest(url, settings)).toThrow('Invalid domain');
+			await expect(parseRequest(url, settings, reader)).rejects.toThrow('Invalid domain');
 		});
 
 		it('throws for missing variable', async () => {
@@ -122,7 +126,9 @@ describe('Request Options', () => {
 			const settings = createTestSettings({ domainOptions });
 			const url = 'om://https://example.com/data_spatial/domain1/file.om';
 
-			expect(() => parseRequest(url, settings)).toThrow('Variable is required but not defined');
+			await expect(parseRequest(url, settings, reader)).rejects.toThrow(
+				'Variable is required but not defined'
+			);
 		});
 
 		it('parses render options with defaults', async () => {
@@ -130,7 +136,7 @@ describe('Request Options', () => {
 			const settings = createTestSettings({ domainOptions });
 
 			const url = 'om://https://example.com/data_spatial/domain1/file.om?variable=temp';
-			const { renderOptions } = parseRequest(url, settings);
+			const { renderOptions } = await parseRequest(url, settings, reader);
 
 			const colorScale = renderOptions.colorScale as ResolvedBreakpointColorScale;
 
@@ -147,7 +153,7 @@ describe('Request Options', () => {
 
 			const url =
 				'om://https://example.com/data_spatial/domain1/file.om?variable=temp&tile_size=1024&grid=true&arrows=true&contours=true';
-			const { renderOptions } = parseRequest(url, settings);
+			const { renderOptions } = await parseRequest(url, settings, reader);
 
 			expect(renderOptions.tileSize).toBe(1024);
 			expect(renderOptions.drawGrid).toBe(true);
@@ -162,10 +168,10 @@ describe('Request Options', () => {
 			const url =
 				'om://https://example.com/data_spatial/domain1/file.om?variable=temp&tile_size=999';
 
-			expect(() => parseRequest(url, settings)).toThrow('Invalid tile size');
+			await expect(parseRequest(url, settings, reader)).rejects.toThrow('Invalid tile size');
 		});
 
-		it('resolves clipping options and caches by reference', () => {
+		it('resolves clipping options and caches by reference', async () => {
 			const domainOptions = [createTestDomain('domain1')];
 			const clippingOptions = {
 				bounds: [-10, -10, 10, 10] as [number, number, number, number]
@@ -173,8 +179,8 @@ describe('Request Options', () => {
 			const settings = createTestSettings({ domainOptions, clippingOptions });
 			const url = 'om://https://example.com/data_spatial/domain1/file.om?variable=temp';
 
-			const result1 = parseRequest(url, settings);
-			const result2 = parseRequest(url, settings);
+			const result1 = await parseRequest(url, settings, reader);
+			const result2 = await parseRequest(url, settings, reader);
 
 			// Same reference for clippingOptions means cached result is reused
 			expect(result1.clippingOptions).toBeDefined();
@@ -182,12 +188,12 @@ describe('Request Options', () => {
 			expect(result1.clippingOptions!.bounds).toBeDefined();
 		});
 
-		it('returns undefined clippingOptions when none provided', () => {
+		it('returns undefined clippingOptions when none provided', async () => {
 			const domainOptions = [createTestDomain('domain1')];
 			const settings = createTestSettings({ domainOptions });
 			const url = 'om://https://example.com/data_spatial/domain1/file.om?variable=temp';
 
-			const result = parseRequest(url, settings);
+			const result = await parseRequest(url, settings, reader);
 			expect(result.clippingOptions).toBeUndefined();
 		});
 	});
@@ -196,9 +202,12 @@ describe('Request Options', () => {
 		it('allows custom request resolver', async () => {
 			const { omProtocol } = await import('../om-protocol');
 
+			const customDomain = createTestDomain('custom_domain');
 			const customResolver = vi.fn().mockReturnValue({
 				dataOptions: {
-					domain: createTestDomain('custom_domain'),
+					baseUrl: 'https://example.com/data_spatial/custom_domain/file.om',
+					grid: customDomain.grid,
+					domain: customDomain,
 					variable: { value: 'custom_var' },
 					ranges: [
 						{ start: 0, end: 10 },

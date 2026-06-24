@@ -1,15 +1,19 @@
 import {
 	BlockCache,
+	FileBackend,
 	LruBlockCache,
 	OmDataType,
 	OmFileReadOptions,
-	type OmFileReader,
+	OmFileReader,
 	OmHttpBackend
 } from '@openmeteo/file-reader';
 
 import { fastAtan2, radiansToDegrees } from './utils/math';
+import { wktToGridData } from './utils/wkt';
 
-import type { Data, DimensionRange } from './types';
+import { getLocalOmFile } from './local-files';
+
+import type { Data, DimensionRange, GridData } from './types';
 
 /**
  * Configuration options for the WeatherMapLayerFileReader.
@@ -45,6 +49,8 @@ export class WeatherMapLayerFileReader {
 	readonly cache: BlockCache;
 	readonly config: Required<Omit<FileReaderConfig, 'cache'>>;
 	private readonly allDerivationRules: VariableDerivationRule[];
+	private currentUrl: string | undefined;
+	private readonly gridParametersCache = new Map<string, GridData>();
 
 	constructor(config: FileReaderConfig = {}) {
 		this.config = {
@@ -60,13 +66,85 @@ export class WeatherMapLayerFileReader {
 	}
 
 	async setToOmFile(omUrl: string): Promise<void> {
+		this.currentUrl = omUrl;
 		this.dispose();
+
+		// Locally provided files (e.g. drag-and-dropped) are read straight from
+		// memory through a FileBackend instead of fetching over HTTP.
+		const localFile = getLocalOmFile(omUrl);
+		if (localFile) {
+			this.reader = await OmFileReader.create(new FileBackend(localFile));
+			return;
+		}
+
 		const s3Backend = new OmHttpBackend({
 			url: omUrl,
 			eTagValidation: this.config.eTagValidation,
 			retries: this.config.retries
 		});
 		this.reader = await s3Backend.asCachedReader(this.cache);
+	}
+
+	/**
+	 * Derive the grid (projection + bounds) of a variable from the file's own
+	 * `crs_wkt` (OGC WKT2 CRS) child. Used for locally provided files that carry
+	 * no domain identity. Results are cached per file url + variable.
+	 */
+	async getGridParameters(variable: string): Promise<GridData> {
+		if (!this.reader) {
+			throw new Error('Reader not initialized. Call setToOmFile() first.');
+		}
+
+		const cacheKey = `${this.currentUrl}:${variable}`;
+		const cached = this.gridParametersCache.get(cacheKey);
+		if (cached) return cached;
+
+		const variableReader = await this.reader.getChildByName(variable);
+		if (!variableReader) {
+			throw new Error(`Variable ${variable} not found`);
+		}
+
+		const dimensions = variableReader.getDimensions();
+		if (dimensions.length !== 2) {
+			throw new Error(`Variable ${variable} does not have 2 dimensions`);
+		}
+		const [ny, nx] = dimensions;
+
+		const wkt2Crs = await this.reader.getChildByName('crs_wkt');
+		if (!wkt2Crs) {
+			throw new Error('File does not contain a crs_wkt variable');
+		}
+		const wkt = wkt2Crs.readScalar<string>(OmDataType.String);
+		if (!wkt) {
+			throw new Error('crs_wkt variable is empty');
+		}
+
+		const grid = wktToGridData(wkt, nx, ny);
+		this.gridParametersCache.set(cacheKey, grid);
+		return grid;
+	}
+
+	/**
+	 * List the names of the readable 2D data variables in the current file.
+	 * Skips the `crs_wkt` metadata child and any non-2D (scalar/coordinate)
+	 * children. Useful for populating a variable picker for a dropped file.
+	 */
+	async listVariables(): Promise<string[]> {
+		if (!this.reader) {
+			throw new Error('Reader not initialized. Call setToOmFile() first.');
+		}
+
+		const count = this.reader.numberOfChildren();
+		const variables: string[] = [];
+		for (let i = 0; i < count; i++) {
+			const child = await this.reader.getChild(i);
+			if (!child) continue;
+			const name = child.getName();
+			if (!name || name === 'crs_wkt') continue;
+			if (child.getDimensions().length !== 2) continue;
+			variables.push(name);
+		}
+		return variables;
 	}
 
 	private getRanges(ranges: DimensionRange[] | null, dimensions: number[]): DimensionRange[] {

@@ -10,7 +10,13 @@ export interface OmProtocolInstance {
 }
 
 export interface DataIdentityOptions {
-	domain: Domain;
+	/** The OM file base url this data was resolved from. */
+	baseUrl: string;
+	/** Grid used to georeference the data. Comes from the domain for server
+	 * files, or from the file's own `crs_wkt` for locally provided files. */
+	grid: GridData;
+	/** Present for server/domain-resolved files; undefined for local files. */
+	domain?: Domain;
 	variable: string;
 	bounds: Bounds | undefined;
 }
@@ -55,8 +61,11 @@ export interface OmUrlState {
  */
 export type RequestResolver = (
 	urlComponents: ParsedUrlComponents,
-	settings: OmProtocolSettings
-) => { dataOptions: DataIdentityOptions; renderOptions: RenderOptions };
+	settings: OmProtocolSettings,
+	reader: WeatherMapLayerFileReader
+) =>
+	| { dataOptions: DataIdentityOptions; renderOptions: RenderOptions }
+	| Promise<{ dataOptions: DataIdentityOptions; renderOptions: RenderOptions }>;
 
 export type PostReadCallback =
 	| ((omFileReader: WeatherMapLayerFileReader, data: Data, state: OmUrlState) => void)
