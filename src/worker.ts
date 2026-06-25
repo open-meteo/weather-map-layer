@@ -40,6 +40,14 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 
 		const grid = GridFactory.create(domain.grid, ranges);
 
+		// Longitude depends only on the column (j), so resolve all tileSize values
+		// once up front instead of re-deriving them for every row — turns tileSize²
+		// tile2lon() calls (each with its own Math.pow) into tileSize.
+		const lons = new Float64Array(tileSize);
+		for (let j = 0; j < tileSize; j++) {
+			lons[j] = tile2lon(x + j / tileSize, z);
+		}
+
 		for (let i = 0; i < tileSize; i++) {
 			const lat = tile2lat(y + i / tileSize, z);
 
@@ -48,7 +56,7 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 
 			for (let j = 0; j < tileSize; j++) {
 				const ind = j + i * tileSize;
-				const lon = tile2lon(x + j / tileSize, z);
+				const lon = lons[j];
 
 				if (clippingOptions?.bounds)
 					if (checkAgainstBounds(lon, clippingOptions.bounds[0], clippingOptions.bounds[2]))
