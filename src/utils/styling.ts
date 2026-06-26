@@ -77,6 +77,63 @@ export const getColor = (
 	}
 };
 
+// A colour lookup specialised to one scale, with the per-tile invariants
+// (rgba index scale, breakpoint/colour arrays) resolved once. The raster worker
+// builds this once per tile and calls it per pixel, avoiding the `switch` and the
+// `(max-min)/length` division that getColor repeats on every pixel. `out` is the
+// reusable blend buffer (ignored on the non-blend path, which returns the scale's
+// own colour).
+export type ColorSampler = (
+	px: number,
+	out: [number, number, number, number]
+) => [number, number, number, number];
+
+export const makeColorSampler = (
+	colorScale: RenderableColorScale,
+	blend: boolean = false
+): ColorSampler => {
+	switch (colorScale.type) {
+		case 'rgba': {
+			const colors = colorScale.colors;
+			const last = colors.length - 1;
+			const min = colorScale.min;
+			// index = (px - min) / deltaPerIndex == (px - min) * (length / (max - min))
+			const scale = colors.length / (colorScale.max - colorScale.min);
+			if (!blend) {
+				return (px) => colors[Math.min(last, Math.max(0, Math.floor((px - min) * scale)))];
+			}
+			return (px, out) => {
+				const pos = (px - min) * scale;
+				const index = Math.min(last, Math.max(0, Math.floor(pos)));
+				const next = Math.min(last, index + 1);
+				const t = Math.min(1, Math.max(0, pos - index));
+				return lerpColor(colors[index], colors[next], t, out);
+			};
+		}
+		case 'breakpoint': {
+			const breakpoints = colorScale.breakpoints;
+			const colors = colorScale.colors;
+			const last = colors.length - 1;
+			if (!blend) {
+				return (px) => colors[Math.max(0, findLastIndexLE(breakpoints, px))];
+			}
+			return (px, out) => {
+				const index = Math.max(0, findLastIndexLE(breakpoints, px));
+				const next = Math.min(last, index + 1);
+				const lo = breakpoints[index];
+				const hi = breakpoints[next];
+				const t = hi > lo ? Math.min(1, Math.max(0, (px - lo) / (hi - lo))) : 0;
+				return lerpColor(colors[index], colors[next], t, out);
+			};
+		}
+		default: {
+			// This ensures exhaustiveness checking
+			const _exhaustive: never = colorScale;
+			throw new Error(`Unknown color scale: ${_exhaustive}`);
+		}
+	}
+};
+
 const transformScale = (
 	scale: BreakpointColorScale,
 	transform: (breakpoint: number) => number,

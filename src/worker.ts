@@ -6,7 +6,7 @@ import { clipRasterToPolygons } from './utils/clipping';
 import { generateContours } from './utils/contours';
 import { generateGridPoints } from './utils/grid-points';
 import { halfQuantum as computeHalfQuantum, tile2lat, tile2lon } from './utils/math';
-import { getColor } from './utils/styling';
+import { makeColorSampler } from './utils/styling';
 
 import { GridFactory } from './grids/index';
 
@@ -51,6 +51,10 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 		// Reused per-pixel so colour blending doesn't allocate an array per pixel.
 		const colorOut: [number, number, number, number] = [0, 0, 0, 0];
 
+		// Specialise the colour lookup to this tile's scale once, hoisting the
+		// per-pixel `switch` and the rgba index division out of the inner loop.
+		const sampleColor = makeColorSampler(colorScale, colorBlend);
+
 		for (let i = 0; i < tileSize; i++) {
 			// sample at the pixel centre ((i+0.5)/tileSize), not the top-left
 			// corner, so the value is registered where the pixel is displayed
@@ -71,7 +75,7 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 				const px = grid.getInterpolatedValue(values, lat, lon, interpolation, smoothFootprint);
 
 				if (isFinite(px)) {
-					const color = getColor(colorScale, px + halfQuantum, colorBlend, colorOut);
+					const color = sampleColor(px + halfQuantum, colorOut);
 					rgba[4 * ind] = color[0];
 					rgba[4 * ind + 1] = color[1];
 					rgba[4 * ind + 2] = color[2];
