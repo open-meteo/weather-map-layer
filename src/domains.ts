@@ -1142,7 +1142,7 @@ export const domainOptions: Array<Domain> = [
 			}
 		},
 		time_interval: 'hourly',
-		model_interval: '3_hourly'
+		model_interval: 'hourly'
 	},
 	{
 		value: 'knmi_harmonie_arome_netherlands',
@@ -1158,7 +1158,7 @@ export const domainOptions: Array<Domain> = [
 			zoom: 6
 		},
 		time_interval: 'hourly',
-		model_interval: '3_hourly'
+		model_interval: 'hourly'
 	},
 
 	// MeteoSwiss ICON
