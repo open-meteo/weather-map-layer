@@ -15,6 +15,7 @@ export type {
 	OmUrlState,
 	RenderableColorScale
 } from './types';
+export type { WeatherMapLayerFileReader } from './om-file-reader';
 
 // Functions
 
