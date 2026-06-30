@@ -44,7 +44,6 @@ export { wktToGridData } from './utils/wkt';
 // Classes
 
 export { GridFactory } from './grids/index';
-export { WeatherMapLayerFileReader } from './om-file-reader';
 
 // Objects / Constants
 
