@@ -8,18 +8,26 @@ const gridOf = (value: string) =>
 	GridFactory.create((domainOptions.find((d) => d.value === value) as Domain).grid, null);
 
 describe('getBoundaryPolygon', () => {
-	it('returns the bounds rectangle for a regular grid', () => {
-		const grid = gridOf('dwd_icon_d2'); // type: 'regular'
+	it('returns the data-hugging rectangle for a regular grid', () => {
+		const domain = domainOptions.find((d) => d.value === 'dwd_icon_d2') as Domain; // type: 'regular'
+		const grid = GridFactory.create(domain.grid, null);
 		const ring = grid.getBoundaryPolygon();
 		const [minLon, minLat, maxLon, maxLat] = grid.getBounds();
+
+		// The bounds max edges sit one cell beyond the last data point (bounds max =
+		// origin + d·count), so the outline pulls its north/east edges in by one cell
+		// to hug the rendered data. The south/west edges already match the data.
+		const { nx, ny } = domain.grid;
+		const east = maxLon - (maxLon - minLon) / nx;
+		const north = maxLat - (maxLat - minLat) / ny;
 
 		expect(ring).toHaveLength(5);
 		expect(ring[0]).toEqual(ring[ring.length - 1]); // closed ring
 		expect(ring).toEqual([
 			[minLon, minLat],
-			[maxLon, minLat],
-			[maxLon, maxLat],
-			[minLon, maxLat],
+			[east, minLat],
+			[east, north],
+			[minLon, north],
 			[minLon, minLat]
 		]);
 	});
