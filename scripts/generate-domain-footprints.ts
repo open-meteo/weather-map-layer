@@ -4,10 +4,10 @@
  * lat/lon grid padded with NaN around the real, projected shape).
  *
  * For each such domain it loads one real `.om` file and traces a ring around the
- * valid (non-NaN) region: arched north/south edges joined by straight east/west
- * sides (see `traceFootprint`). It writes `src/domain-footprints.ts`, so the
- * seamless border follows the real data shape with no runtime data load. Re-run
- * with `npm run generate:footprints`.
+ * valid (non-NaN) region as four smooth arches — north/south and east/west, since a
+ * reprojected grid curves on every side (see `traceFootprint`). It writes
+ * `src/domain-footprints.ts`, so the seamless border follows the real data shape
+ * with no runtime data load. Re-run with `npm run generate:footprints`.
  */
 import { isSeamlessDomain, resolveConcreteDomain } from '../src/domain-helpers';
 import { domainOptions } from '../src/domains';
@@ -110,27 +110,42 @@ const fitPolynomial = (xs: number[], ys: number[], degree: number): ((x: number)
 };
 
 /**
- * Fit a smooth arch to the columns between corner indices `iFrom`..`iTo` and
- * sample it at `ARCH_SAMPLES` points, walking longitude from `iFrom` to `iTo`.
- * Replaces the cell-level staircase with a high-resolution curve.
+ * Fit a smooth arch `dep ≈ poly(indep)` between corner indices `iFrom`..`iTo` and
+ * sample it at `ARCH_SAMPLES` points, walking `indep` from `iFrom` to `iTo`. Returns
+ * `[indep, dep]` pairs. Used for both the N/S edges (indep = lon, dep = lat) and the
+ * E/W edges (indep = lat, dep = lon), replacing the cell staircase with a curve.
  */
-const fitArch = (lon: number[], lat: number[], iFrom: number, iTo: number): Pt[] => {
+const fitArch = (indep: number[], dep: number[], iFrom: number, iTo: number): Pt[] => {
 	const lo = Math.min(iFrom, iTo);
 	const hi = Math.max(iFrom, iTo);
-	const xs = lon.slice(lo, hi + 1);
-	const ys = lat.slice(lo, hi + 1);
-	if (xs.length < 2) return [[lon[iFrom], lat[iFrom]]];
+	const xs = indep.slice(lo, hi + 1);
+	const ys = dep.slice(lo, hi + 1);
+	if (xs.length < 2) return [[indep[iFrom], dep[iFrom]]];
 
 	const f = fitPolynomial(xs, ys, ARCH_POLY_DEGREE);
-	const lonFrom = lon[iFrom];
-	const lonTo = lon[iTo];
+	const from = indep[iFrom];
+	const to = indep[iTo];
 	const pts: Pt[] = [];
 	for (let k = 0; k < ARCH_SAMPLES; k++) {
 		const t = k / (ARCH_SAMPLES - 1);
-		const x = lonFrom + t * (lonTo - lonFrom);
+		const x = from + t * (to - from);
 		pts.push([x, f(x)]);
 	}
 	return pts;
+};
+
+/** Index in `arr` whose value is closest to `val`. */
+const nearestIndex = (arr: number[], val: number): number => {
+	let best = 0;
+	let bestDist = Infinity;
+	for (let i = 0; i < arr.length; i++) {
+		const d = Math.abs(arr[i] - val);
+		if (d < bestDist) {
+			bestDist = d;
+			best = i;
+		}
+	}
+	return best;
 };
 
 /** Median filter to remove cell-level jitter and stray-cell spikes from an edge. */
@@ -145,18 +160,21 @@ const medianFilter = (a: number[], w: number): number[] => {
 };
 
 /**
- * Trace a closed [lon,lat] ring around the valid (non-NaN) cells, shaped as
- * arched north/south edges joined by straight east/west sides.
+ * Trace a closed [lon,lat] ring around the valid (non-NaN) cells, shaped as four
+ * smooth arches — because a reprojected grid's edges are all curved, not just the
+ * north/south ones.
  *
- * For every column we take the lowest/highest valid row (the south/north
- * boundary), median-smooth those to kill cell-level jitter and stray-cell spikes,
- * then locate the four corners as rotated extremes. The north edge (NW→NE) and
- * south edge (SW→SE) are each replaced by a smooth polynomial arch fitted to their
- * columns and sampled at high resolution — this discards the cell staircase while
- * keeping the true curvature. The sides are the straight corner-to-corner joins.
+ * A column scan gives the south/north latitude of every column and a row scan gives
+ * the west/east longitude of every row; both are median-smoothed to kill cell-level
+ * jitter and stray-cell spikes. The four corners are located as rotated extremes.
+ * Each edge is then a polynomial arch: N/S fit lat over lon, E/W fit lon over lat,
+ * sampled at high resolution — discarding the cell staircase while keeping the true
+ * curvature on every side.
  */
 const traceFootprint = (values: Float32Array, grid: RegularGridData): Pt[] | undefined => {
 	const { nx, ny, lonMin, latMin, dx, dy } = grid;
+
+	// Column scan: south/north latitude of each column (for the N/S arches).
 	const lon: number[] = [];
 	const botRaw: number[] = [];
 	const topRaw: number[] = [];
@@ -174,11 +192,33 @@ const traceFootprint = (values: Float32Array, grid: RegularGridData): Pt[] | und
 		botRaw.push(latMin + minY * dy);
 		topRaw.push(latMin + maxY * dy);
 	}
-	if (lon.length < 4) return undefined;
 
-	const win = Math.max(5, Math.round(lon.length / 40)) | 1; // odd window ~1/40 of the span
-	const bot = medianFilter(botRaw, win);
-	const top = medianFilter(topRaw, win);
+	// Row scan: west/east longitude of each row (for the E/W arches).
+	const lat: number[] = [];
+	const leftRaw: number[] = [];
+	const rightRaw: number[] = [];
+	for (let y = 0; y < ny; y++) {
+		let minX = -1;
+		let maxX = -1;
+		for (let x = 0; x < nx; x++) {
+			if (!Number.isNaN(values[y * nx + x])) {
+				if (minX < 0) minX = x;
+				maxX = x;
+			}
+		}
+		if (minX < 0) continue;
+		lat.push(latMin + y * dy);
+		leftRaw.push(lonMin + minX * dx);
+		rightRaw.push(lonMin + maxX * dx);
+	}
+	if (lon.length < 4 || lat.length < 4) return undefined;
+
+	const winCol = Math.max(5, Math.round(lon.length / 40)) | 1; // odd window ~1/40 of the span
+	const bot = medianFilter(botRaw, winCol);
+	const top = medianFilter(topRaw, winCol);
+	const winRow = Math.max(5, Math.round(lat.length / 40)) | 1;
+	const left = medianFilter(leftRaw, winRow);
+	const right = medianFilter(rightRaw, winRow);
 
 	// Corners as rotated extremes (robust to a tilted rectangle and a mild arch).
 	let iNW = 0;
@@ -192,10 +232,20 @@ const traceFootprint = (values: Float32Array, grid: RegularGridData): Pt[] | und
 		if (-bot[i] + lon[i] > -bot[iSE] + lon[iSE]) iSE = i; // min(lat - lon)
 	}
 
-	// South arch (SW→SE), then north arch (NE→NW); the gaps are the straight sides.
+	// Latitudes of the corners, used to bound the E/W arches in the row scan.
+	const rSE = nearestIndex(lat, bot[iSE]);
+	const rNE = nearestIndex(lat, top[iNE]);
+	const rNW = nearestIndex(lat, top[iNW]);
+	const rSW = nearestIndex(lat, bot[iSW]);
+
+	// Walk the perimeter: south (SW→SE), east (SE→NE), north (NE→NW), west (NW→SW).
+	// N/S arches fit lat over lon; E/W arches fit lon over lat (swap back to [lon,lat]).
 	const south = fitArch(lon, bot, iSW, iSE);
+	const east = fitArch(lat, right, rSE, rNE).map(([la, lo]): Pt => [lo, la]);
 	const north = fitArch(lon, top, iNE, iNW);
-	const ring = [...south, ...north];
+	const west = fitArch(lat, left, rNW, rSW).map(([la, lo]): Pt => [lo, la]);
+
+	const ring = [...south, ...east, ...north, ...west];
 	ring.push(ring[0]); // close
 	return ring.map(([l, la]) => [Number(l.toFixed(3)), Number(la.toFixed(3))]);
 };
