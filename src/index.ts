@@ -18,7 +18,6 @@ export type {
 	SeamlessDomain,
 	SeamlessLayer
 } from './types';
-export type { WeatherMapLayerFileReader } from './om-file-reader';
 
 // Functions
 
