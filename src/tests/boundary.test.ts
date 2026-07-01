@@ -32,6 +32,28 @@ describe('getBoundaryPolygon', () => {
 		]);
 	});
 
+	it('outlines the real outer rows for a gaussian grid (inside the poles)', () => {
+		const domain = domainOptions.find((d) => d.value === 'ecmwf_ifs') as Domain; // type: 'gaussian'
+		const grid = GridFactory.create(domain.grid, null);
+		const ring = grid.getBoundaryPolygon();
+		const [minLon, minLat, maxLon, maxLat] = grid.getBounds();
+
+		expect(ring).toHaveLength(5);
+		expect(ring[0]).toEqual(ring[ring.length - 1]); // closed ring
+
+		// Global in longitude, but the north/south edges are the outermost Gaussian
+		// rows just inside ±90 — not the ±90 bounds (so the border hugs the data).
+		const south = ring[0][1];
+		const north = ring[2][1];
+		expect(ring.map(([lon]) => lon)).toEqual([minLon, maxLon, maxLon, minLon, minLon]);
+		expect(north).toBeGreaterThan(minLat); // strictly inside the pole
+		expect(north).toBeLessThan(maxLat);
+		expect(south).toBeGreaterThan(minLat);
+		expect(south).toBeLessThan(maxLat);
+		expect(north).toBeCloseTo(-south, 6); // symmetric about the equator
+		expect(90 - north).toBeLessThan(1); // but only just inside ±90
+	});
+
 	it('keeps longitudes continuous across the antimeridian for a pole-enclosing grid', () => {
 		// CMC GEM RDPS is a rotated lat/lon grid whose rectangle contains the North
 		// Pole, so its lon/lat perimeter winds a full 360°. Normalizing each vertex
