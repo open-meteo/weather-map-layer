@@ -99,12 +99,18 @@ export class RegularGrid implements GridInterface {
 	}
 
 	getBoundaryPolygon(): Array<[number, number]> {
+		// `bounds` max edges sit one cell beyond the last data point (bounds max =
+		// origin + d · count), whereas the min edges are the first data point. Pull the
+		// north/east edges in by one cell so the outline hugs the rendered data instead
+		// of leaving a one-cell seam along the top and right.
 		const [minLon, minLat, maxLon, maxLat] = this.bounds;
+		const east = maxLon - this.dx;
+		const north = maxLat - this.dy;
 		return [
 			[minLon, minLat],
-			[maxLon, minLat],
-			[maxLon, maxLat],
-			[minLon, maxLat],
+			[east, minLat],
+			[east, north],
+			[minLon, north],
 			[minLon, minLat]
 		];
 	}
