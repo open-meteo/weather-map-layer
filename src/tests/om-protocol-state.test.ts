@@ -91,6 +91,15 @@ class FakeReader {
 		});
 	}
 
+	readVariableFromUrl(
+		_url: string,
+		variable: unknown,
+		ranges: unknown,
+		signal?: AbortSignal
+	): Promise<Data> {
+		return this.readVariable(variable, ranges, signal);
+	}
+
 	resolveCall(index: number, value: Data): void {
 		const call = this.calls[index];
 		if (!call) throw new Error(`No call at index ${index}`);

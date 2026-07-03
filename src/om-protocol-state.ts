@@ -169,9 +169,13 @@ export const ensureData = async (
 
 		state.dataPromise = (async () => {
 			try {
+				// Keep the legacy current-file pointer in sync for postReadCallback
+				// users, but perform the read itself URL-scoped so concurrent loads
+				// for other files (e.g. timestep prefetches) cannot redirect it.
 				await omFileReader.setToOmFile(state.omFileUrl);
 
-				const data = await omFileReader.readVariable(
+				const data = await omFileReader.readVariableFromUrl(
+					state.omFileUrl,
 					state.dataOptions.variable,
 					state.ranges,
 					controller.signal
