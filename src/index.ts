@@ -1,25 +1,5 @@
 export { omProtocol } from './om-protocol';
 
-<<<<<<< HEAD
-=======
-// Types
-
-export type {
-	ClippingOptions,
-	Data,
-	Domain,
-	DomainMetaDataJson,
-	GeoJson,
-	GeoJsonFeature,
-	GeoJsonGeometry,
-	GeoJsonPosition,
-	OmProtocolSettings,
-	OmUrlState,
-	RenderableColorScale
-} from './types';
-export type { WeatherMapLayerFileReader } from './om-file-reader';
-
->>>>>>> main
 // Functions
 
 export {
