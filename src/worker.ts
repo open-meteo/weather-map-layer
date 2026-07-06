@@ -48,7 +48,6 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 
 		const grid = GridFactory.create(domain.grid, ranges);
 
-<<<<<<< HEAD
 		// Offset the colour threshold by half the data's quantization step so
 		// band edges fall inside grid cells (smooth) instead of snapping to the
 		// cell corners when a breakpoint coincides with a quantization level.
@@ -62,7 +61,7 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 		const sampleColor = makeColorSampler(colorScale, colorBlend);
 
 		const sampleStart = performance.now();
-=======
+
 		// Longitude depends only on the column (j), so resolve all tileSize values
 		// once up front instead of re-deriving them for every row — turns tileSize²
 		// tile2lon() calls (each with its own Math.pow) into tileSize.
@@ -70,7 +69,6 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 		for (let j = 0; j < tileSize; j++) {
 			lons[j] = tile2lon(x + (j + 0.5) / tileSize, z);
 		}
->>>>>>> main
 
 		for (let i = 0; i < tileSize; i++) {
 			// sample at the pixel centre ((i+0.5)/tileSize), not the top-left
