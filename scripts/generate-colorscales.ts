@@ -29,8 +29,7 @@ interface OpacitySegment {
 
 // Opacity segments can also be mode-specific
 type OpacitySegmentsDefinition =
-	| OpacitySegment[]
-	| { light: OpacitySegment[]; dark: OpacitySegment[] };
+	OpacitySegment[] | { light: OpacitySegment[]; dark: OpacitySegment[] };
 
 interface ColorScaleDefinition {
 	unit: string;
