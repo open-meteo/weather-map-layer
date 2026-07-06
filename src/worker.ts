@@ -41,14 +41,17 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 		const grid = GridFactory.create(domain.grid, ranges);
 
 		for (let i = 0; i < tileSize; i++) {
-			const lat = tile2lat(y + i / tileSize, z);
+			// sample at the pixel centre ((i+0.5)/tileSize), not the top-left
+			// corner, so the value is registered where the pixel is displayed
+			// (fixes the half-pixel up-left shift visible when zooming)
+			const lat = tile2lat(y + (i + 0.5) / tileSize, z);
 
 			if (clippingOptions?.bounds)
 				if (checkAgainstBounds(lat, clippingOptions.bounds[1], clippingOptions.bounds[3])) continue;
 
 			for (let j = 0; j < tileSize; j++) {
 				const ind = j + i * tileSize;
-				const lon = tile2lon(x + j / tileSize, z);
+				const lon = tile2lon(x + (j + 0.5) / tileSize, z);
 
 				if (clippingOptions?.bounds)
 					if (checkAgainstBounds(lon, clippingOptions.bounds[0], clippingOptions.bounds[2]))
