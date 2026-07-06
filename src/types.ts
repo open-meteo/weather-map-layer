@@ -59,8 +59,7 @@ export type RequestResolver = (
 ) => { dataOptions: DataIdentityOptions; renderOptions: RenderOptions };
 
 export type PostReadCallback =
-	| ((omFileReader: WeatherMapLayerFileReader, data: Data, state: OmUrlState) => void)
-	| undefined;
+	((omFileReader: WeatherMapLayerFileReader, data: Data, state: OmUrlState) => void) | undefined;
 
 export interface OmProtocolSettings {
 	// static
@@ -217,9 +216,7 @@ export interface RegularGridFromBounds extends BaseGridData {
 }
 
 export type AnyProjectionGridData =
-	| ProjectionGridFromBounds
-	| ProjectionGridFromGeographicOrigin
-	| ProjectionGridFromProjectedOrigin;
+	ProjectionGridFromBounds | ProjectionGridFromGeographicOrigin | ProjectionGridFromProjectedOrigin;
 
 export interface ProjectionGridFromBounds extends BaseGridData {
 	type: 'projectedFromBounds';
@@ -306,12 +303,7 @@ export type ModelDt =
 	| 'monthly';
 
 export type ModelUpdateInterval =
-	| 'hourly'
-	| '3_hourly'
-	| '6_hourly'
-	| '12_hourly'
-	| 'daily'
-	| 'monthly';
+	'hourly' | '3_hourly' | '6_hourly' | '12_hourly' | 'daily' | 'monthly';
 
 export interface DomainGroups {
 	[key: string]: Domain[];
@@ -362,10 +354,7 @@ export type GeoJsonFeature = {
 };
 
 export type GeoJson =
-	| GeoJsonGeometry
-	| GeoJsonFeature
-	| { type: 'FeatureCollection'; features: GeoJsonFeature[] };
+	GeoJsonGeometry | GeoJsonFeature | { type: 'FeatureCollection'; features: GeoJsonFeature[] };
 
 export type ClippingOptions =
-	| { geojson?: GeoJson; bounds?: Bounds; fillRule?: 'nonzero' | 'evenodd' }
-	| undefined;
+	{ geojson?: GeoJson; bounds?: Bounds; fillRule?: 'nonzero' | 'evenodd' } | undefined;
