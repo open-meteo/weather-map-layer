@@ -45,11 +45,14 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 		// tile2lon() calls (each with its own Math.pow) into tileSize.
 		const lons = new Float64Array(tileSize);
 		for (let j = 0; j < tileSize; j++) {
-			lons[j] = tile2lon(x + j / tileSize, z);
+			lons[j] = tile2lon(x + (j + 0.5) / tileSize, z);
 		}
 
 		for (let i = 0; i < tileSize; i++) {
-			const lat = tile2lat(y + i / tileSize, z);
+			// sample at the pixel centre ((i+0.5)/tileSize), not the top-left
+			// corner, so the value is registered where the pixel is displayed
+			// (fixes the half-pixel up-left shift visible when zooming)
+			const lat = tile2lat(y + (i + 0.5) / tileSize, z);
 
 			if (clippingOptions?.bounds)
 				if (checkAgainstBounds(lat, clippingOptions.bounds[1], clippingOptions.bounds[3])) continue;
