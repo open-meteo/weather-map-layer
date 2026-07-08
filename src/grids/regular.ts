@@ -104,6 +104,11 @@ export class RegularGrid implements GridInterface {
 		return this.getInterpolatedValue(values, lat, lon, 'linear');
 	}
 
+	setSummedAreaTable(sat: SummedAreaTable, source: Float32Array): void {
+		this.sat = sat;
+		this.satSource = source;
+	}
+
 	getInterpolatedValue(
 		values: Float32Array,
 		lat: number,
@@ -177,8 +182,12 @@ export class RegularGrid implements GridInterface {
 					smoothFootprint
 				);
 			case 'linear':
-			default:
 				return interpolateLinear(values, x, y, xFraction, yFraction, this.nx, this.longitudeWrap);
+			default: {
+				// Exhaustiveness check; also throws at runtime for untyped callers.
+				const _exhaustive: never = method;
+				throw new Error(`Unknown interpolation method: ${_exhaustive}`);
+			}
 		}
 	}
 

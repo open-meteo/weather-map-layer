@@ -15,7 +15,12 @@ import type { Data, DimensionRange } from './types';
  * Configuration options for the WeatherMapLayerFileReader.
  */
 export interface FileReaderConfig {
-	/** Whether to use SharedArrayBuffer for data reading. @default false */
+	/**
+	 * Whether to read data into SharedArrayBuffers. SAB-backed values are shared
+	 * zero-copy with the tile workers instead of being structured-cloned per
+	 * tile request. @default true when SharedArrayBuffer is available (cross-origin
+	 * isolated page or Node), false otherwise
+	 */
 	useSAB?: boolean;
 	/** Number of retry attempts for failed requests. @default 2 */
 	retries?: number;
@@ -32,7 +37,7 @@ export interface FileReaderConfig {
 }
 
 export const defaultFileReaderConfig: Required<Omit<FileReaderConfig, 'cache'>> = {
-	useSAB: false,
+	useSAB: typeof SharedArrayBuffer !== 'undefined',
 	retries: 2,
 	eTagValidation: false
 };

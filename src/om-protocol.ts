@@ -7,6 +7,7 @@ import { parseMetaJson } from './utils/parse-url';
 import { COLOR_SCALES_WITH_ALIASES as defaultColorScales } from './utils/styling';
 
 import { domainOptions as defaultDomainOptions } from './domains';
+import { SummedAreaTable } from './grids/area-average';
 import { GridFactory } from './grids/index';
 import { defaultFileReaderConfig } from './om-file-reader';
 import { ensureData, getOrCreateState, getProtocolInstance } from './om-protocol-state';
@@ -16,8 +17,8 @@ import { WorkerPool } from './worker-pool';
 import type {
 	Data,
 	DataIdentityOptions,
-	DimensionRange,
 	OmProtocolSettings,
+	OmUrlState,
 	ParsedRequest,
 	TileJSON,
 	TilePromise,
@@ -94,7 +95,7 @@ export const omProtocol = async (
 		throw new Error(`Tile coordinates required for ${params.type} request`);
 	}
 
-	const tileResult = await requestTile(url, request, data, state.ranges, params.type, signal);
+	const tileResult = await requestTile(url, request, data, state, params.type, signal);
 
 	if (tileResult.cancelled || !tileResult.data) {
 		return { data: null };
@@ -122,7 +123,7 @@ const requestTile = async (
 	url: string,
 	request: ParsedRequest,
 	data: Data,
-	ranges: DimensionRange[],
+	state: OmUrlState,
 	type: 'image' | 'arrayBuffer',
 	signal?: AbortSignal
 ): TilePromise => {
@@ -148,17 +149,56 @@ const requestTile = async (
 		}
 	}
 
+	const sat =
+		request.renderOptions.interpolation === 'smooth'
+			? await ensureSat(state, data, request)
+			: undefined;
+
 	return workerPool.requestTile({
 		type: tileType,
 		key,
 		tileIndex: request.tileIndex,
 		data,
-		ranges,
+		ranges: state.ranges,
 		dataOptions: request.dataOptions,
 		renderOptions: request.renderOptions,
 		clippingOptions: request.clippingOptions,
+		sat,
 		signal
 	});
+};
+
+// The 'smooth' method averages over a summed-area table that is identical for
+// every tile of one data load. Build it once in a worker into
+// SharedArrayBuffers and memoize it on the state, so tiles share the build
+// zero-copy instead of each rebuilding an O(nx·ny) table. Resolves undefined
+// when sharing is unavailable (no cross-origin isolation, ragged Gaussian
+// grid, SSR) — workers then fall back to their per-tile lazy build.
+const ensureSat = (
+	state: OmUrlState,
+	data: Data,
+	request: ParsedRequest
+): Promise<SummedAreaTable | undefined> => {
+	if (state.satPromise) {
+		return state.satPromise;
+	}
+
+	const ny = state.ranges[0].end - state.ranges[0].start;
+	const nx = state.ranges[1].end - state.ranges[1].start;
+	if (
+		typeof SharedArrayBuffer === 'undefined' ||
+		request.dataOptions.domain.grid.type === 'gaussian' ||
+		!data.values ||
+		data.values.length !== nx * ny
+	) {
+		state.satPromise = Promise.resolve(undefined);
+		return state.satPromise;
+	}
+
+	state.satPromise = workerPool
+		.buildSat(`sat:${request.fileAndVariableKey}`, data.values, nx, ny)
+		.catch(() => undefined);
+	return state.satPromise;
 };
 
 const getTilejson = async (

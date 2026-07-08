@@ -1,3 +1,5 @@
+import { SummedAreaTable } from './area-average';
+
 import { Bounds, DimensionRange, InterpolationMethod } from '../types';
 
 export interface GridPoint {
@@ -21,6 +23,15 @@ export interface GridInterface {
 		method: InterpolationMethod,
 		smoothFootprint?: number
 	): number;
+
+	/**
+	 * Injects a pre-built summed-area table for the 'smooth' method, so tile
+	 * renders reuse one shared (SharedArrayBuffer-backed) build instead of each
+	 * rebuilding it. `source` is the values array the table was built from; a
+	 * later call with a different array still triggers a lazy rebuild. Absent on
+	 * grids without a rectangular layout (e.g. reduced Gaussian).
+	 */
+	setSummedAreaTable?(sat: SummedAreaTable, source: Float32Array): void;
 
 	getBounds(): Bounds;
 	getCenter(): { lng: number; lat: number };

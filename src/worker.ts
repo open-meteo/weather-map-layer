@@ -8,16 +8,26 @@ import { generateGridPoints } from './utils/grid-points';
 import { halfQuantum as computeHalfQuantum, tile2lat, tile2lon } from './utils/math';
 import { makeColorSampler } from './utils/styling';
 
+import { buildSummedAreaTable } from './grids/area-average';
 import { GridFactory } from './grids/index';
 
-import { TileRequest } from './types';
+import { WorkerRequest } from './types';
 
-self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
+self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => {
 	const key = message.data.key;
 
 	// Handle cancellation messages
 	if (message.data.type === 'cancel') {
 		postMessage({ type: 'cancelled', key });
+		return;
+	}
+
+	// One-off job: build a summed-area table into SharedArrayBuffers so every
+	// worker can reuse it zero-copy for 'smooth' tiles of the same data load.
+	if (message.data.type === 'buildSat') {
+		const { values, nx, ny } = message.data;
+		const sat = buildSummedAreaTable(values, nx, ny, typeof SharedArrayBuffer !== 'undefined');
+		postMessage({ type: 'returnSat', sat, key });
 		return;
 	}
 
@@ -42,6 +52,9 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 		const rgba = new Uint8ClampedArray(pixels * 4);
 
 		const grid = GridFactory.create(domain.grid, ranges);
+		if (message.data.sat) {
+			grid.setSummedAreaTable?.(message.data.sat, values);
+		}
 
 		// Offset the colour threshold by half the data's quantization step so
 		// band edges fall inside grid cells (smooth) instead of snapping to the
@@ -117,6 +130,9 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 		const pbf = new PbfWriter();
 
 		const grid = GridFactory.create(domain.grid, ranges);
+		if (message.data.sat) {
+			grid.setSummedAreaTable?.(message.data.sat, values);
+		}
 		if (message.data.renderOptions.drawGrid) {
 			generateGridPoints(pbf, grid, values, directions, x, y, z, clippingOptions);
 		}

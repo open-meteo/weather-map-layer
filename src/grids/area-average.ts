@@ -23,14 +23,19 @@ export interface SummedAreaTable {
 	count: Float32Array;
 }
 
+// With `shared`, the integral images are allocated in SharedArrayBuffers so
+// the table can be built once and read zero-copy by every worker (safe: it is
+// write-once before being published via postMessage, read-only afterwards).
 export const buildSummedAreaTable = (
 	values: Float32Array,
 	nx: number,
-	ny: number
+	ny: number,
+	shared: boolean = false
 ): SummedAreaTable => {
 	const w = nx + 1;
-	const sum = new Float64Array(w * (ny + 1));
-	const count = new Float32Array(w * (ny + 1));
+	const n = w * (ny + 1);
+	const sum = shared ? new Float64Array(new SharedArrayBuffer(n * 8)) : new Float64Array(n);
+	const count = shared ? new Float32Array(new SharedArrayBuffer(n * 4)) : new Float32Array(n);
 
 	for (let j = 0; j < ny; j++) {
 		const rowAbove = j * w;

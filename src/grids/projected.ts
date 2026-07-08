@@ -97,6 +97,11 @@ export class ProjectionGrid implements GridInterface {
 		return this.getInterpolatedValue(values, lat, lon, 'linear');
 	}
 
+	setSummedAreaTable(sat: SummedAreaTable, source: Float32Array): void {
+		this.sat = sat;
+		this.satSource = source;
+	}
+
 	getInterpolatedValue(
 		values: Float32Array,
 		lat: number,
@@ -145,8 +150,12 @@ export class ProjectionGrid implements GridInterface {
 					smoothFootprint
 				);
 			case 'linear':
-			default:
 				return interpolateLinear(values, idx.x, idx.y, idx.xFraction, idx.yFraction, this.nx);
+			default: {
+				// Exhaustiveness check; also throws at runtime for untyped callers.
+				const _exhaustive: never = method;
+				throw new Error(`Unknown interpolation method: ${_exhaustive}`);
+			}
 		}
 	}
 

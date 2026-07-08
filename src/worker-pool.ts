@@ -1,7 +1,7 @@
 // @ts-expect-error worker import
 import TileWorker from './worker?worker&inline';
 
-import { TilePromise, TileRequest, TileResult, WorkerResponse } from './types';
+import { SummedAreaTable, TilePromise, TileRequest, TileResult, WorkerResponse } from './types';
 
 export class WorkerPool {
 	private workers: Worker[] = [];
@@ -14,6 +14,8 @@ export class WorkerPool {
 			worker: Worker;
 		}
 	>();
+	/** Pending summed-area-table builds by key (deduplicates concurrent builds) */
+	private pendingSatRequests = new Map<string, Array<(sat: SummedAreaTable) => void>>();
 
 	constructor() {
 		if (typeof window === 'undefined' || typeof Worker === 'undefined') {
@@ -31,6 +33,14 @@ export class WorkerPool {
 
 	private handleMessage(message: MessageEvent): void {
 		const data = message.data as WorkerResponse;
+
+		if (data.type === 'returnSat') {
+			const resolvers = this.pendingSatRequests.get(data.key);
+			this.pendingSatRequests.delete(data.key);
+			resolvers?.forEach((resolve) => resolve(data.sat));
+			return;
+		}
+
 		const pending = this.pendingRequests.get(data.key);
 
 		if (!pending) return;
@@ -74,6 +84,33 @@ export class WorkerPool {
 		const worker = this.workers[this.nextWorker];
 		this.nextWorker = (this.nextWorker + 1) % this.workers.length;
 		return worker;
+	}
+
+	/**
+	 * Builds a summed-area table for `values` in a worker (off the main thread)
+	 * and resolves with SharedArrayBuffer-backed arrays that all workers can
+	 * read zero-copy. Concurrent builds for the same key share one job.
+	 */
+	public buildSat(
+		key: string,
+		values: Float32Array,
+		nx: number,
+		ny: number
+	): Promise<SummedAreaTable> {
+		const worker = this.getNextWorker();
+		if (!worker) {
+			return Promise.reject(new Error('No workers available (likely running in SSR)'));
+		}
+
+		return new Promise<SummedAreaTable>((resolve) => {
+			const resolvers = this.pendingSatRequests.get(key);
+			if (resolvers) {
+				resolvers.push(resolve);
+				return;
+			}
+			this.pendingSatRequests.set(key, [resolve]);
+			worker.postMessage({ type: 'buildSat', key, values, nx, ny });
+		});
 	}
 
 	public requestTile(request: TileRequest): TilePromise {

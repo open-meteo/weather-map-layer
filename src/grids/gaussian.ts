@@ -113,8 +113,12 @@ export class GaussianGrid implements GridInterface {
 			// equivalent. Fall back to bilinear for 'smooth' (and 'linear').
 			case 'smooth':
 			case 'linear':
-			default:
 				return this.getLinearInterpolatedValue(values, lat, lon);
+			default: {
+				// Exhaustiveness check; also throws at runtime for untyped callers.
+				const _exhaustive: never = method;
+				throw new Error(`Unknown interpolation method: ${_exhaustive}`);
+			}
 		}
 	}
 

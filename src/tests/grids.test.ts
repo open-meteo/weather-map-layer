@@ -8,6 +8,7 @@ import { describe, expect, test } from 'vitest';
 import type {
 	AnyProjectionGridData,
 	DimensionRange,
+	InterpolationMethod,
 	LCCProjectionData,
 	ProjectionGridFromGeographicOrigin,
 	RegularGridData,
@@ -179,6 +180,35 @@ describe('interpolation methods', () => {
 		const sat = buildSummedAreaTable(values, 3, 2);
 		// mean of valid {1,3,4,5,6} = 19 / 5
 		expect(areaAverage(sat, 0, 0, 3, 2)).toBeCloseTo(3.8);
+	});
+
+	test("injected SharedArrayBuffer-backed SAT matches the lazy per-grid build for 'smooth'", () => {
+		const values = new Float32Array(Array.from({ length: 64 }, (_, i) => (i * 7) % 13));
+		const lazyGrid = new RegularGrid(methodGridData);
+
+		const sat = buildSummedAreaTable(values, 8, 8, true);
+		expect(sat.sum.buffer).toBeInstanceOf(SharedArrayBuffer);
+		expect(sat.count.buffer).toBeInstanceOf(SharedArrayBuffer);
+		const sharedGrid = new RegularGrid(methodGridData);
+		sharedGrid.setSummedAreaTable(sat, values);
+
+		for (const [lat, lon] of [
+			[53.5, 13.5],
+			[50.2, 10.1],
+			[56.9, 17.3]
+		]) {
+			expect(sharedGrid.getInterpolatedValue(values, lat, lon, 'smooth')).toBe(
+				lazyGrid.getInterpolatedValue(values, lat, lon, 'smooth')
+			);
+		}
+	});
+
+	test('unknown interpolation method throws', () => {
+		const grid = new RegularGrid(methodGridData);
+		const values = new Float32Array(64).fill(7);
+		expect(() =>
+			grid.getInterpolatedValue(values, 53.5, 13.5, undefined as unknown as InterpolationMethod)
+		).toThrow(/Unknown interpolation method/);
 	});
 
 	test('all methods preserve a uniform field', () => {
