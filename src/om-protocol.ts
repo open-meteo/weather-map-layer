@@ -16,8 +16,8 @@ import { WorkerPool } from './worker-pool';
 import type {
 	Data,
 	DataIdentityOptions,
-	DimensionRange,
 	OmProtocolSettings,
+	OmUrlState,
 	ParsedRequest,
 	TileJSON,
 	TilePromise,
@@ -94,7 +94,7 @@ export const omProtocol = async (
 		throw new Error(`Tile coordinates required for ${params.type} request`);
 	}
 
-	const tileResult = await requestTile(url, request, data, state.ranges, params.type, signal);
+	const tileResult = await requestTile(url, request, data, state, params.type, signal);
 
 	if (tileResult.cancelled || !tileResult.data) {
 		return { data: null };
@@ -122,7 +122,7 @@ const requestTile = async (
 	url: string,
 	request: ParsedRequest,
 	data: Data,
-	ranges: DimensionRange[],
+	state: OmUrlState,
 	type: 'image' | 'arrayBuffer',
 	signal?: AbortSignal
 ): TilePromise => {
@@ -153,7 +153,7 @@ const requestTile = async (
 		key,
 		tileIndex: request.tileIndex,
 		data,
-		ranges,
+		ranges: state.ranges,
 		dataOptions: request.dataOptions,
 		renderOptions: request.renderOptions,
 		clippingOptions: request.clippingOptions,
