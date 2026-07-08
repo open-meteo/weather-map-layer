@@ -13,7 +13,6 @@ export { createClippingTester } from './utils/clipping';
 export { domainStep, closestModelRun } from './utils/model-runs';
 export { getCachedResolvedClipping } from './utils/parse-request';
 export { getColor, getColorScale } from './utils/styling';
-export { setTileBenchmark } from './worker-pool';
 
 // Classes
 
