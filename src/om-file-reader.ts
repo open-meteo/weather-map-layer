@@ -137,13 +137,13 @@ export class WeatherMapLayerFileReader {
 		// Process using the rule
 		const data = rule.process(primaryData, secondaryData);
 
-		// When the rule passes the primary variable's values through unchanged
-		// (e.g. speed/direction, wave height/direction), its stored scale factor
-		// still describes the quantization of `values`. Derived values (e.g. wind
-		// speed from u/v) have no single scale factor, so leave it undefined.
-		if (rule.preservesPrimaryScale) {
-			data.scaleFactor = primaryReader.scaleFactor();
-		}
+		// Every derivation rule defines its quantization scale factor so the
+		// half-quantum threshold offset is always available. `'primary'` inherits
+		// the primary source variable's stored scale factor — exact when `values`
+		// is the primary passed through unchanged (speed/direction, wave), and a
+		// good proxy for derived magnitudes (wind speed from u/v).
+		data.scaleFactor =
+			rule.scaleFactor === 'primary' ? primaryReader.scaleFactor() : rule.scaleFactor;
 
 		return data;
 	}
@@ -254,11 +254,11 @@ interface VariableDerivationRule {
 	getSourceVars: (variable: string) => [string, string];
 
 	/**
-	 * Whether `values` in the processed result is the primary source variable
-	 * passed through unchanged. When true, the primary variable's stored scale
-	 * factor is attached to the result so the quantization step can be derived.
+	 * Quantization scale factor of the derived `values`, so a half-quantum
+	 * threshold offset can be applied. `'primary'` uses the primary source
+	 * variable's stored scale factor; a number sets a fixed factor.
 	 */
-	preservesPrimaryScale?: boolean;
+	scaleFactor: number | 'primary';
 
 	/**
 	 * Process the raw data from source variables into values and directions.
@@ -276,6 +276,9 @@ const DEFAULT_DERIVATION_RULES: VariableDerivationRule[] = [
 	// UV wind components -> speed and direction
 	{
 		pattern: /_[uv]_(component|current)/,
+		// Derived magnitude; the u-component's stored scale factor is a good proxy
+		// for the speed's quantization step.
+		scaleFactor: 'primary',
 		getSourceVars: (variable: string) => {
 			let postfix = '';
 			const match = variable.match(/_[uv]_(?<postfix>component|current)/);
@@ -304,7 +307,7 @@ const DEFAULT_DERIVATION_RULES: VariableDerivationRule[] = [
 	// Speed/Direction pairs (already stored separately)
 	{
 		pattern: /_(?:speed|direction)_/,
-		preservesPrimaryScale: true,
+		scaleFactor: 'primary',
 		getSourceVars: (variable: string) => [
 			variable.includes('_speed_') ? variable : variable.replace('_direction_', '_speed_'),
 			variable.includes('_direction_') ? variable : variable.replace('_speed_', '_direction_')
@@ -318,7 +321,7 @@ const DEFAULT_DERIVATION_RULES: VariableDerivationRule[] = [
 	// Wave height and direction
 	{
 		pattern: /wave_(?:height|direction)/,
-		preservesPrimaryScale: true,
+		scaleFactor: 'primary',
 		getSourceVars: (variable: string) => [
 			variable.replace('wave_direction', 'wave_height'),
 			variable.replace('wave_height', 'wave_direction')

@@ -8,7 +8,6 @@ import { generateGridPoints } from './utils/grid-points';
 import { halfQuantum as computeHalfQuantum, tile2lat, tile2lon } from './utils/math';
 import { makeColorSampler } from './utils/styling';
 
-import { buildSummedAreaTable } from './grids/area-average';
 import { GridFactory } from './grids/index';
 
 import { WorkerRequest } from './types';
@@ -22,22 +21,12 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 		return;
 	}
 
-	// One-off job: build a summed-area table into SharedArrayBuffers so every
-	// worker can reuse it zero-copy for 'smooth' tiles of the same data load.
-	if (message.data.type === 'buildSat') {
-		const { values, nx, ny } = message.data;
-		const sat = buildSummedAreaTable(values, nx, ny, typeof SharedArrayBuffer !== 'undefined');
-		postMessage({ type: 'returnSat', sat, key });
-		return;
-	}
-
 	const { z, x, y } = message.data.tileIndex;
 	const values = message.data.data.values;
 	const ranges = message.data.ranges;
 	const domain = message.data.dataOptions.domain;
 	const tileSize = message.data.renderOptions.tileSize;
 	const interpolation = message.data.renderOptions.interpolation;
-	const smoothFootprint = message.data.renderOptions.smoothFootprint;
 	const colorBlend = message.data.renderOptions.colorBlend;
 	const colorScale = message.data.renderOptions.colorScale;
 	const clippingOptions = message.data.clippingOptions;
@@ -52,14 +41,11 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 		const rgba = new Uint8ClampedArray(pixels * 4);
 
 		const grid = GridFactory.create(domain.grid, ranges);
-		if (message.data.sat) {
-			grid.setSummedAreaTable?.(message.data.sat, values);
-		}
 
 		// Offset the colour threshold by half the data's quantization step so
 		// band edges fall inside grid cells (smooth) instead of snapping to the
 		// cell corners when a breakpoint coincides with a quantization level.
-		const halfQuantum = computeHalfQuantum(values, message.data.data.scaleFactor);
+		const halfQuantum = computeHalfQuantum(message.data.data.scaleFactor);
 
 		// Reused per-pixel so colour blending doesn't allocate an array per pixel.
 		const colorOut: [number, number, number, number] = [0, 0, 0, 0];
@@ -93,7 +79,7 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 					if (checkAgainstBounds(lon, clippingOptions.bounds[0], clippingOptions.bounds[2]))
 						continue;
 
-				const px = grid.getInterpolatedValue(values, lat, lon, interpolation, smoothFootprint);
+				const px = grid.getInterpolatedValue(values, lat, lon, interpolation);
 
 				if (isFinite(px)) {
 					const color = sampleColor(px + halfQuantum, colorOut);
@@ -130,25 +116,11 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 		const pbf = new PbfWriter();
 
 		const grid = GridFactory.create(domain.grid, ranges);
-		if (message.data.sat) {
-			grid.setSummedAreaTable?.(message.data.sat, values);
-		}
 		if (message.data.renderOptions.drawGrid) {
 			generateGridPoints(pbf, grid, values, directions, x, y, z, clippingOptions);
 		}
 		if (message.data.renderOptions.drawArrows && directions) {
-			generateArrows(
-				pbf,
-				values,
-				directions,
-				grid,
-				x,
-				y,
-				z,
-				clippingOptions,
-				interpolation,
-				smoothFootprint
-			);
+			generateArrows(pbf, values, directions, grid, x, y, z, clippingOptions, interpolation);
 		}
 		if (message.data.renderOptions.drawContours) {
 			const intervals = message.data.renderOptions.intervals;
@@ -163,8 +135,7 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 				intervals,
 				clippingOptions,
 				interpolation,
-				smoothFootprint,
-				computeHalfQuantum(values, message.data.data.scaleFactor)
+				computeHalfQuantum(message.data.data.scaleFactor)
 			);
 		}
 

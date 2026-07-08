@@ -1,6 +1,3 @@
-import { DEFAULT_SMOOTH_FOOTPRINT } from '../utils/constants';
-
-import { SummedAreaTable, areaAverage, buildSummedAreaTable } from './area-average';
 import { GridInterface, GridPoint } from './interface';
 import {
 	interpolateCubic,
@@ -36,10 +33,6 @@ export class ProjectionGrid implements GridInterface {
 
 	private bounds?: Bounds;
 	private center?: { lng: number; lat: number };
-
-	// Lazily-built summed-area table for the 'smooth' method (see area-average.ts)
-	private sat?: SummedAreaTable;
-	private satSource?: Float32Array;
 
 	constructor(
 		data:
@@ -97,17 +90,11 @@ export class ProjectionGrid implements GridInterface {
 		return this.getInterpolatedValue(values, lat, lon, 'linear');
 	}
 
-	setSummedAreaTable(sat: SummedAreaTable, source: Float32Array): void {
-		this.sat = sat;
-		this.satSource = source;
-	}
-
 	getInterpolatedValue(
 		values: Float32Array,
 		lat: number,
 		lon: number,
-		method: InterpolationMethod,
-		smoothFootprint: number = DEFAULT_SMOOTH_FOOTPRINT
+		method: InterpolationMethod
 	): number {
 		const idx = this.findPointInterpolated(lat, lon);
 		switch (method) {
@@ -142,13 +129,6 @@ export class ProjectionGrid implements GridInterface {
 					this.nx,
 					this.ny
 				);
-			case 'smooth':
-				return this.getAreaAveragedValue(
-					values,
-					idx.x + idx.xFraction,
-					idx.y + idx.yFraction,
-					smoothFootprint
-				);
 			case 'linear':
 				return interpolateLinear(values, idx.x, idx.y, idx.xFraction, idx.yFraction, this.nx);
 			default: {
@@ -157,36 +137,6 @@ export class ProjectionGrid implements GridInterface {
 				throw new Error(`Unknown interpolation method: ${_exhaustive}`);
 			}
 		}
-	}
-
-	// Footprint sizing depends on the projection family:
-	//   • Conformal (Lambert Conformal Conic, Stereographic): a square in projected
-	//     space is a square in physical space everywhere, so an isotropic-in-cells
-	//     box is exact — no stretch.
-	//   • Rotated lat/lon: a regular lat/lon grid in a rotated frame, so the
-	//     east-west cell shrinks by cos(rotatedLat); we stretch x by 1/cos via
-	//     Projection.footprintStretchX, mirroring RegularGrid.
-	//   • Equal-area (Lambert Azimuthal): area is preserved, so the box already
-	//     covers a constant ground area, but its shape shears radially away from the
-	//     projection centre. That distortion is not aligned with the grid axes, so an
-	//     axis-aligned box can't undo it — we accept the mild shape error (stretch 1).
-	private getAreaAveragedValue(
-		values: Float32Array,
-		xc: number,
-		yc: number,
-		footprint: number
-	): number {
-		if (this.sat === undefined || this.satSource !== values) {
-			this.sat = buildSummedAreaTable(values, this.nx, this.ny);
-			this.satSource = values;
-		}
-		const stretchX = this.projection.footprintStretchX?.(this.minY + this.dy * yc) ?? 1;
-		const halfX = footprint * stretchX;
-		const halfY = footprint;
-		// +0.5 centres the box on the node (value[i] occupies SAT interval [i, i+1)).
-		const cx = xc + 0.5;
-		const cy = yc + 0.5;
-		return areaAverage(this.sat, cx - halfX, cy - halfY, cx + halfX, cy + halfY);
 	}
 
 	getBounds(): Bounds {

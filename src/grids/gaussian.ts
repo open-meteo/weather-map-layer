@@ -98,8 +98,7 @@ export class GaussianGrid implements GridInterface {
 		values: Float32Array,
 		lat: number,
 		lon: number,
-		method: InterpolationMethod,
-		_smoothFootprint?: number
+		method: InterpolationMethod
 	): number {
 		switch (method) {
 			case 'nearest':
@@ -108,10 +107,6 @@ export class GaussianGrid implements GridInterface {
 				return this.getCubicValue(values, lat, lon, false);
 			case 'monotone':
 				return this.getCubicValue(values, lat, lon, true);
-			// 'smooth' needs a summed-area table, which assumes a rectangular grid;
-			// a reduced Gaussian grid is a ragged 1D array, so it has no cheap
-			// equivalent. Fall back to bilinear for 'smooth' (and 'linear').
-			case 'smooth':
 			case 'linear':
 				return this.getLinearInterpolatedValue(values, lat, lon);
 			default: {

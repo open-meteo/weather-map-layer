@@ -1,6 +1,3 @@
-import { DEFAULT_SMOOTH_FOOTPRINT } from '../utils/constants';
-
-import { SummedAreaTable, areaAverage, buildSummedAreaTable } from './area-average';
 import { GridInterface, GridPoint } from './interface';
 import {
 	interpolateCubic,
@@ -25,11 +22,6 @@ export class RegularGrid implements GridInterface {
 	// (e.g. GFS/GEFS) keep a normal final cell.
 	private wrapLastCellDouble: boolean;
 	private center?: { lng: number; lat: number };
-
-	// Lazily-built summed-area table for the 'smooth' method, cached per data
-	// array so all pixels of a tile reuse a single O(nx·ny) build.
-	private sat?: SummedAreaTable;
-	private satSource?: Float32Array;
 
 	constructor(data: RegularGridData, ranges: DimensionRange[] | null = null) {
 		// normalise both forms to an origin (lonMin/latMin) + spacing (dx/dy)
@@ -104,17 +96,11 @@ export class RegularGrid implements GridInterface {
 		return this.getInterpolatedValue(values, lat, lon, 'linear');
 	}
 
-	setSummedAreaTable(sat: SummedAreaTable, source: Float32Array): void {
-		this.sat = sat;
-		this.satSource = source;
-	}
-
 	getInterpolatedValue(
 		values: Float32Array,
 		lat: number,
 		lon: number,
-		method: InterpolationMethod,
-		smoothFootprint: number = DEFAULT_SMOOTH_FOOTPRINT
+		method: InterpolationMethod
 	): number {
 		// check longitude is within bounds
 		if (!this.longitudeWrap) {
@@ -173,14 +159,6 @@ export class RegularGrid implements GridInterface {
 					this.ny,
 					this.longitudeWrap
 				);
-			case 'smooth':
-				return this.getAreaAveragedValue(
-					values,
-					lat,
-					x + xFraction,
-					y + yFraction,
-					smoothFootprint
-				);
 			case 'linear':
 				return interpolateLinear(values, x, y, xFraction, yFraction, this.nx, this.longitudeWrap);
 			default: {
@@ -189,42 +167,6 @@ export class RegularGrid implements GridInterface {
 				throw new Error(`Unknown interpolation method: ${_exhaustive}`);
 			}
 		}
-	}
-
-	// Area-average over a footprint that is isotropic in physical space: a
-	// `footprint` cell half-width tall, and ∝ 1/cos(lat) wide so it spans the
-	// longitudinal regridding plateaus that grow towards the poles.
-	private getAreaAveragedValue(
-		values: Float32Array,
-		lat: number,
-		xc: number,
-		yc: number,
-		footprint: number
-	): number {
-		if (this.sat === undefined || this.satSource !== values) {
-			this.sat = buildSummedAreaTable(values, this.nx, this.ny);
-			this.satSource = values;
-		}
-
-		const cosLat = Math.max(Math.cos((lat * Math.PI) / 180), 0.1);
-		const halfLon = footprint / cosLat;
-		const halfLat = footprint;
-
-		// In the SAT, value[i] occupies the integral interval [i, i+1) — its
-		// centre is at i+0.5 — so shift the box centre by +0.5 to keep the
-		// average on the node (otherwise it lands half a cell down-left).
-		const cx = xc + 0.5;
-		const cy = yc + 0.5;
-
-		// wrap the longitude box across the antimeridian for global grids
-		return areaAverage(
-			this.sat,
-			cx - halfLon,
-			cy - halfLat,
-			cx + halfLon,
-			cy + halfLat,
-			this.longitudeWrap
-		);
 	}
 
 	getBounds(): Bounds {

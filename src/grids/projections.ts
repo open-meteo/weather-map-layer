@@ -36,16 +36,6 @@ export function createProjection(opts: ProjectionData): Projection {
 export interface Projection {
 	forward(latitude: number, longitude: number): [x: number, y: number];
 	reverse(x: number, y: number): [latitude: number, longitude: number];
-
-	/**
-	 * East-west stretch factor for a smoothing footprint at projected row
-	 * `projectedY`, so a box that is isotropic in grid cells stays (near-)isotropic
-	 * in physical space. Returns 1 for conformal projections — where a square in
-	 * projected space is already a square on the ground everywhere — and for
-	 * equal-area projections, whose shape distortion is radial and can't be undone
-	 * by an axis-aligned stretch. Only the rotated lat/lon grid overrides this.
-	 */
-	footprintStretchX?(projectedY: number): number;
 }
 
 export class MercatorProjection implements Projection {
@@ -117,16 +107,6 @@ export class RotatedLatLonProjection implements Projection {
 		const lat = radiansToDegrees(lat2);
 
 		return [lat, lon];
-	}
-
-	// A rotated lat/lon grid is a regular lat/lon grid in the rotated frame, so the
-	// east-west cell shrinks by cos(rotatedLat). The projected y coordinate *is* the
-	// (negated) rotated latitude in degrees, so stretch x by 1/cos to compensate —
-	// mirroring RegularGrid. cos is clamped to 0.1 to bound the stretch near the
-	// rotated poles, matching the regular grid.
-	footprintStretchX(projectedY: number): number {
-		const cosLat = Math.max(Math.cos(degreesToRadians(projectedY)), 0.1);
-		return 1 / cosLat;
 	}
 }
 

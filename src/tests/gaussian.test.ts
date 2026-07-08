@@ -24,7 +24,7 @@ const fill = (grid: GaussianGrid, f: (lat: number, lon: number) => number): Floa
 	return values;
 };
 
-const methods: InterpolationMethod[] = ['nearest', 'linear', 'cubic', 'monotone', 'smooth'];
+const methods: InterpolationMethod[] = ['nearest', 'linear', 'cubic', 'monotone'];
 
 describe('GaussianGrid interpolation', () => {
 	test('every method returns a finite value in the interior', () => {

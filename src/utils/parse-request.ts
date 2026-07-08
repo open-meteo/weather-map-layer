@@ -4,7 +4,6 @@ import {
 	DEFAULT_COLOR_BLEND,
 	DEFAULT_INTERPOLATION,
 	DEFAULT_INTERVAL,
-	DEFAULT_SMOOTH_FOOTPRINT,
 	DEFAULT_TILE_SIZE,
 	RESOLVE_DOMAIN_REGEX,
 	VALID_INTERPOLATIONS,
@@ -120,7 +119,6 @@ const defaultResolveRenderOptions = (
 
 	const tileSize = parseTileSize(params.get('tile_size'));
 	const interpolation = parseInterpolation(params.get('interpolation'));
-	const smoothFootprint = parseSmoothFootprint(params.get('smooth_footprint'));
 	const colorBlend =
 		params.get('color_blend') === null ? DEFAULT_COLOR_BLEND : params.get('color_blend') === 'true';
 
@@ -141,7 +139,6 @@ const defaultResolveRenderOptions = (
 	return {
 		tileSize,
 		interpolation,
-		smoothFootprint,
 		colorBlend,
 		drawGrid,
 		drawArrows,
@@ -165,13 +162,4 @@ const parseInterpolation = (value: string | null): InterpolationMethod => {
 		throw new Error(`Invalid interpolation, please use one of: ${VALID_INTERPOLATIONS.join(', ')}`);
 	}
 	return interpolation as InterpolationMethod;
-};
-
-const parseSmoothFootprint = (value: string | null): number => {
-	if (!value) return DEFAULT_SMOOTH_FOOTPRINT;
-	const footprint = Number(value);
-	if (!isFinite(footprint) || footprint <= 0 || footprint > 16) {
-		throw new Error('Invalid smooth_footprint, please use a number in (0, 16]');
-	}
-	return footprint;
 };

@@ -2,7 +2,7 @@ import { GridInterface } from '../grids';
 import { PbfWriter } from 'pbf';
 
 import { type ResolvedClippingOptions, createClippingTester } from './clipping';
-import { DEFAULT_SMOOTH_FOOTPRINT, VECTOR_TILE_EXTENT } from './constants';
+import { VECTOR_TILE_EXTENT } from './constants';
 import { degreesToRadians, rotatePoint, tile2lat, tile2lon } from './math';
 import { command, writeLayer, zigzag } from './pbf';
 
@@ -18,7 +18,6 @@ export const generateArrows = (
 	z: number,
 	clippingOptions: ResolvedClippingOptions | undefined,
 	interpolation: InterpolationMethod = 'linear',
-	smoothFootprint: number = DEFAULT_SMOOTH_FOOTPRINT,
 	extent: number = VECTOR_TILE_EXTENT,
 	arrows: number = 25
 ) => {
@@ -51,7 +50,7 @@ export const generateArrows = (
 
 			// Sample speed with the selected method so arrow size/colour matches
 			// the raster; direction stays linear (averaging angles would be wrong).
-			const speed = grid.getInterpolatedValue(values, lat, lon, interpolation, smoothFootprint);
+			const speed = grid.getInterpolatedValue(values, lat, lon, interpolation);
 			const direction = degreesToRadians(
 				grid.getLinearInterpolatedValue(directions, lat, lon) + 180
 			);

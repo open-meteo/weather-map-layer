@@ -1,22 +1,17 @@
-import { estimateQuantum, fastAtan2, tile2lat, tile2lon } from '../utils/math';
+import { fastAtan2, halfQuantum, tile2lat, tile2lon } from '../utils/math';
 import { describe, expect, test } from 'vitest';
 
-describe('estimateQuantum', () => {
-	test('returns the storage step of a quantized gentle ramp', () => {
-		// values quantized to 0.05 (temperature scalefactor 20)
-		const v = new Float32Array(200);
-		for (let i = 0; i < v.length; i++) v[i] = Math.round((14 + 0.01 * i) / 0.05) * 0.05;
-		expect(estimateQuantum(v)).toBeCloseTo(0.05, 4);
+describe('halfQuantum', () => {
+	test('is half the quantization step derived from the scale factor', () => {
+		// temperature scalefactor 20 -> step 0.05 -> half 0.025
+		expect(halfQuantum(20)).toBeCloseTo(0.025, 6);
 	});
 
-	test('returns 0 for a flat field (no significant steps)', () => {
-		expect(estimateQuantum(new Float32Array(100).fill(14))).toBe(0);
-	});
-
-	test('ignores sub-1e-4 float-representation noise', () => {
-		const v = new Float32Array(100);
-		for (let i = 0; i < v.length; i++) v[i] = 14 + i * 1e-6; // below the 1e-4 floor
-		expect(estimateQuantum(v)).toBe(0);
+	test('returns 0 when the scale factor is missing or invalid', () => {
+		expect(halfQuantum(undefined)).toBe(0);
+		expect(halfQuantum(0)).toBe(0);
+		expect(halfQuantum(-1)).toBe(0);
+		expect(halfQuantum(NaN)).toBe(0);
 	});
 });
 

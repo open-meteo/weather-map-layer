@@ -44,9 +44,6 @@
 			#controls select {
 				margin-left: 6px;
 			}
-			#smoothStrength.hidden {
-				display: none;
-			}
 			#controls #costNote {
 				display: block;
 				margin-top: 8px;
@@ -62,19 +59,9 @@
 				Interpolation
 				<select id="interpolation">
 					<option value="nearest">Nearest (1×)</option>
-					<option value="linear">Linear (1.3×)</option>
+					<option value="linear" selected>Linear (1.3×)</option>
 					<option value="cubic">Cubic (1.7×)</option>
 					<option value="monotone">Monotone (2×)</option>
-					<option value="smooth" selected>Smooth (2.2×)</option>
-				</select>
-			</label>
-			<label id="smoothStrength">
-				Smooth strength
-				<select id="smoothFootprint">
-					<option value="0.5" selected>0.5</option>
-					<option value="0.75">0.75</option>
-					<option value="1.5">1.5</option>
-					<option value="3">3</option>
 				</select>
 			</label>
 			<small id="costNote">(N×) = approx. render cost relative to nearest</small>
@@ -89,28 +76,20 @@
 			});
 
 			const interpolationSelect = document.getElementById('interpolation');
-			const footprintSelect = document.getElementById('smoothFootprint');
-			const smoothStrength = document.getElementById('smoothStrength');
 
 			function buildSourceUrl() {
 				const interpolation = interpolationSelect.value;
-				// the 'interpolation' (and 'smooth_footprint') query params are read by
-				// the om protocol and applied when rendering each raster tile
-				let url =
+				// the 'interpolation' query param is read by the om protocol and applied
+				// when rendering each raster tile
+				const url =
 					'https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json' +
 					'?time_step=current_time_1H&variable=temperature_2m' +
 					'&interpolation=' +
 					interpolation;
-				if (interpolation === 'smooth') {
-					url += '&smooth_footprint=' + footprintSelect.value;
-				}
 				return 'om://' + url;
 			}
 
 			function updateLayer() {
-				// the smooth strength only applies to the 'smooth' method
-				smoothStrength.classList.toggle('hidden', interpolationSelect.value !== 'smooth');
-
 				// changing a query param changes the source URL; update it in place so
 				// the tiles are re-requested without re-creating the source/layer
 				const source = map.getSource('omFileSource');
@@ -140,7 +119,6 @@
 
 			map.on('load', updateLayer);
 			interpolationSelect.addEventListener('change', updateLayer);
-			footprintSelect.addEventListener('change', updateLayer);
 		</script>
 	</body>
 </html>

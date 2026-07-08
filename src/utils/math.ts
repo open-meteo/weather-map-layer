@@ -5,43 +5,20 @@ export const roundWithPrecision = (value: number, precision: number = 1_000_000)
 };
 
 /**
- * Estimate the storage quantization step of a field as the smallest significant
- * difference between adjacent samples (a gentle gradient steps by exactly one
- * quantum wherever it crosses a level). Returns 0 for (near-)continuous data.
- *
- * Colour/contour thresholds that coincide with this quantum produce a blocky,
- * cell-aligned band boundary; offsetting the threshold by half the quantum lets
- * interpolation place the crossing inside the cells -> a smooth boundary.
- */
-export const estimateQuantum = (values: Float32Array): number => {
-	let min = Infinity;
-	const n = values.length;
-	const stride = Math.max(1, Math.floor(n / 4096)); // sample for speed
-	for (let i = 1; i < n; i += stride) {
-		const a = values[i];
-		const b = values[i - 1];
-		if (!isFinite(a) || !isFinite(b)) continue;
-		const d = Math.abs(a - b);
-		// ignore 0 (flat) and sub-1e-4 float-representation noise
-		if (d >= 1e-4 && d < min) min = d;
-	}
-	return isFinite(min) ? min : 0;
-};
-
-/**
  * Half the data's quantization step, used to offset colour/contour thresholds so
- * band edges fall inside grid cells (smooth) instead of snapping to cell corners.
+ * band edges fall inside grid cells instead of snapping to cell corners when a
+ * breakpoint coincides with a quantization level.
  *
- * The .om storage scale factor gives the step exactly (stored ints are
- * `round(value * scaleFactor)`, so the step is 1 / scaleFactor). When it isn't
- * available (derived values have no single scale factor), fall back to estimating
- * the step from the sample data.
+ * The .om storage scale factor gives the step exactly: stored ints are
+ * `round(value * scaleFactor)`, so the step is 1 / scaleFactor. Every field
+ * carries a scale factor (simple variables from the file, derived variables from
+ * their derivation rule); when it is missing or invalid the offset is 0.
  */
-export const halfQuantum = (values: Float32Array, scaleFactor?: number): number => {
+export const halfQuantum = (scaleFactor?: number): number => {
 	if (scaleFactor && isFinite(scaleFactor) && scaleFactor > 0) {
 		return 0.5 / scaleFactor;
 	}
-	return estimateQuantum(values) / 2;
+	return 0;
 };
 
 export const degreesToRadians = (degree: number) => {

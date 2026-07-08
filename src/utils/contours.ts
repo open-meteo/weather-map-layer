@@ -2,7 +2,7 @@ import { GridInterface } from '../grids/index';
 import { PbfWriter } from 'pbf';
 
 import { type ResolvedClippingOptions, createClippingTester } from './clipping';
-import { DEFAULT_SMOOTH_FOOTPRINT, VECTOR_TILE_EXTENT } from './constants';
+import { VECTOR_TILE_EXTENT } from './constants';
 import { tile2lat, tile2lon } from './math';
 import { command, writeLayer, zigzag } from './pbf';
 
@@ -150,10 +150,9 @@ export const generateContours = (
 	intervals: number[],
 	clippingOptions: ResolvedClippingOptions | undefined,
 	interpolation: InterpolationMethod = 'linear',
-	smoothFootprint: number = DEFAULT_SMOOTH_FOOTPRINT,
 	// Added to every sample so contour crossings fall off the quantization grid,
-	// matching the raster (see estimateQuantum / worker). Keeps contours aligned
-	// with the colour band edges.
+	// matching the raster (see halfQuantum / worker). Keeps contours aligned with
+	// the colour band edges.
 	valueOffset: number = 0,
 	extent: number = VECTOR_TILE_EXTENT
 ) => {
@@ -258,9 +257,7 @@ export const generateContours = (
 
 	const sampleRow = (lat: number, out: Float64Array): void => {
 		for (let c = 0; c < numCols; c++) {
-			out[c] =
-				grid.getInterpolatedValue(values, lat, lons[c], interpolation, smoothFootprint) +
-				valueOffset;
+			out[c] = grid.getInterpolatedValue(values, lat, lons[c], interpolation) + valueOffset;
 		}
 	};
 

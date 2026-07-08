@@ -1,11 +1,6 @@
 import type { ResolvedClippingOptions } from './utils/clipping';
 
-import type { SummedAreaTable } from './grids/area-average';
 import { FileReaderConfig, WeatherMapLayerFileReader } from './om-file-reader';
-
-// Part of the worker message contract (TileRequest.sat / returnSat), so
-// re-exported alongside those types.
-export type { SummedAreaTable };
 
 export interface OmProtocolInstance {
 	omFileReader: WeatherMapLayerFileReader;
@@ -20,15 +15,13 @@ export interface DataIdentityOptions {
 	bounds: Bounds | undefined;
 }
 
-export type InterpolationMethod = 'nearest' | 'linear' | 'cubic' | 'monotone' | 'smooth';
+export type InterpolationMethod = 'nearest' | 'linear' | 'cubic' | 'monotone';
 
 export type TileSize = 64 | 128 | 256 | 512 | 1024 | 2048;
 
 export interface RenderOptions {
 	tileSize: TileSize;
 	interpolation: InterpolationMethod;
-	// 'smooth' area-average box half-width in grid cells.
-	smoothFootprint: number;
 	// Interpolate colours between colour-scale breakpoints instead of hard bands.
 	colorBlend: boolean;
 	drawGrid: boolean;
@@ -60,11 +53,6 @@ export interface OmUrlState {
 	omFileUrl: string;
 	data: Data | null;
 	dataPromise: Promise<Data> | null;
-	// Summed-area table for the 'smooth' method, built once per data load in a
-	// worker into SharedArrayBuffers and shared with every tile request.
-	// Resolves undefined when SAT sharing is unavailable (workers then build
-	// their own table per tile).
-	satPromise?: Promise<SummedAreaTable | undefined> | null;
 	lastAccess: number;
 }
 
@@ -101,10 +89,9 @@ export interface OmProtocolSettings {
 export interface Data {
 	values: Float32Array | undefined;
 	directions: Float32Array | undefined;
-	// Storage scale factor of `values` from the .om file: stored ints are
-	// `round(value * scaleFactor)`, so the quantization step is 1 / scaleFactor.
-	// Undefined when the values are derived (e.g. wind speed from u/v) and have
-	// no single well-defined scale factor.
+	// Storage scale factor of `values`: stored ints are `round(value * scaleFactor)`,
+	// so the quantization step is 1 / scaleFactor. Simple variables use the .om
+	// file's stored factor; derived variables get one from their derivation rule.
 	scaleFactor?: number;
 }
 
@@ -138,22 +125,10 @@ export interface TileRequest {
 	dataOptions: DataIdentityOptions;
 	ranges: DimensionRange[];
 	clippingOptions: ResolvedClippingOptions | undefined;
-	// Pre-built (SharedArrayBuffer-backed) summed-area table for 'smooth';
-	// when absent, the worker builds its own per tile.
-	sat?: SummedAreaTable;
 	signal?: AbortSignal;
 }
 
-/** One-off worker job that builds a shared summed-area table for `values`. */
-export interface SatBuildRequest {
-	type: 'buildSat';
-	key: string;
-	values: Float32Array;
-	nx: number;
-	ny: number;
-}
-
-export type WorkerRequest = TileRequest | SatBuildRequest;
+export type WorkerRequest = TileRequest;
 
 export type TileResponse = ImageBitmap | ArrayBuffer;
 export interface TileResult {
@@ -162,17 +137,11 @@ export interface TileResult {
 }
 export type TilePromise = Promise<TileResult>;
 
-export type WorkerResponse =
-	| {
-			type: 'returnImage' | 'returnArrayBuffer' | 'cancelled';
-			tile: TileResponse;
-			key: string;
-	  }
-	| {
-			type: 'returnSat';
-			sat: SummedAreaTable;
-			key: string;
-	  };
+export type WorkerResponse = {
+	type: 'returnImage' | 'returnArrayBuffer' | 'cancelled';
+	tile: TileResponse;
+	key: string;
+};
 
 // Simple RGB color
 export type RGB = [number, number, number];

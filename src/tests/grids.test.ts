@@ -1,5 +1,4 @@
 import { domainOptions } from '../domains';
-import { areaAverage, buildSummedAreaTable } from '../grids/area-average';
 import { ProjectionGrid } from '../grids/projected';
 import { LambertConformalConicProjection, RotatedLatLonProjection } from '../grids/projections';
 import { RegularGrid } from '../grids/regular';
@@ -168,41 +167,6 @@ describe('interpolation methods', () => {
 		dy: 1
 	};
 
-	test('summed-area table averages correctly', () => {
-		const values = new Float32Array([1, 2, 3, 4, 5, 6]); // nx=3, ny=2
-		const sat = buildSummedAreaTable(values, 3, 2);
-		expect(areaAverage(sat, 0, 0, 3, 2)).toBeCloseTo(3.5); // mean of all cells
-		expect(areaAverage(sat, 0, 0, 3, 1)).toBeCloseTo(2); // mean of first row
-	});
-
-	test('area average ignores NaN (masked) cells', () => {
-		const values = new Float32Array([1, NaN, 3, 4, 5, 6]); // nx=3, ny=2
-		const sat = buildSummedAreaTable(values, 3, 2);
-		// mean of valid {1,3,4,5,6} = 19 / 5
-		expect(areaAverage(sat, 0, 0, 3, 2)).toBeCloseTo(3.8);
-	});
-
-	test("injected SharedArrayBuffer-backed SAT matches the lazy per-grid build for 'smooth'", () => {
-		const values = new Float32Array(Array.from({ length: 64 }, (_, i) => (i * 7) % 13));
-		const lazyGrid = new RegularGrid(methodGridData);
-
-		const sat = buildSummedAreaTable(values, 8, 8, true);
-		expect(sat.sum.buffer).toBeInstanceOf(SharedArrayBuffer);
-		expect(sat.count.buffer).toBeInstanceOf(SharedArrayBuffer);
-		const sharedGrid = new RegularGrid(methodGridData);
-		sharedGrid.setSummedAreaTable(sat, values);
-
-		for (const [lat, lon] of [
-			[53.5, 13.5],
-			[50.2, 10.1],
-			[56.9, 17.3]
-		]) {
-			expect(sharedGrid.getInterpolatedValue(values, lat, lon, 'smooth')).toBe(
-				lazyGrid.getInterpolatedValue(values, lat, lon, 'smooth')
-			);
-		}
-	});
-
 	test('unknown interpolation method throws', () => {
 		const grid = new RegularGrid(methodGridData);
 		const values = new Float32Array(64).fill(7);
@@ -214,7 +178,7 @@ describe('interpolation methods', () => {
 	test('all methods preserve a uniform field', () => {
 		const grid = new RegularGrid(methodGridData);
 		const values = new Float32Array(64).fill(7);
-		for (const method of ['nearest', 'linear', 'cubic', 'smooth'] as const) {
+		for (const method of ['nearest', 'linear', 'cubic'] as const) {
 			expect(grid.getInterpolatedValue(values, 53.5, 13.5, method)).toBeCloseTo(7);
 		}
 	});
@@ -225,22 +189,6 @@ describe('interpolation methods', () => {
 		// lat 53.4 -> row 3, lon 12.6 -> rounds to col 3  =>  index 3*8 + 3 = 27
 		// (flooring would give col 2 => 26, i.e. the old half-cell offset)
 		expect(grid.getInterpolatedValue(values, 53.4, 12.6, 'nearest')).toBe(27);
-	});
-
-	test("'smooth' returns NaN when the whole footprint is masked", () => {
-		const grid = new RegularGrid(methodGridData);
-		const values = new Float32Array(64).fill(NaN);
-		expect(grid.getInterpolatedValue(values, 53.5, 13.5, 'smooth')).toBeNaN();
-	});
-
-	test("'smooth' stays centred on the node (no half-cell shift)", () => {
-		const grid = new RegularGrid(methodGridData);
-		// ramp purely in x: value at node (i, j) = i
-		const values = new Float32Array(64);
-		for (let j = 0; j < 8; j++) for (let i = 0; i < 8; i++) values[j * 8 + i] = i;
-		// at node lon 14 -> i = 4: the area-average of a linear ramp equals the
-		// node value (4). Without the +0.5 SAT centring it would be 3.5.
-		expect(grid.getInterpolatedValue(values, 53, 14, 'smooth')).toBeCloseTo(4, 4);
 	});
 
 	// A gentle ramp quantised to 0.05 (temperature scalefactor 20). When a colour
@@ -263,20 +211,6 @@ describe('interpolation methods', () => {
 			for (let i = 0; i < nx; i++) values[j * nx + i] = Math.round((14 + 0.002 * i) / 0.05) * 0.05;
 		return { grid, values, nx };
 	};
-
-	test("'smooth' does not dither across a breakpoint on a quantized plateau", () => {
-		const { grid, values, nx } = quantizedRamp();
-		let crossings = 0;
-		let prev: boolean | null = null;
-		for (let s = 0; s < 400; s++) {
-			const lon = (s / 400) * (nx - 1) * 0.02;
-			const side = grid.getInterpolatedValue(values, 0.05, lon, 'smooth') >= 14.0;
-			if (prev !== null && side !== prev) crossings++;
-			prev = side;
-		}
-		// the ramp crosses 14.0 once; >2 means the float-noise speckle is back
-		expect(crossings).toBeLessThanOrEqual(2);
-	});
 
 	test("'cubic' does not overshoot the local data range", () => {
 		const { grid, values, nx } = quantizedRamp();
@@ -302,29 +236,6 @@ describe('interpolation methods', () => {
 			expect(v).toBeGreaterThanOrEqual(prev - 1e-9);
 			prev = v;
 		}
-	});
-
-	test("'smooth' is continuous across the antimeridian on a global grid", () => {
-		// longitudeWrap = true (lonMax - lonMin = 360)
-		const nx = 36;
-		const ny = 10;
-		const grid = new RegularGrid({
-			type: 'regular',
-			nx,
-			ny,
-			lonMin: -180,
-			latMin: -45,
-			dx: 10,
-			dy: 10
-		});
-		const values = new Float32Array(nx * ny);
-		for (let j = 0; j < ny; j++)
-			for (let i = 0; i < nx; i++) values[j * nx + i] = Math.sin(((-180 + i * 10) * Math.PI) / 180);
-		// two points 0.02° apart across the 180° seam must be ~equal; without the
-		// SAT longitude wrap the box clamps to one side and they jump apart.
-		const below = grid.getInterpolatedValue(values, 5, 179.99, 'smooth');
-		const above = grid.getInterpolatedValue(values, 5, -179.99, 'smooth');
-		expect(Math.abs(below - above)).toBeLessThan(0.01);
 	});
 
 	test('one-grid-point-short global grid wraps (no NaN column at the antimeridian)', () => {
