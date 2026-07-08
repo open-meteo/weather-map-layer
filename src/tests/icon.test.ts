@@ -111,6 +111,63 @@ describe('IconGrid', () => {
 		}
 	});
 
+	test('getInterpolatedValue: nearest returns the containing cell value', () => {
+		const grid = new IconGrid(smallGridData);
+		const values = new Float32Array(Array.from({ length: smallGridData.nx }, (_, i) => i));
+		for (let index = 0; index < smallGridData.nx; index += 13) {
+			const { lat, lon } = grid.cellCoordinates(index);
+			expect(grid.getInterpolatedValue(values, lat, lon, 'nearest')).toBe(index);
+		}
+	});
+
+	test('bilinear interpolation reproduces a smooth field between cell centres', () => {
+		const grid = new IconGrid(smallGridData);
+		// smooth field sampled at the analytical cell centres
+		const f = (lat: number, lon: number) => {
+			const la = (lat * Math.PI) / 180;
+			const lo = (lon * Math.PI) / 180;
+			return 10 * Math.cos(la) * Math.cos(lo) + 5 * Math.sin(la);
+		};
+		const values = new Float32Array(smallGridData.nx);
+		for (let i = 0; i < smallGridData.nx; i++) {
+			const { lat, lon } = grid.cellCoordinates(i);
+			values[i] = f(lat, lon);
+		}
+		// deterministic pseudo-random sample points; R2B03 cells are ~7.9° wide,
+		// so a first-order-accurate blend stays well within ~1.5 units of f
+		let seed = 4711;
+		const next = () => {
+			seed = (seed * 1103515245 + 12345) % 2147483648;
+			return seed / 2147483648;
+		};
+		for (let i = 0; i < 2000; i++) {
+			const lat = next() * 180 - 90;
+			const lon = next() * 360 - 180;
+			const v = grid.getInterpolatedValue(values, lat, lon, 'linear');
+			expect(Math.abs(v - f(lat, lon))).toBeLessThan(1.5);
+		}
+		// cubic and monotone fall back to the same blend for now
+		expect(grid.getInterpolatedValue(values, 12.3, -45.6, 'cubic')).toBe(
+			grid.getInterpolatedValue(values, 12.3, -45.6, 'linear')
+		);
+		expect(grid.getInterpolatedValue(values, 12.3, -45.6, 'monotone')).toBe(
+			grid.getInterpolatedValue(values, 12.3, -45.6, 'linear')
+		);
+	});
+
+	test('bilinear interpolation is NaN-aware', () => {
+		const grid = new IconGrid(smallGridData);
+		const values = new Float32Array(smallGridData.nx).fill(7);
+		const hole = grid.findCell(47.3, 8.5);
+		values[hole] = NaN;
+		const center = grid.cellCoordinates(hole);
+		// centre value missing → NaN at the cell centre
+		expect(grid.getInterpolatedValue(values, center.lat, center.lon, 'linear')).toBeNaN();
+		// a missing neighbour is dropped and the rest renormalized
+		const neighbor = grid.cellCoordinates(hole + 1);
+		expect(grid.getInterpolatedValue(values, neighbor.lat, neighbor.lon, 'linear')).toBe(7);
+	});
+
 	test('cell centers of neighbouring indices are geographically close (R3B07)', () => {
 		const grid = new IconGrid(globalGridData);
 		// Sibling cells (same parent, indices 4m..4m+3) always touch, so their
