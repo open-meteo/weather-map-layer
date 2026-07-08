@@ -263,8 +263,8 @@ describe('omProtocol', () => {
 			const result = await omProtocol(params, new AbortController(), defaultOmProtocolSettings);
 			const resultData = result.data as TileJSON;
 
-			// DWD ICON global bounds
-			expect(resultData.bounds).toEqual([-180, -90, 179.875, 90.125]);
+			// DWD ICON is served on its native icosahedral grid, which is truly global
+			expect(resultData.bounds).toEqual([-180, -90, 180, 90]);
 		});
 	});
 

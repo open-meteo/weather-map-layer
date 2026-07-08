@@ -1,4 +1,5 @@
 import { GaussianGrid } from './gaussian';
+import { IconGrid } from './icon';
 import { GridInterface } from './interface';
 import { ProjectionGrid } from './projected';
 import { RegularGrid } from './regular';
@@ -10,6 +11,8 @@ export class GridFactory {
 		switch (data.type) {
 			case 'gaussian':
 				return new GaussianGrid(data, ranges);
+			case 'icon':
+				return new IconGrid(data, ranges);
 			case 'projectedFromBounds':
 			case 'projectedFromProjectedOrigin':
 			case 'projectedFromGeographicOrigin':

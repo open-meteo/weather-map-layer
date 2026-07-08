@@ -181,11 +181,21 @@ interface BaseGridData {
 }
 
 // Union type for all grid types
-export type GridData = RegularGridData | AnyProjectionGridData | GaussianGridData;
+export type GridData = RegularGridData | AnyProjectionGridData | GaussianGridData | IconGridData;
 
 export interface GaussianGridData extends BaseGridData {
 	type: 'gaussian';
 	gaussianGridLatitudeLines: number;
+}
+
+// Native ICON icosahedral R{n}B{k} grid (see grids/icon.ts for the canonical
+// cell ordering). nx is the total cell count 20·n²·4^k, ny must be 1.
+export interface IconGridData extends BaseGridData {
+	type: 'icon';
+	/** Root division n of each icosahedron edge (R3… → 3) */
+	iconRoot: number;
+	/** Bisection levels k after the root division (…B07 → 7) */
+	iconBisections: number;
 }
 
 // A regular lat/lon grid can be defined either by an origin + spacing

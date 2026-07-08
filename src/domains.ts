@@ -177,14 +177,14 @@ export const domainOptions: Array<Domain> = [
 	{
 		value: 'dwd_icon',
 		label: 'DWD ICON',
+		// The native icosahedral R3B07 grid (13 km). Requires .om files in the
+		// canonical cell order documented in grids/icon.ts.
 		grid: {
-			type: 'regular',
-			nx: 2879,
-			ny: 1441,
-			latMin: -90,
-			lonMin: -180,
-			dx: 0.125,
-			dy: 0.125,
+			type: 'icon',
+			nx: 2949120,
+			ny: 1,
+			iconRoot: 3,
+			iconBisections: 7,
 			zoom: 1
 		},
 		time_interval: 'hourly',
