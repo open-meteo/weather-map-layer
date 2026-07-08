@@ -10,7 +10,7 @@ import { getColor } from './utils/styling';
 
 import { GridFactory } from './grids/index';
 
-import { TileRequest } from './types';
+import { TileRequest, TileTiming } from './types';
 
 self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 	const key = message.data.key;
@@ -33,12 +33,19 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 		throw new Error('No values provided');
 	}
 
+	// Per-stage timings, sent back with the result so the pool can log them
+	// when benchmarking is enabled (see setTileBenchmark / [wml-bench]).
+	const timing: TileTiming = {};
+	const started = performance.now();
+
 	if (message.data.type == 'getImage') {
 		const pixels = tileSize * tileSize;
 		// Initialized with zeros
 		const rgba = new Uint8ClampedArray(pixels * 4);
 
 		const grid = GridFactory.create(domain.grid, ranges);
+
+		const sampleStart = performance.now();
 
 		// Longitude depends only on the column (j), so resolve all tileSize values
 		// once up front instead of re-deriving them for every row — turns tileSize²
@@ -77,6 +84,9 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 			}
 		}
 
+		timing.sample = performance.now() - sampleStart;
+		const canvasStart = performance.now();
+
 		const imageData = new ImageData(rgba, tileSize, tileSize);
 
 		const canvas = new OffscreenCanvas(tileSize, tileSize);
@@ -95,7 +105,13 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 			imageBitmap = canvas.transferToImageBitmap();
 		}
 
-		postMessage({ type: 'returnImage', tile: imageBitmap, key: key }, { transfer: [imageBitmap] });
+		timing.canvas = performance.now() - canvasStart;
+		timing.total = performance.now() - started;
+
+		postMessage(
+			{ type: 'returnImage', tile: imageBitmap, key: key, timing },
+			{ transfer: [imageBitmap] }
+		);
 	} else if (message.data.type == 'getArrayBuffer') {
 		const directions = message.data.data.directions;
 
@@ -103,19 +119,26 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 
 		const grid = GridFactory.create(domain.grid, ranges);
 		if (message.data.renderOptions.drawGrid) {
+			const gridStart = performance.now();
 			generateGridPoints(pbf, grid, values, directions, x, y, z, clippingOptions);
+			timing.grid = performance.now() - gridStart;
 		}
 		if (message.data.renderOptions.drawArrows && directions) {
+			const arrowsStart = performance.now();
 			generateArrows(pbf, values, directions, grid, x, y, z, clippingOptions);
+			timing.arrows = performance.now() - arrowsStart;
 		}
 		if (message.data.renderOptions.drawContours) {
+			const contoursStart = performance.now();
 			const intervals = message.data.renderOptions.intervals;
 			generateContours(pbf, values, grid, x, y, z, tileSize, intervals, clippingOptions);
+			timing.contours = performance.now() - contoursStart;
 		}
 
 		const arrayBuffer = pbf.finish();
+		timing.total = performance.now() - started;
 		postMessage(
-			{ type: 'returnArrayBuffer', tile: arrayBuffer.buffer, key: key },
+			{ type: 'returnArrayBuffer', tile: arrayBuffer.buffer, key: key, timing },
 			{ transfer: [arrayBuffer.buffer] }
 		);
 	}

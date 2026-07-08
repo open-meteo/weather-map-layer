@@ -124,10 +124,14 @@ export interface TileResult {
 }
 export type TilePromise = Promise<TileResult>;
 
+/** Per-stage worker render timings in milliseconds (e.g. sample, canvas, contours). */
+export type TileTiming = Record<string, number>;
+
 export type WorkerResponse = {
 	type: 'returnImage' | 'returnArrayBuffer' | 'cancelled';
 	tile: TileResponse;
 	key: string;
+	timing?: TileTiming;
 };
 
 // Simple RGB color
