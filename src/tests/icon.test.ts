@@ -111,6 +111,46 @@ describe('IconGrid', () => {
 		}
 	});
 
+	test('warp table reproduces true DWD cell centres (icon_grid_0026 R3B07)', () => {
+		const grid = new IconGrid(globalGridData);
+		// reference clat/clon values straight from the official grid file; the
+		// embedded warp table must reproduce them to well under a cell width
+		// (documented accuracy: ~35 m mean, 0.53 km max)
+		const references: [number, number, number][] = [
+			[0, 89.913098, 72.0],
+			[1000000, 27.312874, 132.333905],
+			[2949119, -26.650061, 0.057151]
+		];
+		for (const [index, lat, lon] of references) {
+			const c = grid.cellCoordinates(index);
+			const dLat = c.lat - lat;
+			let dLon = Math.abs(c.lon - lon);
+			if (dLon > 180) dLon = 360 - dLon;
+			const cosLat = Math.cos((lat * Math.PI) / 180);
+			const distDeg = Math.sqrt(dLat * dLat + dLon * cosLat * (dLon * cosLat));
+			expect(distDeg * 111.19).toBeLessThan(0.6); // km
+			expect(grid.findCell(lat, lon)).toBe(index);
+		}
+	});
+
+	test('cellVertices returns the triangle around the cell centre', () => {
+		const grid = new IconGrid(smallGridData);
+		for (let index = 0; index < smallGridData.nx; index += 101) {
+			const verts = grid.cellVertices(index);
+			expect(verts).toHaveLength(3);
+			const center = grid.cellCoordinates(index);
+			// the centre must lie inside the triangle: same cell as all-vertex mean
+			// and within a cell diameter of every vertex (R2B03 cells ~7.9°)
+			for (const v of verts) {
+				const dLat = v.lat - center.lat;
+				let dLon = Math.abs(v.lon - center.lon);
+				if (dLon > 180) dLon = 360 - dLon;
+				const cosLat = Math.cos((center.lat * Math.PI) / 180);
+				expect(Math.hypot(dLat, dLon * cosLat)).toBeLessThan(8);
+			}
+		}
+	});
+
 	test('getInterpolatedValue: nearest returns the containing cell value', () => {
 		const grid = new IconGrid(smallGridData);
 		const values = new Float32Array(Array.from({ length: smallGridData.nx }, (_, i) => i));

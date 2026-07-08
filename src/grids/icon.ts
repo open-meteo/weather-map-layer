@@ -1,10 +1,12 @@
 import { radiansToDegrees, roundWithPrecision } from '../utils/math';
 
+import { ICON_WARP_TABLES } from './icon-warp-tables';
 import { GridInterface, GridPoint } from './interface';
 
 import { Bounds, DimensionRange, IconGridData, InterpolationMethod } from '../types';
 
-// Native ICON icosahedral-triangular grid (analytical, no grid file).
+// Native ICON icosahedral-triangular grid (analytical + embedded warp table,
+// no grid file needed).
 //
 // The ICON R{n}B{k} grid starts from a regular icosahedron oriented with one
 // vertex on each pole. Each of the 20 spherical faces is divided into n²
@@ -34,23 +36,29 @@ import { Bounds, DimensionRange, IconGridData, InterpolationMethod } from '../ty
 //          d = 3: corner child at v2 → (m20, m12, v2)
 //     where m01/m12/m20 are the normalized (spherical) edge midpoints.
 //
-// Remaining deviation from the operational grid: DWD optimizes the vertex
-// positions with spring dynamics. Relative to this geometric construction
-// the true cell centres are displaced by a smooth warp field of roughly
-// constant absolute amplitude, dominated by the coarse subdivision levels
-// (~9 km mean for the R3 family: 0.53 cell edges at R3B06, 1.05 at R3B07;
-// ~16 km / 0.61 edges at R2B06 — largest towards the 12 pentagon points).
-// The cell numbering matches exactly; sampled fields are warped by about
-// one cell width but stay locally consistent. Modelling the warp (e.g.
-// small-circle subdivision or a coarse correction table) is a possible
-// follow-up.
+// DWD optimizes the vertex positions with spring dynamics, displacing the
+// operational grid from this geometric construction by a smooth,
+// locally-rigid warp of ~21 km mean / 65 km max (R3 family; ~36 km at
+// R2B06), largest towards the 12 pentagon points. That warp is corrected
+// here with an embedded table (icon-warp-tables.ts) extracted from the
+// official grid files: true positions of the subdivision vertices on a
+// coarse base lattice (level 5), plus exact full-resolution patches around
+// the pentagon points where the warp field has kinks. Cell vertices are
+// warped by interpolating the table, and the cell centre is the spherical
+// circumcenter of the warped triangle — matching ICON's mass-point
+// definition. Residual vs the operational grids: ~38 m mean / 0.53 km max
+// (R3B07), ~34 m / 0.6 km (R3B06, same table), ~71 m / 0.95 km (R2B06).
+// Grids without a table for their root division fall back to the pure
+// geometric construction.
 //
-// Point location descends the same hierarchy: face via arg-max against the
-// 20 face centres (exact — the perpendicular bisector plane of two adjacent
-// face centres contains their shared edge), root triangle via
+// Point location descends the geometric hierarchy: face via arg-max against
+// the 20 face centres (exact — the perpendicular bisector plane of two
+// adjacent face centres contains their shared edge), root triangle via
 // great-circle-side tests, then one sign test per bisection level. All
 // boundaries are great circles through the subdivision vertices, so the
-// tests are exact for the geometric grid.
+// tests are exact for the geometric grid; with a warp table the query point
+// is inverse-warped first (two fixed-point iterations, verified exact for
+// all cell centres).
 
 type Vec3 = [number, number, number];
 
@@ -62,6 +70,9 @@ interface RootTriangle {
 	n01: Vec3;
 	n12: Vec3;
 	n20: Vec3;
+	// integer corner coordinates in the face lattice (resolution n·2^k),
+	// order matching v0/v1/v2 — used for warp-table lookups
+	c: [number, number, number, number, number, number];
 }
 
 interface Face {
@@ -70,6 +81,35 @@ interface Face {
 	// root triangles in rootLocal order, generator vertex order
 	roots: RootTriangle[];
 }
+
+// decoded warp table (see icon-warp-tables.ts for the binary layout)
+interface WarpTable {
+	tableK: number; // bisection level the table was extracted at
+	baseLevel: number; // base lattice subdivision level
+	patchRadius: number; // pentagon patch radius, in table lattice units
+	quantChord: number; // metres-per-LSB converted to unit-sphere chord
+	baseRes: number; // n · 2^baseLevel
+	tableRes: number; // n · 2^tableK
+	perFaceBase: number;
+	perPatch: number;
+	base: Int16Array;
+	patches: Int16Array;
+}
+
+// leaf triangle + the context the warp evaluation needs
+interface LeafContext {
+	face: number;
+	v0: Vec3;
+	v1: Vec3;
+	v2: Vec3;
+	// integer corner coordinates (face lattice, resolution n·2^k)
+	c: [number, number, number, number, number, number];
+	// triangle at the base-lattice capture level: geometry + lattice coords
+	lbV: [Vec3, Vec3, Vec3];
+	lbC: [number, number, number, number, number, number];
+}
+
+const EARTH_RADIUS_M = 6371229; // ICON grid sphere (semi_major_axis)
 
 const cross = (u: Vec3, v: Vec3): Vec3 => [
 	u[1] * v[2] - u[2] * v[1],
@@ -103,6 +143,47 @@ const latLonToVec = (latDeg: number, lonDeg: number): Vec3 => {
 	return [cosLat * Math.cos(lon), cosLat * Math.sin(lon), Math.sin(lat)];
 };
 
+// deterministic local (east, north) tangent frame; falls back to lon = 0 at
+// the poles. Must match the table generator exactly.
+const tangentFrame = (g: Vec3): [Vec3, Vec3] => {
+	const horiz = Math.hypot(g[0], g[1]);
+	if (horiz < 1e-9) {
+		return [
+			[0, 1, 0],
+			[g[2] > 0 ? -1 : 1, 0, 0]
+		];
+	}
+	const e: Vec3 = [-g[1] / horiz, g[0] / horiz, 0];
+	return [e, normalize(cross(g, e))];
+};
+
+const decodeWarpTable = (b64: string): WarpTable => {
+	const bin = atob(b64);
+	const bytes = new Uint8Array(bin.length);
+	for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+	const arr = new Int16Array(bytes.buffer);
+	const n = arr[1];
+	const tableK = arr[2];
+	const baseLevel = arr[3];
+	const patchRadius = arr[4];
+	const quantMm = arr[5];
+	const baseRes = n * 2 ** baseLevel;
+	const perFaceBase = ((baseRes + 1) * (baseRes + 2)) / 2;
+	const perPatch = ((patchRadius + 1) * (patchRadius + 2)) / 2;
+	return {
+		tableK,
+		baseLevel,
+		patchRadius,
+		quantChord: quantMm / 1000 / EARTH_RADIUS_M,
+		baseRes,
+		tableRes: n * 2 ** tableK,
+		perFaceBase,
+		perPatch,
+		base: arr.subarray(6, 6 + 20 * perFaceBase * 2),
+		patches: arr.subarray(6 + 20 * perFaceBase * 2)
+	};
+};
+
 const UPPER_LAT = radiansToDegrees(Math.atan(0.5)); // ±26.565° vertex rings
 
 export class IconGrid implements GridInterface {
@@ -119,6 +200,9 @@ export class IconGrid implements GridInterface {
 	private readonly cellsPerFace: number; // n² · 4^k
 
 	private readonly faces: Face[];
+	private readonly warp: WarpTable | null;
+	// descent level at which the base-lattice triangle is captured
+	private readonly captureLevel: number;
 
 	constructor(data: IconGridData, ranges: DimensionRange[] | null = null) {
 		this.n = data.iconRoot;
@@ -134,6 +218,10 @@ export class IconGrid implements GridInterface {
 				`IconGrid R${this.n}B${this.k} has ${this.nx} cells, but domain declares nx=${data.nx}`
 			);
 		}
+
+		const tableB64 = ICON_WARP_TABLES[this.n];
+		this.warp = tableB64 ? decodeWarpTable(tableB64) : null;
+		this.captureLevel = this.warp ? Math.min(this.k, this.warp.baseLevel) : this.k;
 
 		// Icosahedron with pole vertices; upper ring at lon 36°+72°i, lower ring
 		// offset by a further 36° (DWD orientation, see header).
@@ -171,6 +259,7 @@ export class IconGrid implements GridInterface {
 	// symmetric face centre), then the n² root triangles in rootLocal order.
 	private makeFace(a: Vec3, b: Vec3, c: Vec3): Face {
 		const n = this.n;
+		const s = 2 ** this.k; // lattice units per root edge
 		const lattice: Vec3[][] = [];
 		for (let i = 0; i <= n; i++) {
 			lattice.push([]);
@@ -196,7 +285,7 @@ export class IconGrid implements GridInterface {
 			}
 		}
 
-		const makeRoot = (v0: Vec3, v1: Vec3, v2: Vec3): RootTriangle => {
+		const makeRoot = (v0: Vec3, v1: Vec3, v2: Vec3, coords: RootTriangle['c']): RootTriangle => {
 			const inward = (u: Vec3, v: Vec3, ref: Vec3): Vec3 => {
 				let nrm = normalize(cross(u, v));
 				if (dot(nrm, ref) < 0) nrm = [-nrm[0], -nrm[1], -nrm[2]];
@@ -208,7 +297,8 @@ export class IconGrid implements GridInterface {
 				v2,
 				n01: inward(v0, v1, v2),
 				n12: inward(v1, v2, v0),
-				n20: inward(v2, v0, v1)
+				n20: inward(v2, v0, v1),
+				c: coords
 			};
 		};
 
@@ -220,7 +310,8 @@ export class IconGrid implements GridInterface {
 				roots[(i + j) * (i + j) + 2 * j] = makeRoot(
 					lattice[i][j],
 					lattice[i + 1][j],
-					lattice[i][j + 1]
+					lattice[i][j + 1],
+					[i * s, j * s, (i + 1) * s, j * s, i * s, (j + 1) * s]
 				);
 			}
 		}
@@ -229,7 +320,8 @@ export class IconGrid implements GridInterface {
 				roots[(i + j + 1) * (i + j + 1) + 2 * j + 1] = makeRoot(
 					lattice[i + 1][j + 1],
 					lattice[i][j + 1],
-					lattice[i + 1][j]
+					lattice[i + 1][j],
+					[(i + 1) * s, (j + 1) * s, i * s, (j + 1) * s, (i + 1) * s, j * s]
 				);
 			}
 		}
@@ -264,10 +356,10 @@ export class IconGrid implements GridInterface {
 	}
 
 	/**
-	 * Locates the cell containing a unit vector and returns its global index
-	 * together with the leaf triangle vertices (needed for interpolation).
+	 * Locates the GEOMETRIC cell containing a unit vector, returning the leaf
+	 * triangle and warp-lookup context.
 	 */
-	private locateVec(p: Vec3): { index: number; v0: Vec3; v1: Vec3; v2: Vec3 } {
+	private locateVec(p: Vec3): LeafContext & { index: number } {
 		let face = 0;
 		let best = -Infinity;
 		for (let f = 0; f < 20; f++) {
@@ -295,6 +387,13 @@ export class IconGrid implements GridInterface {
 		let v0 = root.v0;
 		let v1 = root.v1;
 		let v2 = root.v2;
+		let c: LeafContext['c'] = [...root.c];
+		let lbV: LeafContext['lbV'] = [v0, v1, v2];
+		let lbC: LeafContext['lbC'] = c;
+		if (this.captureLevel === 0) {
+			lbV = [v0, v1, v2];
+			lbC = [...c];
+		}
 
 		// bisection descent: one great-circle-side test per child; a point on a
 		// boundary circle goes to the first corner child tested (deterministic)
@@ -305,47 +404,57 @@ export class IconGrid implements GridInterface {
 			const m01 = mid(v0, v1);
 			const m12 = mid(v1, v2);
 			const m20 = mid(v2, v0);
+			const x01 = (c[0] + c[2]) / 2;
+			const y01 = (c[1] + c[3]) / 2;
+			const x12 = (c[2] + c[4]) / 2;
+			const y12 = (c[3] + c[5]) / 2;
+			const x20 = (c[4] + c[0]) / 2;
+			const y20 = (c[5] + c[1]) / 2;
 			// p on the v0 side of the great circle through m01, m20?
 			const c0 = cross(m01, m20);
 			if (dot(p, c0) * dot(v0, c0) >= 0) {
 				v1 = m01;
 				v2 = m20;
+				c = [c[0], c[1], x01, y01, x20, y20];
 				// digit 0 adds nothing
 			} else {
 				const c1 = cross(m12, m01);
 				if (dot(p, c1) * dot(v1, c1) >= 0) {
 					v0 = m01;
 					v2 = m12;
+					c = [x01, y01, c[2], c[3], x12, y12];
 					index += scale;
 				} else {
 					const c2 = cross(m20, m12);
 					if (dot(p, c2) * dot(v2, c2) >= 0) {
 						v0 = m20;
 						v1 = m12;
+						c = [x20, y20, x12, y12, c[4], c[5]];
 						index += 3 * scale;
 					} else {
 						// centre child
-						v0 = m12;
-						v1 = m20;
-						v2 = m01;
+						const nv0 = m12;
+						const nv1 = m20;
+						const nv2 = m01;
+						v0 = nv0;
+						v1 = nv1;
+						v2 = nv2;
+						c = [x12, y12, x20, y20, x01, y01];
 						index += 2 * scale;
 					}
 				}
 			}
+			if (level + 1 === this.captureLevel) {
+				lbV = [v0, v1, v2];
+				lbC = [...c];
+			}
 		}
 
-		return { index, v0, v1, v2 };
+		return { index, face, v0, v1, v2, c, lbV, lbC };
 	}
 
-	/**
-	 * Analytically locates the cell containing a coordinate.
-	 */
-	findCell(lat: number, lon: number): number {
-		return this.locateVec(latLonToVec(lat, lon)).index - this.nxStart;
-	}
-
-	// leaf triangle vertices of a cell, following the digit descent
-	private leafTriangle(globalIndex: number): { v0: Vec3; v1: Vec3; v2: Vec3 } {
+	// leaf triangle of a cell (by global index), following the digit descent
+	private leafTriangle(globalIndex: number): LeafContext {
 		const face = Math.floor(globalIndex / this.cellsPerFace);
 		const inFace = globalIndex - face * this.cellsPerFace;
 		const rootLocal = Math.floor(inFace / this.cellsPerRoot);
@@ -355,6 +464,13 @@ export class IconGrid implements GridInterface {
 		let v0 = root.v0;
 		let v1 = root.v1;
 		let v2 = root.v2;
+		let c: LeafContext['c'] = [...root.c];
+		let lbV: LeafContext['lbV'] = [v0, v1, v2];
+		let lbC: LeafContext['lbC'] = c;
+		if (this.captureLevel === 0) {
+			lbV = [v0, v1, v2];
+			lbC = [...c];
+		}
 
 		let scale = this.cellsPerRoot;
 		for (let level = 0; level < this.k; level++) {
@@ -364,39 +480,185 @@ export class IconGrid implements GridInterface {
 			const m01 = mid(v0, v1);
 			const m12 = mid(v1, v2);
 			const m20 = mid(v2, v0);
+			const x01 = (c[0] + c[2]) / 2;
+			const y01 = (c[1] + c[3]) / 2;
+			const x12 = (c[2] + c[4]) / 2;
+			const y12 = (c[3] + c[5]) / 2;
+			const x20 = (c[4] + c[0]) / 2;
+			const y20 = (c[5] + c[1]) / 2;
 			if (digit === 0) {
 				v1 = m01;
 				v2 = m20;
+				c = [c[0], c[1], x01, y01, x20, y20];
 			} else if (digit === 1) {
 				v0 = m01;
 				v2 = m12;
+				c = [x01, y01, c[2], c[3], x12, y12];
 			} else if (digit === 2) {
 				v0 = m12;
 				v1 = m20;
 				v2 = m01;
+				c = [x12, y12, x20, y20, x01, y01];
 			} else {
 				v0 = m20;
 				v1 = m12;
+				c = [x20, y20, x12, y12, c[4], c[5]];
+			}
+			if (level + 1 === this.captureLevel) {
+				lbV = [v0, v1, v2];
+				lbC = [...c];
 			}
 		}
-		return { v0, v1, v2 };
+		return { face, v0, v1, v2, c, lbV, lbC };
+	}
+
+	// dequantize one warp sample; the tangent frame lives at the sample's
+	// geometric position
+	private dequant(arr: Int16Array, idx: number, geo: Vec3): Vec3 {
+		const q = this.warp!.quantChord;
+		const [e, nn] = tangentFrame(geo);
+		const we = arr[idx * 2] * q;
+		const wn = arr[idx * 2 + 1] * q;
+		return [we * e[0] + wn * nn[0], we * e[1] + wn * nn[1], we * e[2] + wn * nn[2]];
 	}
 
 	/**
-	 * Geographic centre of a cell (normalized centroid of the leaf triangle —
-	 * the geometric geodesic-grid position; the operational ICON grid shifts
-	 * these slightly via spring dynamics, see header).
+	 * Canonical warp of a subdivision vertex at integer lattice coords (x, y):
+	 * exact patch value near the pentagon points, otherwise gnomonic-barycentric
+	 * interpolation of the base lattice over the captured coarse triangle.
+	 */
+	private vertexWarp(ctx: LeafContext, x: number, y: number, pos: Vec3): Vec3 {
+		const w = this.warp!;
+		// grid lattice -> table lattice units (2^(tableK - k), may be fractional
+		// for grids finer than the table)
+		const f = 2 ** (w.tableK - this.k);
+		const xt = x * f;
+		const yt = y * f;
+		if (Number.isInteger(xt) && Number.isInteger(yt)) {
+			const P = w.patchRadius;
+			const NT = w.tableRes;
+			const a = NT - xt - yt;
+			let corner = -1;
+			let u = 0;
+			let v = 0;
+			if (xt + yt <= P) {
+				corner = 0;
+				u = xt;
+				v = yt;
+			} else if (NT - xt <= P) {
+				corner = 1;
+				u = yt;
+				v = a;
+			} else if (NT - yt <= P) {
+				corner = 2;
+				u = a;
+				v = xt;
+			}
+			if (corner >= 0) {
+				const pi = (ctx.face * 3 + corner) * w.perPatch + v * (P + 1) - (v * (v - 1)) / 2 + u;
+				return this.dequant(w.patches, pi, pos);
+			}
+		}
+		// base lattice: samples at the captured triangle's corners
+		const g = 2 ** (this.k - w.baseLevel); // grid lattice units per base step
+		const wx: Vec3[] = [];
+		for (let s = 0; s < 3; s++) {
+			const bi = ctx.lbC[s * 2] / g;
+			const bj = ctx.lbC[s * 2 + 1] / g;
+			const li = ctx.face * w.perFaceBase + bj * (w.baseRes + 1) - (bj * (bj - 1)) / 2 + bi;
+			wx.push(this.dequant(w.base, li, ctx.lbV[s]));
+		}
+		const b0 = dot(pos, cross(ctx.lbV[1], ctx.lbV[2]));
+		const b1 = dot(pos, cross(ctx.lbV[2], ctx.lbV[0]));
+		const b2 = dot(pos, cross(ctx.lbV[0], ctx.lbV[1]));
+		const bs = b0 + b1 + b2;
+		return [
+			(b0 * wx[0][0] + b1 * wx[1][0] + b2 * wx[2][0]) / bs,
+			(b0 * wx[0][1] + b1 * wx[1][1] + b2 * wx[2][1]) / bs,
+			(b0 * wx[0][2] + b1 * wx[1][2] + b2 * wx[2][2]) / bs
+		];
+	}
+
+	// warp field at an arbitrary point: interpolate the three canonical vertex
+	// warps of the containing geometric leaf triangle
+	private warpAt(p: Vec3, ctx: LeafContext): Vec3 {
+		const w0 = this.vertexWarp(ctx, ctx.c[0], ctx.c[1], ctx.v0);
+		const w1 = this.vertexWarp(ctx, ctx.c[2], ctx.c[3], ctx.v1);
+		const w2 = this.vertexWarp(ctx, ctx.c[4], ctx.c[5], ctx.v2);
+		const b0 = dot(p, cross(ctx.v1, ctx.v2));
+		const b1 = dot(p, cross(ctx.v2, ctx.v0));
+		const b2 = dot(p, cross(ctx.v0, ctx.v1));
+		const bs = b0 + b1 + b2;
+		return [
+			(b0 * w0[0] + b1 * w1[0] + b2 * w2[0]) / bs,
+			(b0 * w0[1] + b1 * w1[1] + b2 * w2[1]) / bs,
+			(b0 * w0[2] + b1 * w1[2] + b2 * w2[2]) / bs
+		];
+	}
+
+	// map a true (warped-grid) position back into the geometric grid: two
+	// fixed-point iterations of p' = p − W(p'), enough for exact cell lookups
+	private inversePoint(p: Vec3): Vec3 {
+		const w0 = this.warpAt(p, this.locateVec(p));
+		const p1 = normalize([p[0] - w0[0], p[1] - w0[1], p[2] - w0[2]]);
+		const w1 = this.warpAt(p1, this.locateVec(p1));
+		return normalize([p[0] - w1[0], p[1] - w1[1], p[2] - w1[2]]);
+	}
+
+	/**
+	 * Locates the cell containing a coordinate (inverse-warping the point when
+	 * a warp table is active, so lookups match the true DWD cells).
+	 */
+	findCell(lat: number, lon: number): number {
+		let p = latLonToVec(lat, lon);
+		if (this.warp) p = this.inversePoint(p);
+		return this.locateVec(p).index - this.nxStart;
+	}
+
+	// the three (warped) triangle corners of a cell, as unit vectors
+	private warpedTriangle(globalIndex: number): [Vec3, Vec3, Vec3] {
+		const ctx = this.leafTriangle(globalIndex);
+		if (!this.warp) return [ctx.v0, ctx.v1, ctx.v2];
+		const out: Vec3[] = [];
+		const verts: Vec3[] = [ctx.v0, ctx.v1, ctx.v2];
+		for (let s = 0; s < 3; s++) {
+			const w = this.vertexWarp(ctx, ctx.c[s * 2], ctx.c[s * 2 + 1], verts[s]);
+			out.push(normalize([verts[s][0] + w[0], verts[s][1] + w[1], verts[s][2] + w[2]]));
+		}
+		return out as [Vec3, Vec3, Vec3];
+	}
+
+	/**
+	 * The three corners of a cell's triangle. With a warp table these are the
+	 * true (operational-grid) vertex positions to table accuracy.
+	 */
+	cellVertices(index: number): { lat: number; lon: number }[] {
+		return this.warpedTriangle(index + this.nxStart).map((v) => ({
+			lat: radiansToDegrees(Math.asin(v[2])),
+			lon: radiansToDegrees(Math.atan2(v[1], v[0]))
+		}));
+	}
+
+	// spherical circumcenter of a cell's (warped) triangle, as a unit vector
+	private cellCenterVec(globalIndex: number): Vec3 {
+		const [a, b, c] = this.warpedTriangle(globalIndex);
+		const e1: Vec3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+		const e2: Vec3 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+		let cc = cross(e1, e2);
+		if (dot(cc, a) < 0) cc = [-cc[0], -cc[1], -cc[2]];
+		return normalize(cc);
+	}
+
+	/**
+	 * Geographic centre of a cell: the spherical circumcenter of the (warped)
+	 * triangle — ICON's mass-point definition (clat/clon in the grid files are
+	 * the circumcenters of the spring-optimized triangles).
 	 */
 	cellCoordinates(index: number): { lat: number; lon: number } {
-		const { v0, v1, v2 } = this.leafTriangle(index + this.nxStart);
-		const px = v0[0] + v1[0] + v2[0];
-		const py = v0[1] + v1[1] + v2[1];
-		const pz = v0[2] + v1[2] + v2[2];
-		const norm = Math.hypot(px, py, pz);
-
+		const cc = this.cellCenterVec(index + this.nxStart);
 		return {
-			lat: radiansToDegrees(Math.asin(pz / norm)),
-			lon: radiansToDegrees(Math.atan2(py, px))
+			lat: radiansToDegrees(Math.asin(cc[2])),
+			lon: radiansToDegrees(Math.atan2(cc[1], cc[0]))
 		};
 	}
 
@@ -439,31 +701,37 @@ export class IconGrid implements GridInterface {
 	// Corner regions of the leaf triangle poke slightly outside the neighbour
 	// triangle; negative weights are clamped there (mild flattening right at
 	// cell vertices, where a 6-cell vertex ring would be needed instead).
+	// Neighbour INDICES are found in the geometric space of the inverse-warped
+	// sample point; the weights use the true (warped) cell centres, where the
+	// data values live, so cell centres reproduce their value exactly.
 	private getBarycentricValue(values: Float32Array, lat: number, lon: number): number {
 		const p = latLonToVec(lat, lon);
-		const cell = this.locateVec(p);
+		const pGeo = this.warp ? this.inversePoint(p) : p;
+		const cell = this.locateVec(pGeo);
 
-		// cell centre and the three edge-neighbour centres (reflections of the
-		// centre across the great-circle edge planes — exact up to the small
-		// shape distortion between adjacent cells)
-		const c: Vec3 = normalize([
+		// edge-neighbour indices: reflect the geometric centre across the
+		// great-circle edge planes (lands well inside each neighbour)
+		const cGeo: Vec3 = normalize([
 			cell.v0[0] + cell.v1[0] + cell.v2[0],
 			cell.v0[1] + cell.v1[1] + cell.v2[1],
 			cell.v0[2] + cell.v1[2] + cell.v2[2]
 		]);
 		const reflect = (a: Vec3, b: Vec3): Vec3 => {
 			const nrm = normalize(cross(a, b));
-			const d = 2 * dot(c, nrm);
-			return [c[0] - d * nrm[0], c[1] - d * nrm[1], c[2] - d * nrm[2]];
+			const d = 2 * dot(cGeo, nrm);
+			return [cGeo[0] - d * nrm[0], cGeo[1] - d * nrm[1], cGeo[2] - d * nrm[2]];
 		};
-		const neighbors = [
-			reflect(cell.v0, cell.v1),
-			reflect(cell.v1, cell.v2),
-			reflect(cell.v2, cell.v0)
+		const neighborIdx = [
+			this.locateVec(reflect(cell.v0, cell.v1)).index,
+			this.locateVec(reflect(cell.v1, cell.v2)).index,
+			this.locateVec(reflect(cell.v2, cell.v0)).index
 		];
 
+		// interpolation nodes: the true cell centres
+		const c = this.cellCenterVec(cell.index);
+		const neighbors = neighborIdx.map((i) => this.cellCenterVec(i));
 		const v = values[cell.index - this.nxStart];
-		const nv = neighbors.map((q) => values[this.locateVec(q).index - this.nxStart]);
+		const nv = neighborIdx.map((i) => values[i - this.nxStart]);
 
 		// projective barycentric weights of p in the spherical triangle (c, a, b):
 		// ratios of scalar triple products (equivalent to planar barycentrics in

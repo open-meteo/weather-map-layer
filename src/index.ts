@@ -16,7 +16,7 @@ export { getColor, getColorScale } from './utils/styling';
 
 // Classes
 
-export { GridFactory } from './grids/index';
+export { GridFactory, IconGrid } from './grids/index';
 
 // Objects / Constants
 
