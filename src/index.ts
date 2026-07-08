@@ -1,22 +1,5 @@
 export { omProtocol } from './om-protocol';
 
-// Types
-
-export type {
-	ClippingOptions,
-	Data,
-	Domain,
-	DomainMetaDataJson,
-	GeoJson,
-	GeoJsonFeature,
-	GeoJsonGeometry,
-	GeoJsonPosition,
-	OmProtocolSettings,
-	OmUrlState,
-	RenderableColorScale
-} from './types';
-export type { WeatherMapLayerFileReader } from './om-file-reader';
-
 // Functions
 
 export {
@@ -48,3 +31,22 @@ export { VARIABLE_PREFIX, LEVEL_PREFIX, LEVEL_REGEX, LEVEL_UNIT_REGEX } from './
 export { addLeafletProtocolSupport } from './adapters/leaflet';
 export { addMapboxProtocolSupport } from './adapters/mapbox';
 export { addOpenLayersProtocolSupport } from './adapters/openlayers';
+
+// Types
+
+export type {
+	ClippingOptions,
+	Data,
+	Domain,
+	DomainMetaDataJson,
+	GeoJson,
+	GeoJsonFeature,
+	GeoJsonGeometry,
+	GeoJsonPosition,
+	InterpolationMethod,
+	OmProtocolSettings,
+	OmUrlState,
+	RenderableColorScale
+} from './types';
+
+export type { WeatherMapLayerFileReader } from './om-file-reader';

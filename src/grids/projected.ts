@@ -1,11 +1,17 @@
 import { GridInterface, GridPoint } from './interface';
-import { interpolateLinear } from './interpolations';
+import {
+	interpolateCubic,
+	interpolateLinear,
+	interpolateMonotone,
+	interpolateNearest
+} from './interpolations';
 import { Projection, createProjection } from './projections';
 
 import {
 	Bounds,
 	Center,
 	DimensionRange,
+	InterpolationMethod,
 	ProjectionGridFromBounds,
 	ProjectionGridFromGeographicOrigin,
 	ProjectionGridFromProjectedOrigin
@@ -81,8 +87,56 @@ export class ProjectionGrid implements GridInterface {
 	}
 
 	getLinearInterpolatedValue(values: Float32Array, lat: number, lon: number): number {
+		return this.getInterpolatedValue(values, lat, lon, 'linear');
+	}
+
+	getInterpolatedValue(
+		values: Float32Array,
+		lat: number,
+		lon: number,
+		method: InterpolationMethod
+	): number {
 		const idx = this.findPointInterpolated(lat, lon);
-		return interpolateLinear(values, idx.x, idx.y, idx.xFraction, idx.yFraction, this.nx);
+		switch (method) {
+			// 'nearest' returns the value of the closest grid node.
+			case 'nearest':
+				return interpolateNearest(
+					values,
+					idx.x,
+					idx.y,
+					idx.xFraction,
+					idx.yFraction,
+					this.nx,
+					this.ny
+				);
+			case 'cubic':
+				return interpolateCubic(
+					values,
+					idx.x,
+					idx.y,
+					idx.xFraction,
+					idx.yFraction,
+					this.nx,
+					this.ny
+				);
+			case 'monotone':
+				return interpolateMonotone(
+					values,
+					idx.x,
+					idx.y,
+					idx.xFraction,
+					idx.yFraction,
+					this.nx,
+					this.ny
+				);
+			case 'linear':
+				return interpolateLinear(values, idx.x, idx.y, idx.xFraction, idx.yFraction, this.nx);
+			default: {
+				// Exhaustiveness check; also throws at runtime for untyped callers.
+				const _exhaustive: never = method;
+				throw new Error(`Unknown interpolation method: ${_exhaustive}`);
+			}
+		}
 	}
 
 	getBounds(): Bounds {

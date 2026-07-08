@@ -16,6 +16,7 @@
 		"examples/popup.html",
 		"examples/temperature.html",
 		"examples/precipitation.html",
+		"examples/interpolation.html",
 		"examples/partial-requests.html",
 		"examples/combined-variables.html",
 
@@ -28,6 +29,7 @@
 
 		"examples/colorscales/darkmode.html",
 		"examples/colorscales/custom-rgba.html",
+		"examples/colorscales/color-blending.html",
 		"examples/colorscales/custom-breakpoints.html",
 
 		"examples/clipping/arrows/clip-italy.html",

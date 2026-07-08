@@ -15,8 +15,15 @@ export interface DataIdentityOptions {
 	bounds: Bounds | undefined;
 }
 
+export type InterpolationMethod = 'nearest' | 'linear' | 'cubic' | 'monotone';
+
+export type TileSize = 64 | 128 | 256 | 512 | 1024 | 2048;
+
 export interface RenderOptions {
-	tileSize: 64 | 128 | 256 | 512 | 1024 | 2048;
+	tileSize: TileSize;
+	interpolation: InterpolationMethod;
+	// Interpolate colours between colour-scale breakpoints instead of hard bands.
+	colorBlend: boolean;
 	drawGrid: boolean;
 	drawArrows: boolean;
 	drawContours: boolean;
@@ -82,6 +89,10 @@ export interface OmProtocolSettings {
 export interface Data {
 	values: Float32Array | undefined;
 	directions: Float32Array | undefined;
+	// Storage scale factor of `values`: stored ints are `round(value * scaleFactor)`,
+	// so the quantization step is 1 / scaleFactor. Simple variables use the .om
+	// file's stored factor; derived variables get one from their derivation rule.
+	scaleFactor?: number;
 }
 
 export type TileJSON = {
@@ -116,6 +127,8 @@ export interface TileRequest {
 	clippingOptions: ResolvedClippingOptions | undefined;
 	signal?: AbortSignal;
 }
+
+export type WorkerRequest = TileRequest;
 
 export type TileResponse = ImageBitmap | ArrayBuffer;
 export interface TileResult {

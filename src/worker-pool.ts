@@ -31,6 +31,7 @@ export class WorkerPool {
 
 	private handleMessage(message: MessageEvent): void {
 		const data = message.data as WorkerResponse;
+
 		const pending = this.pendingRequests.get(data.key);
 
 		if (!pending) return;

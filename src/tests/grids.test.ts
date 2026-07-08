@@ -7,6 +7,7 @@ import { describe, expect, test } from 'vitest';
 import type {
 	AnyProjectionGridData,
 	DimensionRange,
+	InterpolationMethod,
 	LCCProjectionData,
 	ProjectionGridFromGeographicOrigin,
 	RegularGridData,
@@ -152,6 +153,137 @@ describe('RegularGrid', () => {
 		expect(ranges[0].end).toBe(gridData.ny);
 		expect(ranges[1].start).toBe(1);
 		expect(ranges[1].end).toBe(4);
+	});
+});
+
+describe('interpolation methods', () => {
+	const methodGridData: RegularGridData = {
+		type: 'regular',
+		nx: 8,
+		ny: 8,
+		lonMin: 10,
+		latMin: 50,
+		dx: 1,
+		dy: 1
+	};
+
+	test('unknown interpolation method throws', () => {
+		const grid = new RegularGrid(methodGridData);
+		const values = new Float32Array(64).fill(7);
+		expect(() =>
+			grid.getInterpolatedValue(values, 53.5, 13.5, undefined as unknown as InterpolationMethod)
+		).toThrow(/Unknown interpolation method/);
+	});
+
+	test('all methods preserve a uniform field', () => {
+		const grid = new RegularGrid(methodGridData);
+		const values = new Float32Array(64).fill(7);
+		for (const method of ['nearest', 'linear', 'cubic'] as const) {
+			expect(grid.getInterpolatedValue(values, 53.5, 13.5, method)).toBeCloseTo(7);
+		}
+	});
+
+	test("'nearest' returns the closest grid node, centred (round, not floor)", () => {
+		const grid = new RegularGrid(methodGridData);
+		const values = new Float32Array(Array.from({ length: 64 }, (_, i) => i));
+		// lat 53.4 -> row 3, lon 12.6 -> rounds to col 3  =>  index 3*8 + 3 = 27
+		// (flooring would give col 2 => 26, i.e. the old half-cell offset)
+		expect(grid.getInterpolatedValue(values, 53.4, 12.6, 'nearest')).toBe(27);
+	});
+
+	// A gentle ramp quantised to 0.05 (temperature scalefactor 20). When a colour
+	// breakpoint coincides with the plateau value, float noise in the sampler
+	// used to dither the bucket and speckle the band edge.
+	const quantizedRamp = () => {
+		const nx = 80;
+		const ny = 6;
+		const grid = new RegularGrid({
+			type: 'regular',
+			nx,
+			ny,
+			lonMin: 0,
+			latMin: 0,
+			dx: 0.02,
+			dy: 0.02
+		});
+		const values = new Float32Array(nx * ny);
+		for (let j = 0; j < ny; j++)
+			for (let i = 0; i < nx; i++) values[j * nx + i] = Math.round((14 + 0.002 * i) / 0.05) * 0.05;
+		return { grid, values, nx };
+	};
+
+	test("'cubic' does not overshoot the local data range", () => {
+		const { grid, values, nx } = quantizedRamp();
+		for (let s = 0; s < 400; s++) {
+			const lon = (s / 400) * (nx - 1) * 0.02;
+			const v = grid.getInterpolatedValue(values, 0.05, lon, 'cubic');
+			// data is in [14.0, 14.15]; Catmull-Rom overshoot must be clamped away
+			expect(v).toBeGreaterThanOrEqual(14.0);
+			expect(v).toBeLessThanOrEqual(14.15);
+		}
+	});
+
+	test("'monotone' is shape-preserving: no overshoot and stays monotonic", () => {
+		const { grid, values, nx } = quantizedRamp();
+		let prev = -Infinity;
+		for (let s = 0; s < 400; s++) {
+			const lon = (s / 400) * (nx - 1) * 0.02;
+			const v = grid.getInterpolatedValue(values, 0.05, lon, 'monotone');
+			// PCHIP cannot overshoot the surrounding samples (no clamp needed)
+			expect(v).toBeGreaterThanOrEqual(14.0);
+			expect(v).toBeLessThanOrEqual(14.15);
+			// the field never decreases in lon, so neither may the interpolant
+			expect(v).toBeGreaterThanOrEqual(prev - 1e-9);
+			prev = v;
+		}
+	});
+
+	test('one-grid-point-short global grid wraps (no NaN column at the antimeridian)', () => {
+		// dwd_icon_eps shape: 0.25° grid stored one point short (nx=1439, span 359.75°).
+		// The old hardcoded 359.875 threshold left this un-wrapped, producing a
+		// missing column at the antimeridian.
+		const nx = 1439;
+		const ny = 721;
+		const grid = new RegularGrid({
+			type: 'regular',
+			nx,
+			ny,
+			lonMin: -180,
+			latMin: -90,
+			dx: 0.25,
+			dy: 0.25
+		});
+		const values = new Float32Array(nx * ny).fill(7);
+		// Longitudes inside the wrapped final cell (179.5°..180°) must resolve, not NaN.
+		for (const lon of [179.5, 179.6, 179.75, 179.9, 179.99]) {
+			expect(isFinite(grid.getInterpolatedValue(values, 0, lon, 'linear'))).toBe(true);
+		}
+	});
+
+	test('complete global grid keeps a full-width final cell at the antimeridian', () => {
+		// ncep_gefs025/ncep_gfs025 shape: complete 0.25° grid (nx=1440, span 360°).
+		// Its final cell must not be widened to 2*dx — doing so shifts the last
+		// column and smears the data near the seam. A linear ramp in longitude
+		// must stay linear right up to the seam.
+		const nx = 1440;
+		const ny = 4;
+		const grid = new RegularGrid({
+			type: 'regular',
+			nx,
+			ny,
+			lonMin: -180,
+			latMin: -1,
+			dx: 0.25,
+			dy: 0.25
+		});
+		// value == longitude index, so the seam wraps 1439 -> 0.
+		const values = new Float32Array(nx * ny);
+		for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) values[j * nx + i] = i;
+		// At the last node (179.75° == column 1439) we should read ~1439 exactly,
+		// not a value pulled halfway toward column 0 by a doubled cell.
+		expect(grid.getInterpolatedValue(values, -0.5, 179.75, 'linear')).toBeCloseTo(1439, 5);
+		// Halfway across the final cell wraps toward column 0: mean of 1439 and 0.
+		expect(grid.getInterpolatedValue(values, -0.5, 179.875, 'linear')).toBeCloseTo(1439 / 2, 5);
 	});
 });
 
