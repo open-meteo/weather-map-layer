@@ -1,9 +1,9 @@
-import { radiansToDegrees, roundWithPrecision } from '../utils/math';
+import { radiansToDegrees, roundWithPrecision } from '../../utils/math';
+import { GridInterface, GridPoint } from '../interface';
 
 import { ICON_ANALYTICAL_MODEL as M } from './icon-analytical-model';
-import { GridInterface, GridPoint } from './interface';
 
-import { Bounds, DimensionRange, IconGridData, InterpolationMethod } from '../types';
+import { Bounds, DimensionRange, IconGridData, InterpolationMethod } from '../../types';
 
 // Purely-analytical ICON grid — the alternative to the embedded warp table
 // (grids/icon.ts). Instead of storing the DWD spring-dynamics displacement in an
@@ -57,13 +57,13 @@ const tangentFrame = (g: Vec3): [Vec3, Vec3] => {
 	const e: Vec3 = [-g[1] / horiz, g[0] / horiz, 0];
 	return [e, normalize(cross(g, e))];
 };
-const circumcenter = (a: Vec3, b: Vec3, c: Vec3): Vec3 => {
-	const e1: Vec3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-	const e2: Vec3 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-	let cc = cross(e1, e2);
-	if (dot(cc, a) < 0) cc = [-cc[0], -cc[1], -cc[2]];
-	return normalize(cc);
-};
+// const circumcenter = (a: Vec3, b: Vec3, c: Vec3): Vec3 => {
+// 	const e1: Vec3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+// 	const e2: Vec3 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+// 	let cc = cross(e1, e2);
+// 	if (dot(cc, a) < 0) cc = [-cc[0], -cc[1], -cc[2]];
+// 	return normalize(cc);
+// };
 
 interface Root {
 	v0: Vec3;
@@ -513,7 +513,7 @@ export class IconGridAnalytical implements GridInterface {
 		const p = latLonToVec(lat, lon);
 		const g0 = this.locate(p);
 		const info0 = this.leafInfo(g0.index);
-		let root = this.faces[info0.f].roots[info0.rl];
+		const root = this.faces[info0.f].roots[info0.rl];
 		const tb = this.rootBary(p, root);
 		let a = tb[0];
 		let b = tb[1];
@@ -588,7 +588,7 @@ export class IconGridAnalytical implements GridInterface {
 	private vertexRing(cell: Leaf, V: Vec3): void {
 		this.dfCount = 0;
 		let cur = cell;
-		let vi = IconGridAnalytical.nearestVert(cur.v0, cur.v1, cur.v2, V);
+		const vi = IconGridAnalytical.nearestVert(cur.v0, cur.v1, cur.v2, V);
 		let shared = [cur.v0, cur.v1, cur.v2][(vi + 1) % 3];
 		for (let step = 0; step < 8; step++) {
 			this.dfIdx[this.dfCount] = cur.index - this.nxStart;

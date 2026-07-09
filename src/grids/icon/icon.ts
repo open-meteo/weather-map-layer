@@ -5,12 +5,12 @@ import {
 	roundWithPrecision,
 	tile2lat,
 	tile2lon
-} from '../utils/math';
+} from '../../utils/math';
+import { GridInterface, GridPoint } from '../interface';
 
 import { ICON_WARP_TABLES } from './icon-warp-tables';
-import { GridInterface, GridPoint } from './interface';
 
-import { Bounds, DimensionRange, IconGridData, InterpolationMethod } from '../types';
+import { Bounds, DimensionRange, IconGridData, InterpolationMethod } from '../../types';
 
 // Native ICON icosahedral-triangular grid (analytical + embedded warp table,
 // no grid file needed).
@@ -983,7 +983,7 @@ export class IconGrid implements GridInterface {
 	private vertexRing(cell: LeafContext & { index: number }, V: Vec3): void {
 		this.dfCount = 0;
 		let cur: LeafContext & { index: number } = cell;
-		let vi = IconGrid.nearestVert(cur.v0, cur.v1, cur.v2, V);
+		const vi = IconGrid.nearestVert(cur.v0, cur.v1, cur.v2, V);
 		const verts0 = [cur.v0, cur.v1, cur.v2];
 		let shared = verts0[(vi + 1) % 3]; // vertex on the edge we cross next
 		for (let step = 0; step < 8; step++) {

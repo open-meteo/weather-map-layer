@@ -1,4 +1,4 @@
-import { IconGrid } from '../grids/icon';
+import { IconGrid } from '../grids/icon/icon';
 import { describe, expect, test } from 'vitest';
 
 import type { IconGridData } from '../types';

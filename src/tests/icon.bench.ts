@@ -1,5 +1,5 @@
-import { IconGrid } from '../grids/icon';
-import { IconGridAnalytical } from '../grids/icon-analytical';
+import { IconGrid } from '../grids/icon/icon';
+import { IconGridAnalytical } from '../grids/icon/icon-analytical';
 import type { GridInterface } from '../grids/interface';
 import { RegularGrid } from '../grids/regular';
 import { tile2lat, tile2lon } from '../utils/math';

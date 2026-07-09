@@ -1,6 +1,6 @@
 import { GaussianGrid } from './gaussian';
-import { IconGrid } from './icon';
-import { IconGridAnalytical } from './icon-analytical';
+import { IconGrid } from './icon/icon';
+import { IconGridAnalytical } from './icon/icon-analytical';
 import { GridInterface } from './interface';
 import { ProjectionGrid } from './projected';
 import { RegularGrid } from './regular';
