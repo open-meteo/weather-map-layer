@@ -1,8 +1,16 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 
 const importMetaUrlPolyfillVariableName = '__import_meta_url__';
 
+// UMD must be a single self-contained file (dropped in via <script>), so the
+// worker has to be inlined. Redirect ./worker-loader to the inline variant.
+const inlineWorkerLoader = fileURLToPath(new URL('./src/worker-loader-inline.ts', import.meta.url));
+
 export default defineConfig({
+	resolve: {
+		alias: [{ find: /^\.\/worker-loader$/, replacement: inlineWorkerLoader }]
+	},
 	build: {
 		emptyOutDir: false, // so it doesn't wipe the main build
 		lib: {

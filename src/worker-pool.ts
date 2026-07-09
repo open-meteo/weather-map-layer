@@ -1,5 +1,8 @@
-// @ts-expect-error worker import
-import TileWorker from './worker?worker&inline';
+// The worker constructor is loaded through a small indirection so the bundling
+// mode (inline vs separate chunk) can be chosen per build: ESM ships it as a
+// separate chunk (small main bundle, code-splittable), while UMD/CJS alias this
+// to worker-loader-inline.ts to stay single-file. See worker-loader.ts.
+import TileWorker from './worker-loader';
 
 import { TilePromise, TileRequest, TileResult, WorkerResponse } from './types';
 
