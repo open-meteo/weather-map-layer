@@ -13,7 +13,7 @@ export default defineConfig({
 		exclude: ['@openmeteo/file-reader', '@openmeteo/file-format-wasm']
 	},
 	build: {
-		chunkSizeWarningLimit: 1200,
+		chunkSizeWarningLimit: 2200,
 		rolldownOptions: {
 			external: ['@openmeteo/file-reader', '@openmeteo/file-format-wasm'],
 			input: {

@@ -6,7 +6,7 @@ export default defineConfig({
 	},
 	build: {
 		emptyOutDir: false, // so it doesn't wipe the main build
-		chunkSizeWarningLimit: 1200,
+		chunkSizeWarningLimit: 2200,
 		rolldownOptions: {
 			external: ['@openmeteo/file-reader', '@openmeteo/file-format-wasm'],
 			input: {
