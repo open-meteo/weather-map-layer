@@ -1136,8 +1136,11 @@ export class IconGrid implements GridInterface {
 		switch (method) {
 			case 'nearest':
 				return this.getNearestNeighborValue(values, lat, lon);
-			// C0 linear interpolation over the dual mesh (ring of cell centres).
-			// Cubic/monotone have no meaningful extension on this stencil.
+			// Per-pixel sampling uses the C0 linear dual-mesh interpolation (ring of
+			// cell centres). The smooth C1 cubic/monotone variants are implemented in
+			// renderTile (forward raster) as curved Bézier triangles — that is the
+			// path the tile renderer takes; this per-pixel entry is only hit for point
+			// queries and the (unused for ICON) non-raster fallback, so it stays linear.
 			case 'cubic':
 			case 'monotone':
 			case 'linear':
@@ -1173,6 +1176,55 @@ export class IconGrid implements GridInterface {
 		return cnt ? s / cnt : NaN;
 	}
 
+	// Value AND gradient of the field at a primal vertex, in the tile's pixel
+	// space, for the cubic/monotone Bézier fill. The value is the mean of the
+	// surrounding cells (same as vertexValue, so cubic reduces to the linear
+	// vertex value where the gradient vanishes); the gradient is a 2×2 least-
+	// squares plane fit of those cell values over their pixel offsets from the
+	// vertex. Returns [value, gx, gy]; gx=NaN when the ring is degenerate
+	// (sub-pixel / collinear) so the caller falls back to the linear edge slope.
+	private vertexValueGrad(
+		values: Float32Array,
+		cell: LeafContext & { index: number },
+		V: Vec3,
+		pv: [number, number],
+		project: (v: Vec3) => [number, number]
+	): [number, number, number] {
+		this.vertexRing(cell, V);
+		const m = this.dfCount;
+		let sum = 0;
+		let cnt = 0;
+		for (let i = 0; i < m; i++) {
+			const v = values[this.dfIdx[i]];
+			if (isFinite(v)) {
+				sum += v;
+				cnt++;
+			}
+		}
+		if (cnt === 0) return [NaN, NaN, NaN];
+		const fV = sum / cnt;
+		let A = 0;
+		let B = 0;
+		let C = 0;
+		let rx = 0;
+		let ry = 0;
+		for (let i = 0; i < m; i++) {
+			const v = values[this.dfIdx[i]];
+			if (!isFinite(v)) continue;
+			const p = project(this.dfCenters[i]);
+			const dx = p[0] - pv[0];
+			const dy = p[1] - pv[1];
+			A += dx * dx;
+			B += dx * dy;
+			C += dy * dy;
+			rx += (v - fV) * dx;
+			ry += (v - fV) * dy;
+		}
+		const det = A * C - B * B;
+		if (det < 1e-9) return [fV, NaN, NaN];
+		return [fV, (C * rx - B * ry) / det, (A * ry - B * rx) / det];
+	}
+
 	/**
 	 * Rasterise this grid's native (warped) triangles directly into a mercator
 	 * tile, forward (cell → pixels) instead of sampling per pixel. Returns a
@@ -1193,9 +1245,15 @@ export class IconGrid implements GridInterface {
 	): Float32Array {
 		const out = new Float32Array(tileSize * tileSize).fill(NaN);
 		const smooth = method !== 'nearest';
+		// cubic / monotone build a C1 curved (Bézier) triangle per cell from each
+		// primal vertex's value AND an estimated gradient; 'monotone' clamps the
+		// control points so the surface can't overshoot the surrounding cell means.
+		const cubic = method === 'cubic' || method === 'monotone';
+		const monotone = method === 'monotone';
 		const worldPx = 2 ** z * tileSize;
 		const VS = this.n * 2 ** this.k + 1; // face lattice edge size, for vertex keys
-		const vcache = new Map<number, number>(); // primal-vertex value memo (smooth)
+		const vcache = new Map<number, number>(); // primal-vertex value memo (linear)
+		const gcache = new Map<number, [number, number, number]>(); // (value,gx,gy) memo (cubic)
 		// tile lat/lon box (mercator is monotonic in lat & lon, so a lat/lon
 		// overlap test is equivalent to a pixel-box test but immune to projection
 		// distortion). A little padding covers the warp + straddling cells.
@@ -1240,6 +1298,94 @@ export class IconGrid implements GridInterface {
 					const l2 = 1 - l0 - l1;
 					if (l0 >= 0 && l1 >= 0 && l2 >= 0)
 						out[row + px] = smooth ? l0 * va + l1 * vb + l2 * vc : va;
+				}
+			}
+		};
+
+		// cubic (C1) fill: a scalar cubic Bézier triangle whose edge control points
+		// come from the per-vertex gradients (Hermite), so the field is smooth across
+		// cell edges instead of faceted. r{0,1,2} = [value, gx, gy] in pixel space
+		// (gx=NaN → no reliable gradient, fall back to the linear edge slope). When
+		// `clamp` (monotone) every control point is kept within the surrounding value
+		// range, so — by the Bézier convex-hull property — the surface never
+		// overshoots the cell means.
+		const fillCubic = (
+			a: [number, number],
+			b: [number, number],
+			cc: [number, number],
+			r0: [number, number, number],
+			r1: [number, number, number],
+			r2: [number, number, number],
+			clamp: boolean
+		): void => {
+			const f0 = r0[0];
+			const f1 = r1[0];
+			const f2 = r2[0];
+			// directional derivative along each edge from each endpoint (pixel units);
+			// fall back to the chord slope f_j−f_i where a vertex has no gradient
+			const g0 = r0[1] === r0[1];
+			const g1 = r1[1] === r1[1];
+			const g2 = r2[1] === r2[1];
+			const D01 = g0 ? r0[1] * (b[0] - a[0]) + r0[2] * (b[1] - a[1]) : f1 - f0;
+			const D02 = g0 ? r0[1] * (cc[0] - a[0]) + r0[2] * (cc[1] - a[1]) : f2 - f0;
+			const D10 = g1 ? r1[1] * (a[0] - b[0]) + r1[2] * (a[1] - b[1]) : f0 - f1;
+			const D12 = g1 ? r1[1] * (cc[0] - b[0]) + r1[2] * (cc[1] - b[1]) : f2 - f1;
+			const D20 = g2 ? r2[1] * (a[0] - cc[0]) + r2[2] * (a[1] - cc[1]) : f0 - f2;
+			const D21 = g2 ? r2[1] * (b[0] - cc[0]) + r2[2] * (b[1] - cc[1]) : f1 - f2;
+			let b210 = f0 + D01 / 3;
+			let b201 = f0 + D02 / 3;
+			let b120 = f1 + D10 / 3;
+			let b021 = f1 + D12 / 3;
+			let b102 = f2 + D20 / 3;
+			let b012 = f2 + D21 / 3;
+			if (clamp) {
+				const cl = (v: number, x: number, y: number) =>
+					v < Math.min(x, y) ? Math.min(x, y) : v > Math.max(x, y) ? Math.max(x, y) : v;
+				b210 = cl(b210, f0, f1);
+				b120 = cl(b120, f0, f1);
+				b021 = cl(b021, f1, f2);
+				b012 = cl(b012, f1, f2);
+				b102 = cl(b102, f2, f0);
+				b201 = cl(b201, f2, f0);
+			}
+			let b111 = 0.25 * (b210 + b201 + b120 + b021 + b102 + b012) - (f0 + f1 + f2) / 6;
+			if (clamp) {
+				const lo = Math.min(f0, f1, f2);
+				const hi = Math.max(f0, f1, f2);
+				b111 = b111 < lo ? lo : b111 > hi ? hi : b111;
+			}
+			const d = (b[1] - cc[1]) * (a[0] - cc[0]) + (cc[0] - b[0]) * (a[1] - cc[1]);
+			if (d === 0) return;
+			const inv = 1 / d;
+			const minX = Math.max(0, Math.floor(Math.min(a[0], b[0], cc[0])));
+			const maxX = Math.min(tileSize - 1, Math.ceil(Math.max(a[0], b[0], cc[0])));
+			const minY = Math.max(0, Math.floor(Math.min(a[1], b[1], cc[1])));
+			const maxY = Math.min(tileSize - 1, Math.ceil(Math.max(a[1], b[1], cc[1])));
+			for (let py = minY; py <= maxY; py++) {
+				const sy = py + 0.5;
+				const row = py * tileSize;
+				for (let px = minX; px <= maxX; px++) {
+					const sx = px + 0.5;
+					const l0 = ((b[1] - cc[1]) * (sx - cc[0]) + (cc[0] - b[0]) * (sy - cc[1])) * inv;
+					const l1 = ((cc[1] - a[1]) * (sx - cc[0]) + (a[0] - cc[0]) * (sy - cc[1])) * inv;
+					const l2 = 1 - l0 - l1;
+					if (l0 >= 0 && l1 >= 0 && l2 >= 0) {
+						const s0 = l0 * l0;
+						const s1 = l1 * l1;
+						const s2 = l2 * l2;
+						out[row + px] =
+							f0 * s0 * l0 +
+							f1 * s1 * l1 +
+							f2 * s2 * l2 +
+							3 *
+								(s0 * l1 * b210 +
+									l0 * s1 * b120 +
+									s1 * l2 * b021 +
+									l1 * s2 * b012 +
+									s0 * l2 * b201 +
+									l0 * s2 * b102) +
+							6 * l0 * l1 * l2 * b111;
+					}
 				}
 			}
 		};
@@ -1293,17 +1439,35 @@ export class IconGrid implements GridInterface {
 				if (smooth) {
 					const cell = { ...ctx, index };
 					const verts = [v0, v1, v2];
-					const vv = (s: number): number => {
-						// cache the primal-vertex mean by lattice id (shared by ~6 cells)
-						const key = ((face * VS + c[2 * s]) * VS + c[2 * s + 1]) | 0;
-						let val = vcache.get(key);
-						if (val === undefined) {
-							val = this.vertexValue(values, cell, verts[s]);
-							vcache.set(key, val);
-						}
-						return val;
-					};
-					fill(project(w0), project(w1), project(w2), vv(0), vv(1), vv(2));
+					const p0 = project(w0);
+					const p1 = project(w1);
+					const p2 = project(w2);
+					if (cubic) {
+						// per-vertex (value, gradient) in pixel space, memoized by lattice
+						// id — the ~6 cells sharing a vertex compute the plane fit once
+						const gv = (s: number, ps: [number, number]): [number, number, number] => {
+							const key = ((face * VS + c[2 * s]) * VS + c[2 * s + 1]) | 0;
+							let rec = gcache.get(key);
+							if (rec === undefined) {
+								rec = this.vertexValueGrad(values, cell, verts[s], ps, project);
+								gcache.set(key, rec);
+							}
+							return rec;
+						};
+						fillCubic(p0, p1, p2, gv(0, p0), gv(1, p1), gv(2, p2), monotone);
+					} else {
+						const vv = (s: number): number => {
+							// cache the primal-vertex mean by lattice id (shared by ~6 cells)
+							const key = ((face * VS + c[2 * s]) * VS + c[2 * s + 1]) | 0;
+							let val = vcache.get(key);
+							if (val === undefined) {
+								val = this.vertexValue(values, cell, verts[s]);
+								vcache.set(key, val);
+							}
+							return val;
+						};
+						fill(p0, p1, p2, vv(0), vv(1), vv(2));
+					}
 				} else {
 					const v = values[index - this.nxStart];
 					fill(project(w0), project(w1), project(w2), v, v, v);
