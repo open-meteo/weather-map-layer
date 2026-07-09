@@ -63,16 +63,20 @@ export class IconMeshGrid implements GridInterface {
 	private vStart: Int32Array | null = null;
 	private vCells: Int32Array | null = null;
 
-	constructor(data: IconMeshGridData, ranges: DimensionRange[] | null = null) {
-		const g = data.geometryData;
-		if (!g) throw new Error('IconMeshGrid needs geometryData — await GridFactory.preload first');
-		if (g.nCells !== data.nx)
-			throw new Error(`IconMeshGrid geometry has ${g.nCells} cells, domain declares nx=${data.nx}`);
-		this.nCells = g.nCells;
-		this.nVert = g.nVert;
-		this.verts = g.verts;
-		this.voc = g.voc;
-		this.centres = g.centres;
+	constructor(
+		data: IconMeshGridData,
+		geometry: IconMeshGeometry,
+		ranges: DimensionRange[] | null = null
+	) {
+		if (geometry.nCells !== data.nx)
+			throw new Error(
+				`IconMeshGrid geometry has ${geometry.nCells} cells, domain declares nx=${data.nx}`
+			);
+		this.nCells = geometry.nCells;
+		this.nVert = geometry.nVert;
+		this.verts = geometry.verts;
+		this.voc = geometry.voc;
+		this.centres = geometry.centres;
 		this.nxStart = ranges ? ranges[1].start : 0;
 
 		// domain extent from cell centres

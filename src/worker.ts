@@ -43,6 +43,8 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 
 		if (message.data.renderOptions.iconMode)
 			gridConfig.iconMode = message.data.renderOptions.iconMode;
+		// icon-mesh grids fetch their triangle geometry on first use; no-op otherwise
+		await GridFactory.preload(domain.grid);
 		const grid = GridFactory.create(domain.grid, ranges);
 
 		// Offset the colour threshold by half the data's quantization step so
@@ -127,6 +129,8 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 
 		if (message.data.renderOptions.iconMode)
 			gridConfig.iconMode = message.data.renderOptions.iconMode;
+		// icon-mesh grids fetch their triangle geometry on first use; no-op otherwise
+		await GridFactory.preload(domain.grid);
 		const grid = GridFactory.create(domain.grid, ranges);
 		if (message.data.renderOptions.drawGrid) {
 			generateGridPoints(pbf, grid, values, directions, x, y, z, clippingOptions);

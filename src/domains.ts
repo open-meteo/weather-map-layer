@@ -193,14 +193,15 @@ export const domainOptions: Array<Domain> = [
 	{
 		value: 'dwd_icon_eu',
 		label: 'DWD ICON EU',
+		// Native ICON-EU nest grid (R3B07, 13 km, 164 984 cells). File-based: the
+		// triangle geometry is served next to the data (icon-native-test dev
+		// endpoint) and loaded by GridFactory.preload. Requires the converted .om
+		// files in native cell order (icon-native-test/convert-mesh-run.mts).
 		grid: {
-			type: 'regular',
-			nx: 1377,
-			ny: 657,
-			latMin: 29.5,
-			lonMin: -23.5,
-			dx: 0.0625,
-			dy: 0.0625,
+			type: 'icon-mesh',
+			nx: 164984,
+			ny: 1,
+			geometry: 'http://localhost:8090/grid-geometry/dwd_icon_eu.bin',
 			zoom: 3.2
 		},
 		time_interval: 'hourly',
@@ -209,14 +210,12 @@ export const domainOptions: Array<Domain> = [
 	{
 		value: 'dwd_icon_d2',
 		label: 'DWD ICON D2',
+		// Native ICON-D2 grid (R19B07, 2 km, 542 040 cells). See dwd_icon_eu.
 		grid: {
-			type: 'regular',
-			nx: 1215,
-			ny: 746,
-			latMin: 43.18,
-			lonMin: -3.94,
-			dx: 0.02,
-			dy: 0.02,
+			type: 'icon-mesh',
+			nx: 542040,
+			ny: 1,
+			geometry: 'http://localhost:8090/grid-geometry/dwd_icon_d2.bin',
 			zoom: 5.2
 		},
 		time_interval: 'hourly',

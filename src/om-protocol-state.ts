@@ -63,6 +63,15 @@ export const clearBlockCache = async (): Promise<void> => {
 };
 
 export const getRanges = (gridData: GridData, bounds: Bounds | undefined): DimensionRange[] => {
+	// icon-mesh is a flat cell array always loaded whole; short-circuit so this
+	// (synchronous) path never has to build the grid, which would need the
+	// asynchronously-fetched geometry.
+	if (gridData.type === 'icon-mesh') {
+		return [
+			{ start: 0, end: 1 },
+			{ start: 0, end: gridData.nx }
+		];
+	}
 	if (bounds) {
 		const gridGetter = GridFactory.create(gridData, null);
 		// Clamp to grid extent so padded snap bounds don't produce out-of-range indices
@@ -221,6 +230,7 @@ export const getValueFromLatLong = async (
 		return { value: NaN };
 	}
 
+	await GridFactory.preload(state.dataOptions.domain.grid);
 	const grid = GridFactory.create(state.dataOptions.domain.grid, state.ranges);
 	const lonNormalized = normalizeLon(lon);
 	const value = grid.getLinearInterpolatedValue(state.data.values, lat, lonNormalized);

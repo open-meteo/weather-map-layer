@@ -224,10 +224,8 @@ export interface IconMeshGeometry {
 // the cell count, ny must be 1.
 export interface IconMeshGridData extends BaseGridData {
 	type: 'icon-mesh';
-	/** URL/path of the 'ICNG' geometry binary, loaded by GridFactory.preload */
+	/** URL of the 'ICNG' geometry binary; fetched + cached by GridFactory.preload */
 	geometry: string;
-	/** parsed geometry — populated by preload() before create() */
-	geometryData?: IconMeshGeometry;
 }
 
 // Native ICON icosahedral R{n}B{k} grid (see grids/icon.ts for the canonical

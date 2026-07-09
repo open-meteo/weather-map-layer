@@ -1,12 +1,12 @@
 import { GaussianGrid } from './gaussian';
 import { IconGrid } from './icon/icon';
 import { IconGridAnalytical } from './icon/icon-analytical';
-import { IconMeshGrid } from './icon/icon-mesh';
+import { IconMeshGrid, parseIconMeshGeometry } from './icon/icon-mesh';
 import { GridInterface } from './interface';
 import { ProjectionGrid } from './projected';
 import { RegularGrid } from './regular';
 
-import { DimensionRange, GridData, IconGridMode } from '../types';
+import { DimensionRange, GridData, IconGridMode, IconMeshGeometry } from '../types';
 
 // Which ICON implementation the factory builds. Switchable at runtime (e.g. from
 // the maps dev UI, or per render via renderOptions.iconMode) to compare:
@@ -22,12 +22,29 @@ export const gridConfig: { iconMode: IconGridMode } = { iconMode: 'table' };
 // mode). The persistent instance also keeps its spatial-coherence caches warm.
 const cache = new Map<string, GridInterface>();
 
+// Decoded icon-mesh geometry, keyed by its URL. Fetched once by preload() (it is
+// a multi-MB binary, so it can't ride along in the grid definition or the
+// per-tile worker message) and reused by every create() for that grid.
+const geometryCache = new Map<string, IconMeshGeometry>();
+
 export class GridFactory {
+	/**
+	 * Load any out-of-band data a grid type needs before it can be built. For
+	 * `icon-mesh` this fetches + decodes the triangle geometry binary; it MUST be
+	 * awaited before `create()` for such a grid. A no-op for every other type, so
+	 * it is safe to await before any create.
+	 */
+	static async preload(data: GridData): Promise<void> {
+		if (data.type !== 'icon-mesh' || geometryCache.has(data.geometry)) return;
+		const res = await fetch(data.geometry);
+		if (!res.ok)
+			throw new Error(`icon-mesh geometry fetch failed (${res.status}): ${data.geometry}`);
+		geometryCache.set(data.geometry, parseIconMeshGeometry(await res.arrayBuffer()));
+	}
+
 	static create(data: GridData, ranges: DimensionRange[] | null = null): GridInterface {
 		const key =
-			// exclude the decoded icon-mesh geometry (big typed arrays) from the key —
-			// the geometry URL identifies it
-			JSON.stringify(data, (k, v) => (k === 'geometryData' ? undefined : v)) +
+			JSON.stringify(data) +
 			'|' +
 			JSON.stringify(ranges) +
 			(data.type === 'icon' ? '|' + gridConfig.iconMode : '');
@@ -52,8 +69,12 @@ export class GridFactory {
 				return new ProjectionGrid(data, ranges);
 			case 'regular':
 				return new RegularGrid(data, ranges);
-			case 'icon-mesh':
-				return new IconMeshGrid(data, ranges);
+			case 'icon-mesh': {
+				const geometry = geometryCache.get(data.geometry);
+				if (!geometry)
+					throw new Error('await GridFactory.preload(grid) before creating an icon-mesh grid');
+				return new IconMeshGrid(data, geometry, ranges);
+			}
 			default: {
 				// This ensures exhaustiveness checking
 				const _exhaustive: never = data;
