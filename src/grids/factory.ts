@@ -1,6 +1,7 @@
 import { GaussianGrid } from './gaussian';
 import { IconGrid } from './icon/icon';
 import { IconGridAnalytical } from './icon/icon-analytical';
+import { IconMeshGrid } from './icon/icon-mesh';
 import { GridInterface } from './interface';
 import { ProjectionGrid } from './projected';
 import { RegularGrid } from './regular';
@@ -24,7 +25,9 @@ const cache = new Map<string, GridInterface>();
 export class GridFactory {
 	static create(data: GridData, ranges: DimensionRange[] | null = null): GridInterface {
 		const key =
-			JSON.stringify(data) +
+			// exclude the decoded icon-mesh geometry (big typed arrays) from the key —
+			// the geometry URL identifies it
+			JSON.stringify(data, (k, v) => (k === 'geometryData' ? undefined : v)) +
 			'|' +
 			JSON.stringify(ranges) +
 			(data.type === 'icon' ? '|' + gridConfig.iconMode : '');
@@ -49,6 +52,8 @@ export class GridFactory {
 				return new ProjectionGrid(data, ranges);
 			case 'regular':
 				return new RegularGrid(data, ranges);
+			case 'icon-mesh':
+				return new IconMeshGrid(data, ranges);
 			default: {
 				// This ensures exhaustiveness checking
 				const _exhaustive: never = data;

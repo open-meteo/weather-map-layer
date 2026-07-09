@@ -200,11 +200,34 @@ interface BaseGridData {
 }
 
 // Union type for all grid types
-export type GridData = RegularGridData | AnyProjectionGridData | GaussianGridData | IconGridData;
+export type GridData =
+	RegularGridData | AnyProjectionGridData | GaussianGridData | IconGridData | IconMeshGridData;
 
 export interface GaussianGridData extends BaseGridData {
 	type: 'gaussian';
 	gaussianGridLatitudeLines: number;
+}
+
+// Decoded geometry of a file-based native ICON mesh (see grids/icon/icon-mesh.ts
+// and icon-native-test/extract-native-grid.mjs).
+export interface IconMeshGeometry {
+	nCells: number;
+	nVert: number;
+	verts: Float32Array; // interleaved unit-sphere [x,y,z] × nVert
+	voc: Uint32Array; // interleaved 0-based [v0,v1,v2] × nCells
+	centres: Float32Array; // interleaved [lat,lon]° × nCells
+}
+
+// File-based native ICON triangular grid for limited-area / nest models
+// (ICON-D2 R19B07, ICON-EU nest). Unlike IconGridData this is not reconstructed
+// analytically — the triangle geometry is loaded from an 'ICNG' binary. nx is
+// the cell count, ny must be 1.
+export interface IconMeshGridData extends BaseGridData {
+	type: 'icon-mesh';
+	/** URL/path of the 'ICNG' geometry binary, loaded by GridFactory.preload */
+	geometry: string;
+	/** parsed geometry — populated by preload() before create() */
+	geometryData?: IconMeshGeometry;
 }
 
 // Native ICON icosahedral R{n}B{k} grid (see grids/icon.ts for the canonical
