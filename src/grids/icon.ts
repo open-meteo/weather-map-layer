@@ -246,6 +246,63 @@ export class IconGrid implements GridInterface {
 	// per-face root lattices, kept only until the warp decode has run
 	private readonly rootLattices: Vec3[][][] = [];
 
+	// Coarse (inverse-warp) context cache: partialLocate is a deterministic
+	// function of the query point, so its result can be reused for any (true)
+	// point strictly inside the cached coarse triangle. Only cold (non-pentagon)
+	// contexts are cached; hot points take the full accurate inverse.
+	private icCacheValid = false;
+	private icN12: Vec3 = [0, 0, 0];
+	private icN20: Vec3 = [0, 0, 0];
+	private icN01: Vec3 = [0, 0, 0];
+	private icOrient = 1;
+	private icMargin = 0;
+	private icCtx: Pick<LeafContext, 'face' | 'lbV' | 'lbC'> | null = null;
+
+	// Equirectangular cell-index lookup raster: maps a (lat,lon) pixel to the
+	// cell index it falls in. Data-independent (pure geometry), built once and
+	// reused across every data load, so per-pixel nearest-neighbour sampling
+	// becomes a direct array read — as cheap as a regular grid. Built lazily on
+	// first use (the O(W·H) findCell scan is ~1 s and amortizes over all tiles).
+	private idxRaster: Int32Array | null = null;
+	private rasterW = 0;
+	private rasterH = 0;
+
+	// findCell leaf cache (independent of the barycentric one): reuse the located
+	// cell for any inverse-warped point strictly inside its geometric leaf
+	// triangle — speeds the raster build scan and repeated nearest-neighbour calls.
+	private fcCacheValid = false;
+	private fcN12: Vec3 = [0, 0, 0];
+	private fcN20: Vec3 = [0, 0, 0];
+	private fcN01: Vec3 = [0, 0, 0];
+	private fcOrient = 1;
+	private fcMargin = 0;
+	private fcIndex = 0;
+
+	// last-located (face,root), used to seed locateVec's descent and skip the
+	// global face/root search when a nearby query lands in the same root.
+	private seedValid = false;
+	private seedFace = 0;
+	private seedRoot = 0;
+
+	// Dual-face interpolation cache: the ring of cell centres around a primal
+	// vertex (a "dual face"). These tile the true sphere, so a query strictly
+	// inside the cached ring polygon reuses it — fan-triangulated barycentric
+	// interpolation over the ring is C0 (no faceting) and reproduces cell values.
+	private dfCacheValid = false;
+	private dfCount = 0;
+	private dfCenters: Vec3[] = [];
+	private dfIdx: number[] = [];
+	private dfEdge: Vec3[] = []; // cross(centers[i], centers[i+1])
+	private dfOrient = 1;
+	private dfMargin = 0;
+	// tangent frame of the cached dual face (for mean-value coordinates) + scratch
+	private dfG: Vec3 = [0, 0, 0];
+	private dfE1: Vec3 = [0, 0, 0];
+	private dfE2: Vec3 = [0, 0, 0];
+	private readonly dfSx = new Float64Array(10);
+	private readonly dfSy = new Float64Array(10);
+	private readonly dfR = new Float64Array(10);
+
 	constructor(data: IconGridData, ranges: DimensionRange[] | null = null) {
 		this.n = data.iconRoot;
 		this.k = data.iconBisections;
@@ -429,29 +486,46 @@ export class IconGrid implements GridInterface {
 	 */
 	private locateVec(p: Vec3): LeafContext & { index: number } {
 		let face = 0;
-		let best = -Infinity;
-		for (let f = 0; f < 20; f++) {
-			const d = dot(p, this.faces[f].center);
-			if (d > best) {
-				best = d;
-				face = f;
-			}
-		}
-
-		// root triangle: the one whose three edge-side tests are most inside
-		// (max-min score also absorbs float noise on shared edges)
-		const roots = this.faces[face].roots;
 		let rootLocal = 0;
-		let bestScore = -Infinity;
-		for (let r = 0; r < roots.length; r++) {
-			const root = roots[r];
-			const score = Math.min(dot(p, root.n01), dot(p, root.n12), dot(p, root.n20));
-			if (score > bestScore) {
-				bestScore = score;
-				rootLocal = r;
+		// same-root fast path: when a seed root (from the previous query) still
+		// contains p, skip the 20-face + n²-root global search entirely.
+		if (
+			this.seedValid &&
+			(() => {
+				const rt = this.faces[this.seedFace].roots[this.seedRoot];
+				return (
+					dot(p, rt.n01) >= -1e-9 && dot(p, rt.n12) >= -1e-9 && dot(p, rt.n20) >= -1e-9
+				);
+			})()
+		) {
+			face = this.seedFace;
+			rootLocal = this.seedRoot;
+		} else {
+			let best = -Infinity;
+			for (let f = 0; f < 20; f++) {
+				const d = dot(p, this.faces[f].center);
+				if (d > best) {
+					best = d;
+					face = f;
+				}
+			}
+			// root triangle: the one whose three edge-side tests are most inside
+			// (max-min score also absorbs float noise on shared edges)
+			const roots = this.faces[face].roots;
+			let bestScore = -Infinity;
+			for (let r = 0; r < roots.length; r++) {
+				const root = roots[r];
+				const score = Math.min(dot(p, root.n01), dot(p, root.n12), dot(p, root.n20));
+				if (score > bestScore) {
+					bestScore = score;
+					rootLocal = r;
+				}
 			}
 		}
-		const root = roots[rootLocal];
+		this.seedFace = face;
+		this.seedRoot = rootLocal;
+		this.seedValid = true;
+		const root = this.faces[face].roots[rootLocal];
 		let v0 = root.v0;
 		let v1 = root.v1;
 		let v2 = root.v2;
@@ -763,11 +837,36 @@ export class IconGrid implements GridInterface {
 	// descent). Near the pentagon points the warp field has patch detail and
 	// larger gradients, so use the accurate leaf-level warp and two steps.
 	private inversePoint(p: Vec3): Vec3 {
+		// coarse-context fast path: reuse the cached cold partialLocate result when
+		// p is strictly inside its coarse triangle (partialLocate is a
+		// deterministic function of p, so this is exact).
+		if (this.icCacheValid) {
+			const o = this.icOrient;
+			if (
+				dot(p, this.icN12) * o > this.icMargin &&
+				dot(p, this.icN20) * o > this.icMargin &&
+				dot(p, this.icN01) * o > this.icMargin
+			) {
+				const w = this.baseWarpAt(p, this.icCtx!);
+				return normalize([p[0] - w[0], p[1] - w[1], p[2] - w[2]]);
+			}
+		}
 		const ctx5 = this.partialLocate(p);
 		if (!this.isHot(ctx5)) {
+			// cache this cold coarse triangle for subsequent nearby queries
+			const [l0, l1, l2] = ctx5.lbV;
+			this.icN12 = cross(l1, l2);
+			this.icN20 = cross(l2, l0);
+			this.icN01 = cross(l0, l1);
+			const det = dot(l0, this.icN12);
+			this.icOrient = det >= 0 ? 1 : -1;
+			this.icMargin = Math.abs(det) * 1e-3;
+			this.icCtx = ctx5;
+			this.icCacheValid = true;
 			const w = this.baseWarpAt(p, ctx5);
 			return normalize([p[0] - w[0], p[1] - w[1], p[2] - w[2]]);
 		}
+		this.icCacheValid = false; // hot region — don't serve stale cold context
 		const w0 = this.warpAt(p, this.locateVec(p));
 		const p1 = normalize([p[0] - w0[0], p[1] - w0[1], p[2] - w0[2]]);
 		const w1 = this.warpAt(p1, this.locateVec(p1));
@@ -781,7 +880,25 @@ export class IconGrid implements GridInterface {
 	findCell(lat: number, lon: number): number {
 		let p = latLonToVec(lat, lon);
 		if (this.warp) p = this.inversePoint(p);
-		return this.locateVec(p).index - this.nxStart;
+		const o = this.fcOrient;
+		if (
+			this.fcCacheValid &&
+			dot(p, this.fcN12) * o > this.fcMargin &&
+			dot(p, this.fcN20) * o > this.fcMargin &&
+			dot(p, this.fcN01) * o > this.fcMargin
+		) {
+			return this.fcIndex;
+		}
+		const cell = this.locateVec(p);
+		this.fcN12 = cross(cell.v1, cell.v2);
+		this.fcN20 = cross(cell.v2, cell.v0);
+		this.fcN01 = cross(cell.v0, cell.v1);
+		const det = dot(cell.v0, this.fcN12);
+		this.fcOrient = det >= 0 ? 1 : -1;
+		this.fcMargin = Math.abs(det) * 1e-3;
+		this.fcIndex = cell.index - this.nxStart;
+		this.fcCacheValid = true;
+		return this.fcIndex;
 	}
 
 	// the three (warped) triangle corners of a leaf context, as unit vectors
@@ -848,8 +965,218 @@ export class IconGrid implements GridInterface {
 		return this.getInterpolatedValue(values, lat, lon, 'linear');
 	}
 
+	// true centre (circumcenter of the warped triangle) of a located leaf
+	private centerFromCtx(ctx: LeafContext): Vec3 {
+		if (!this.warp) return IconGrid.circumcenter(ctx.v0, ctx.v1, ctx.v2);
+		const [a, b, d] = this.warpTriangleCtx(ctx);
+		return IconGrid.circumcenter(a, b, d);
+	}
+
+	// index of the array entry nearest (max dot) to t
+	private static nearestVert(v0: Vec3, v1: Vec3, v2: Vec3, t: Vec3): number {
+		const d0 = dot(v0, t),
+			d1 = dot(v1, t),
+			d2 = dot(v2, t);
+		return d0 >= d1 ? (d0 >= d2 ? 0 : 2) : d1 >= d2 ? 1 : 2;
+	}
+
+	// Walk the ring of cells sharing the primal vertex V (5 at a pentagon, else
+	// 6), collecting their indices and true centres in rotational order. Each
+	// step reflects the current centre across the shared edge at V and re-locates
+	// (seeded, so cheap). Robust across roots/faces/pentagons; caps the loop.
+	private vertexRing(cell: LeafContext & { index: number }, V: Vec3): void {
+		this.dfCount = 0;
+		let cur: LeafContext & { index: number } = cell;
+		let vi = IconGrid.nearestVert(cur.v0, cur.v1, cur.v2, V);
+		const verts0 = [cur.v0, cur.v1, cur.v2];
+		let shared = verts0[(vi + 1) % 3]; // vertex on the edge we cross next
+		for (let step = 0; step < 8; step++) {
+			this.dfIdx[this.dfCount] = cur.index - this.nxStart;
+			this.dfCenters[this.dfCount] = this.centerFromCtx(cur);
+			this.dfCount++;
+			const nrm = normalize(cross(V, shared));
+			const cx = cur.v0[0] + cur.v1[0] + cur.v2[0];
+			const cy = cur.v0[1] + cur.v1[1] + cur.v2[1];
+			const cz = cur.v0[2] + cur.v1[2] + cur.v2[2];
+			const cl = Math.sqrt(cx * cx + cy * cy + cz * cz);
+			const gcx = cx / cl,
+				gcy = cy / cl,
+				gcz = cz / cl;
+			const d2 = 2 * (gcx * nrm[0] + gcy * nrm[1] + gcz * nrm[2]);
+			const refl: Vec3 = [gcx - d2 * nrm[0], gcy - d2 * nrm[1], gcz - d2 * nrm[2]];
+			const next = this.locateVec(refl);
+			if (next.index === cell.index) break;
+			const nvi = IconGrid.nearestVert(next.v0, next.v1, next.v2, V);
+			const nsi = IconGrid.nearestVert(next.v0, next.v1, next.v2, shared);
+			shared = [next.v0, next.v1, next.v2][3 - nvi - nsi];
+			cur = next;
+		}
+	}
+
+	// Mean-value-coordinate interpolation of the (true) point p over the cached
+	// dual-face ring. Unlike a fan triangulation this is smooth (C∞) inside the
+	// polygon — no gradient kinks along fan diagonals, so contours stay smooth —
+	// while still reproducing linear fields and cell values exactly. Weights use
+	// the trig-free tangent form tan(α/2) = (rᵢrⱼ − sᵢ·sⱼ)/(sᵢ×sⱼ) on the
+	// orthographic projection into the face's tangent plane. NaN-aware.
+	private interpDual(values: Float32Array, p: Vec3): number {
+		const m = this.dfCount;
+		const C = this.dfCenters;
+		const I = this.dfIdx;
+		const e1 = this.dfE1;
+		const e2 = this.dfE2;
+		const px = dot(p, e1);
+		const py = dot(p, e2);
+		const Sx = this.dfSx;
+		const Sy = this.dfSy;
+		const R = this.dfR;
+		for (let i = 0; i < m; i++) {
+			const sx = dot(C[i], e1) - px;
+			const sy = dot(C[i], e2) - py;
+			const r = Math.sqrt(sx * sx + sy * sy);
+			if (r < 1e-12) return roundWithPrecision(values[I[i]]); // p at a centre
+			Sx[i] = sx;
+			Sy[i] = sy;
+			R[i] = r;
+		}
+		let s = 0;
+		let wsum = 0;
+		let missing = 0;
+		for (let i = 0; i < m; i++) {
+			const j = (i + 1) % m;
+			const h = (i + m - 1) % m;
+			// tan(half-angle) on each side of vertex i
+			const crossPrev = Sx[h] * Sy[i] - Sy[h] * Sx[i];
+			const crossNext = Sx[i] * Sy[j] - Sy[i] * Sx[j];
+			const tPrev = crossPrev !== 0 ? (R[h] * R[i] - (Sx[h] * Sx[i] + Sy[h] * Sy[i])) / crossPrev : 0;
+			const tNext = crossNext !== 0 ? (R[i] * R[j] - (Sx[i] * Sx[j] + Sy[i] * Sy[j])) / crossNext : 0;
+			const w = (tPrev + tNext) / R[i];
+			const v = values[I[i]];
+			if (isFinite(v)) {
+				s += w * v;
+				wsum += w;
+			} else {
+				missing += w;
+			}
+		}
+		// weights share a sign (CW/CCW winding); ignore missing neighbours unless
+		// they carry more weight than the finite ones
+		if (wsum === 0 || Math.abs(missing) > Math.abs(wsum)) return NaN;
+		return roundWithPrecision(s / wsum);
+	}
+
+	// C0 linear interpolation of cell-centre data via the dual mesh (fixes the
+	// triangular faceting of the 3-neighbour blend). Reuses the cached ring for
+	// any query strictly inside its polygon (skips the inverse-warp entirely).
+	private getDualValue(values: Float32Array, lat: number, lon: number): number {
+		const p = latLonToVec(lat, lon);
+		if (this.dfCacheValid) {
+			const o = this.dfOrient;
+			let inside = true;
+			for (let i = 0; i < this.dfCount; i++) {
+				if (dot(p, this.dfEdge[i]) * o <= this.dfMargin) {
+					inside = false;
+					break;
+				}
+			}
+			if (inside) return this.interpDual(values, p);
+		}
+		const pGeo = this.warp ? this.inversePoint(p) : p;
+		const cell = this.locateVec(pGeo);
+		// try the ring of each of the cell's vertices (nearest first) until one
+		// whose polygon actually contains p — that is the dual face p lives in
+		const order = [
+			IconGrid.nearestVert(cell.v0, cell.v1, cell.v2, pGeo)
+		];
+		order.push((order[0] + 1) % 3, (order[0] + 2) % 3);
+		for (let a = 0; a < 3; a++) {
+			const V = [cell.v0, cell.v1, cell.v2][order[a]];
+			this.vertexRing(cell, V);
+			const m = this.dfCount;
+			// polygon edge normals + orientation
+			for (let i = 0; i < m; i++) this.dfEdge[i] = cross(this.dfCenters[i], this.dfCenters[(i + 1) % m]);
+			const cenx = this.dfCenters.slice(0, m).reduce((s, c) => s + c[0], 0);
+			const ceny = this.dfCenters.slice(0, m).reduce((s, c) => s + c[1], 0);
+			const cenz = this.dfCenters.slice(0, m).reduce((s, c) => s + c[2], 0);
+			const cen: Vec3 = [cenx, ceny, cenz];
+			const det0 = dot(cen, this.dfEdge[0]);
+			this.dfOrient = det0 >= 0 ? 1 : -1;
+			const o = this.dfOrient;
+			let inside = true;
+			for (let i = 0; i < m; i++) {
+				if (dot(p, this.dfEdge[i]) * o <= 0) {
+					inside = false;
+					break;
+				}
+			}
+			if (inside || a === 2) {
+				// strict-inside (margin 0): a query with all edge tests > 0 is
+				// inside this dual polygon, which is exactly its dual face; boundary
+				// points fall through to a re-locate. Maximizes the cache hit rate.
+				this.dfMargin = 0;
+				// tangent frame at the face centroid, for mean-value coordinates
+				this.dfG = normalize(cen);
+				const [fe1, fe2] = tangentFrame(this.dfG);
+				this.dfE1 = fe1;
+				this.dfE2 = fe2;
+				this.dfCacheValid = true;
+				return this.interpDual(values, p);
+			}
+		}
+		return values[cell.index - this.nxStart];
+	}
+
+	// Build the equirectangular cell-index raster at roughly the native cell
+	// resolution (slightly oversampled so cell boundaries stay crisp). Uses the
+	// coherence caches, so the scan is fast; runs once per grid instance.
+	private buildIndexRaster(): void {
+		const cellAngle = Math.sqrt((4 * Math.PI) / this.nx); // mean cell size (rad)
+		const oversample = 1.3;
+		const W = Math.max(2, Math.ceil((2 * Math.PI) / cellAngle) * oversample) | 0;
+		const H = Math.max(2, Math.ceil(Math.PI / cellAngle) * oversample) | 0;
+		const raster = new Int32Array(W * H);
+		const dLat = 180 / H;
+		const dLon = 360 / W;
+		for (let iy = 0; iy < H; iy++) {
+			const lat = -90 + (iy + 0.5) * dLat;
+			const row = iy * W;
+			for (let ix = 0; ix < W; ix++) {
+				raster[row + ix] = this.findCell(lat, -180 + (ix + 0.5) * dLon);
+			}
+		}
+		this.rasterW = W;
+		this.rasterH = H;
+		this.idxRaster = raster;
+	}
+
+	/**
+	 * Opt-in: build the equirectangular cell-index lookup raster so that
+	 * subsequent nearest-neighbour sampling becomes a direct array read (~5 ns,
+	 * on par with a regular grid) instead of a per-pixel descent. The lookup is
+	 * APPROXIMATE — it snaps the query to the nearest raster pixel, so cell
+	 * boundaries are quantized to the raster resolution — and the one-time build
+	 * scans O(W·H) cells (~seconds for a global grid). Intended for the render
+	 * path where exactness is not required; getNearestNeighborValue stays exact
+	 * until this is called.
+	 */
+	buildNearestLookup(): void {
+		if (!this.idxRaster) this.buildIndexRaster();
+	}
+
+	// O(1) approximate cell lookup via the raster (regular-grid speed).
+	private rasterCell(lat: number, lon: number): number {
+		const W = this.rasterW;
+		let iy = (((lat + 90) * this.rasterH) / 180) | 0;
+		if (iy < 0) iy = 0;
+		else if (iy >= this.rasterH) iy = this.rasterH - 1;
+		let ix = (((lon + 180) * W) / 360) | 0;
+		ix = ((ix % W) + W) % W;
+		return this.idxRaster![iy * W + ix];
+	}
+
 	getNearestNeighborValue(values: Float32Array, lat: number, lon: number): number {
-		return values[this.findCell(lat, lon)];
+		// exact by default; fast approximate lookup once buildNearestLookup() is called
+		return values[this.idxRaster ? this.rasterCell(lat, lon) : this.findCell(lat, lon)];
 	}
 
 	getInterpolatedValue(
@@ -861,132 +1188,18 @@ export class IconGrid implements GridInterface {
 		switch (method) {
 			case 'nearest':
 				return this.getNearestNeighborValue(values, lat, lon);
-			// The 4-cell stencil (containing cell + 3 edge neighbours) has no
-			// meaningful cubic extension; both fall back to the barycentric blend.
+			// C0 linear interpolation over the dual mesh (ring of cell centres).
+			// Cubic/monotone have no meaningful extension on this stencil.
 			case 'cubic':
 			case 'monotone':
 			case 'linear':
-				return this.getBarycentricValue(values, lat, lon);
+				return this.getDualValue(values, lat, lon);
 			default: {
 				// Exhaustiveness check; also throws at runtime for untyped callers.
 				const _exhaustive: never = method;
 				throw new Error(`Unknown interpolation method: ${_exhaustive}`);
 			}
 		}
-	}
-
-	// Bilinear-equivalent sampling on the triangular grid: blend the containing
-	// cell with its three edge neighbours. The neighbour centres form a triangle
-	// around the cell centre; the sample point falls into one of the three
-	// sectors (centre + two neighbours) and is interpolated with projective
-	// (gnomonic) barycentric weights, which reproduces linear fields exactly.
-	// Corner regions of the leaf triangle poke slightly outside the neighbour
-	// triangle; negative weights are clamped there (mild flattening right at
-	// cell vertices, where a 6-cell vertex ring would be needed instead).
-	// Neighbour INDICES are found in the geometric space of the inverse-warped
-	// sample point; the weights use the true (warped) cell centres, where the
-	// data values live, so cell centres reproduce their value exactly. The
-	// centre node comes from the located context (no extra descent); neighbour
-	// nodes are the reflected geometric centres shifted by the base warp — a
-	// few-percent weight approximation, well below the scheme's corner seams —
-	// except near the pentagon points where the accurate centres are used.
-	private getBarycentricValue(values: Float32Array, lat: number, lon: number): number {
-		const p = latLonToVec(lat, lon);
-		const pGeo = this.warp ? this.inversePoint(p) : p;
-		const cell = this.locateVec(pGeo);
-		const hot = this.warp !== null && this.isHot(cell);
-
-		// edge-neighbour indices: reflect the geometric centre across the
-		// great-circle edge planes (lands well inside each neighbour)
-		const cGeo: Vec3 = normalize([
-			cell.v0[0] + cell.v1[0] + cell.v2[0],
-			cell.v0[1] + cell.v1[1] + cell.v2[1],
-			cell.v0[2] + cell.v1[2] + cell.v2[2]
-		]);
-		const reflect = (a: Vec3, b: Vec3): Vec3 => {
-			const nrm = normalize(cross(a, b));
-			const d = 2 * dot(cGeo, nrm);
-			return [cGeo[0] - d * nrm[0], cGeo[1] - d * nrm[1], cGeo[2] - d * nrm[2]];
-		};
-		const reflected = [
-			reflect(cell.v0, cell.v1),
-			reflect(cell.v1, cell.v2),
-			reflect(cell.v2, cell.v0)
-		];
-		const neighborIdx = reflected.map((q) => this.locateVec(q).index);
-
-		// interpolation nodes: the true cell centres
-		let c: Vec3;
-		let neighbors: Vec3[];
-		if (!this.warp) {
-			c = IconGrid.circumcenter(cell.v0, cell.v1, cell.v2);
-			neighbors = reflected;
-		} else if (hot) {
-			c = this.cellCenterVec(cell.index);
-			neighbors = neighborIdx.map((i) => this.cellCenterVec(i));
-		} else {
-			const [a, b, d] = this.warpTriangleCtx(cell);
-			c = IconGrid.circumcenter(a, b, d);
-			neighbors = reflected.map((q) => {
-				const w = this.baseWarpAt(q, cell);
-				return normalize([q[0] + w[0], q[1] + w[1], q[2] + w[2]]);
-			});
-		}
-		const v = values[cell.index - this.nxStart];
-		const nv = neighborIdx.map((i) => values[i - this.nxStart]);
-
-		// projective barycentric weights of p in the spherical triangle (c, a, b):
-		// ratios of scalar triple products (equivalent to planar barycentrics in
-		// the gnomonic projection, hence linear-exact)
-		const det = (a: Vec3, b: Vec3, q: Vec3): number => dot(q, cross(a, b));
-		let bestWeights: [number, number, number] | null = null;
-		let bestSector = 0;
-		let bestMin = -Infinity;
-		for (let s = 0; s < 3; s++) {
-			const a = neighbors[s];
-			const b = neighbors[(s + 1) % 3];
-			const w0 = det(a, b, p);
-			const wa = det(b, c, p);
-			const wb = det(c, a, p);
-			const sum = w0 + wa + wb;
-			if (sum === 0) continue;
-			const weights: [number, number, number] = [w0 / sum, wa / sum, wb / sum];
-			const min = Math.min(weights[0], weights[1], weights[2]);
-			if (min > bestMin) {
-				bestMin = min;
-				bestWeights = weights;
-				bestSector = s;
-			}
-		}
-		if (!bestWeights) return v;
-
-		// clamp corner-region extrapolation and renormalize
-		const w0 = Math.max(bestWeights[0], 0);
-		const wa = Math.max(bestWeights[1], 0);
-		const wb = Math.max(bestWeights[2], 0);
-		const va = nv[bestSector];
-		const vb = nv[(bestSector + 1) % 3];
-
-		// NaN awareness in the spirit of bilinearNaNAware: ignore missing
-		// neighbours if the remaining (finite) weight still dominates
-		let sum = 0;
-		let weightSum = 0;
-		if (isFinite(v)) {
-			sum += v * w0;
-			weightSum += w0;
-		} else if (w0 > 0) {
-			return NaN;
-		}
-		if (isFinite(va)) {
-			sum += va * wa;
-			weightSum += wa;
-		}
-		if (isFinite(vb)) {
-			sum += vb * wb;
-			weightSum += wb;
-		}
-		if (weightSum < 0.5) return NaN;
-		return roundWithPrecision(sum / weightSum);
 	}
 
 	forEachPoint(callback: (point: GridPoint) => void | false, bounds?: Bounds): void {

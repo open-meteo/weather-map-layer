@@ -8,6 +8,7 @@ import { generateGridPoints } from './utils/grid-points';
 import { halfQuantum as computeHalfQuantum, tile2lat, tile2lon } from './utils/math';
 import { makeColorSampler } from './utils/styling';
 
+import { gridConfig } from './grids/factory';
 import { GridFactory } from './grids/index';
 
 import { WorkerRequest } from './types';
@@ -40,6 +41,8 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 		// Initialized with zeros
 		const rgba = new Uint8ClampedArray(pixels * 4);
 
+		if (message.data.renderOptions.iconMode)
+			gridConfig.iconMode = message.data.renderOptions.iconMode;
 		const grid = GridFactory.create(domain.grid, ranges);
 
 		// Offset the colour threshold by half the data's quantization step so
@@ -115,6 +118,8 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 
 		const pbf = new PbfWriter();
 
+		if (message.data.renderOptions.iconMode)
+			gridConfig.iconMode = message.data.renderOptions.iconMode;
 		const grid = GridFactory.create(domain.grid, ranges);
 		if (message.data.renderOptions.drawGrid) {
 			generateGridPoints(pbf, grid, values, directions, x, y, z, clippingOptions);

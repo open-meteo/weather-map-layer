@@ -17,6 +17,9 @@ export { getColor, getColorScale } from './utils/styling';
 // Classes
 
 export { GridFactory, IconGrid } from './grids/index';
+export { IconGridAnalytical } from './grids/icon-analytical';
+export { gridConfig } from './grids/factory';
+export type { IconGridMode } from './types';
 
 // Objects / Constants
 
