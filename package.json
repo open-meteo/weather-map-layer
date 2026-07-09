@@ -6,6 +6,8 @@
 	"author": "Open-Meteo <info@open-meteo.com>",
 	"version": "0.0.19",
 	"module": "dist/index.mjs",
+	"unpkg": "dist/index.js",
+	"jsdelivr": "dist/index.js",
 	"exports": {
 		".": {
 			"types": "./dist/index.d.ts",

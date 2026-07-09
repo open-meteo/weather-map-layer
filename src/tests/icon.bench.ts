@@ -17,7 +17,6 @@ import type { InterpolationMethod } from '../types';
 // grid (2.95M cells) against an equivalent global regular grid, and across the
 // implementation variants ("iteration steps"):
 //   - nearest, exact           (per-pixel descent + inverse-warp, cached)
-//   - nearest, raster lookup    (opt-in approximate O(1) table — buildNearestLookup)
 //   - linear, dual-mesh          (mean-value coords over the ring of cell centres)
 // A regular grid nearest/linear is the speed reference.
 
@@ -32,15 +31,6 @@ const iconExact = new IconGrid({
 	iconRoot: n,
 	iconBisections: k
 } as never);
-// separate instance whose approximate nearest-neighbour raster is enabled
-const iconRaster = new IconGrid({
-	type: 'icon',
-	nx,
-	ny: 1,
-	iconRoot: n,
-	iconBisections: k
-} as never);
-iconRaster.buildNearestLookup();
 // purely-analytical variant (no 810 KB table; ~33 KB of coefficients)
 const iconAnalytical = new IconGridAnalytical({
 	type: 'icon',
@@ -124,7 +114,7 @@ function renderTile(
 	return acc;
 }
 
-const renderViewport = (
+const perPixelViewport = (
 	grid: GridInterface,
 	values: Float32Array,
 	method: InterpolationMethod,
@@ -136,35 +126,48 @@ const renderViewport = (
 	return acc;
 };
 
+// the production render path (worker.ts): rasterise the native triangles
+const rasterViewport = (
+	grid: GridInterface,
+	values: Float32Array,
+	method: InterpolationMethod,
+	tiles: Array<[number, number]>,
+	z: number
+): number => {
+	let acc = 0;
+	for (const [x, y] of tiles) {
+		const buf = grid.renderTile!(values, x, y, z, tileSize, method);
+		for (let i = 0; i < buf.length; i++) if (buf[i] === buf[i]) acc += buf[i];
+	}
+	return acc;
+};
+
 for (const vp of viewports) {
 	describe(`ICON render — ${vp.label} viewport (${vp.tiles.length} tiles, ${tileSize}² px)`, () => {
 		bench(
-			'regular   · nearest',
-			() => void renderViewport(regular, regValues, 'nearest', vp.tiles, vp.z)
+			'regular      · nearest (per-pixel)',
+			() => void perPixelViewport(regular, regValues, 'nearest', vp.tiles, vp.z)
 		);
 		bench(
-			'regular   · linear ',
-			() => void renderViewport(regular, regValues, 'linear', vp.tiles, vp.z)
+			'regular      · linear  (per-pixel)',
+			() => void perPixelViewport(regular, regValues, 'linear', vp.tiles, vp.z)
 		);
 		bench(
-			'icon table · nearest (exact) ',
-			() => void renderViewport(iconExact, iconValues, 'nearest', vp.tiles, vp.z)
+			'icon table   · nearest (per-pixel)',
+			() => void perPixelViewport(iconExact, iconValues, 'nearest', vp.tiles, vp.z)
 		);
 		bench(
-			'icon table · nearest (raster)',
-			() => void renderViewport(iconRaster, iconValues, 'nearest', vp.tiles, vp.z)
+			'icon table   · linear  (per-pixel)',
+			() => void perPixelViewport(iconExact, iconValues, 'linear', vp.tiles, vp.z)
 		);
 		bench(
-			'icon table · linear (dual-mesh)',
-			() => void renderViewport(iconExact, iconValues, 'linear', vp.tiles, vp.z)
+			'icon table   · nearest (RASTERISE)',
+			() => void rasterViewport(iconExact, iconValues, 'nearest', vp.tiles, vp.z)
 		);
 		bench(
-			'icon anlyt · nearest ',
-			() => void renderViewport(iconAnalytical, iconValues, 'nearest', vp.tiles, vp.z)
-		);
-		bench(
-			'icon anlyt · linear (dual-mesh)',
-			() => void renderViewport(iconAnalytical, iconValues, 'linear', vp.tiles, vp.z)
+			'icon table   · linear  (RASTERISE)',
+			() => void rasterViewport(iconExact, iconValues, 'linear', vp.tiles, vp.z)
 		);
 	});
 }
+void iconAnalytical;

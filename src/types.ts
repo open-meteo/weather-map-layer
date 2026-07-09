@@ -20,13 +20,13 @@ export type InterpolationMethod = 'nearest' | 'linear' | 'cubic' | 'monotone';
 export type TileSize = 64 | 128 | 256 | 512 | 1024 | 2048;
 
 // Which ICON implementation GridFactory builds (see grids/factory.ts).
-export type IconGridMode = 'table' | 'table+raster' | 'analytical';
+export type IconGridMode = 'table' | 'analytical';
 
 export interface RenderOptions {
 	tileSize: TileSize;
 	interpolation: InterpolationMethod;
-	// Optional ICON implementation switch (dev/experiment): 'table' (default),
-	// 'table+raster' (fast approximate nearest) or 'analytical' (no warp table).
+	// Optional ICON implementation switch (dev/experiment): 'table' (default,
+	// exact native) or 'analytical' (no warp table, ~33 KB, slower).
 	iconMode?: IconGridMode;
 	// Interpolate colours between colour-scale breakpoints instead of hard bands.
 	colorBlend: boolean;

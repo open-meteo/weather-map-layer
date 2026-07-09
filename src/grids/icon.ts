@@ -1,4 +1,11 @@
-import { radiansToDegrees, roundWithPrecision } from '../utils/math';
+import {
+	lat2tile,
+	lon2tile,
+	radiansToDegrees,
+	roundWithPrecision,
+	tile2lat,
+	tile2lon
+} from '../utils/math';
 
 import { ICON_WARP_TABLES } from './icon-warp-tables';
 import { GridInterface, GridPoint } from './interface';
@@ -258,15 +265,6 @@ export class IconGrid implements GridInterface {
 	private icMargin = 0;
 	private icCtx: Pick<LeafContext, 'face' | 'lbV' | 'lbC'> | null = null;
 
-	// Equirectangular cell-index lookup raster: maps a (lat,lon) pixel to the
-	// cell index it falls in. Data-independent (pure geometry), built once and
-	// reused across every data load, so per-pixel nearest-neighbour sampling
-	// becomes a direct array read — as cheap as a regular grid. Built lazily on
-	// first use (the O(W·H) findCell scan is ~1 s and amortizes over all tiles).
-	private idxRaster: Int32Array | null = null;
-	private rasterW = 0;
-	private rasterH = 0;
-
 	// findCell leaf cache (independent of the barycentric one): reuse the located
 	// cell for any inverse-warped point strictly inside its geometric leaf
 	// triangle — speeds the raster build scan and repeated nearest-neighbour calls.
@@ -493,9 +491,7 @@ export class IconGrid implements GridInterface {
 			this.seedValid &&
 			(() => {
 				const rt = this.faces[this.seedFace].roots[this.seedRoot];
-				return (
-					dot(p, rt.n01) >= -1e-9 && dot(p, rt.n12) >= -1e-9 && dot(p, rt.n20) >= -1e-9
-				);
+				return dot(p, rt.n01) >= -1e-9 && dot(p, rt.n12) >= -1e-9 && dot(p, rt.n20) >= -1e-9;
 			})()
 		) {
 			face = this.seedFace;
@@ -1048,8 +1044,10 @@ export class IconGrid implements GridInterface {
 			// tan(half-angle) on each side of vertex i
 			const crossPrev = Sx[h] * Sy[i] - Sy[h] * Sx[i];
 			const crossNext = Sx[i] * Sy[j] - Sy[i] * Sx[j];
-			const tPrev = crossPrev !== 0 ? (R[h] * R[i] - (Sx[h] * Sx[i] + Sy[h] * Sy[i])) / crossPrev : 0;
-			const tNext = crossNext !== 0 ? (R[i] * R[j] - (Sx[i] * Sx[j] + Sy[i] * Sy[j])) / crossNext : 0;
+			const tPrev =
+				crossPrev !== 0 ? (R[h] * R[i] - (Sx[h] * Sx[i] + Sy[h] * Sy[i])) / crossPrev : 0;
+			const tNext =
+				crossNext !== 0 ? (R[i] * R[j] - (Sx[i] * Sx[j] + Sy[i] * Sy[j])) / crossNext : 0;
 			const w = (tPrev + tNext) / R[i];
 			const v = values[I[i]];
 			if (isFinite(v)) {
@@ -1085,16 +1083,15 @@ export class IconGrid implements GridInterface {
 		const cell = this.locateVec(pGeo);
 		// try the ring of each of the cell's vertices (nearest first) until one
 		// whose polygon actually contains p — that is the dual face p lives in
-		const order = [
-			IconGrid.nearestVert(cell.v0, cell.v1, cell.v2, pGeo)
-		];
+		const order = [IconGrid.nearestVert(cell.v0, cell.v1, cell.v2, pGeo)];
 		order.push((order[0] + 1) % 3, (order[0] + 2) % 3);
 		for (let a = 0; a < 3; a++) {
 			const V = [cell.v0, cell.v1, cell.v2][order[a]];
 			this.vertexRing(cell, V);
 			const m = this.dfCount;
 			// polygon edge normals + orientation
-			for (let i = 0; i < m; i++) this.dfEdge[i] = cross(this.dfCenters[i], this.dfCenters[(i + 1) % m]);
+			for (let i = 0; i < m; i++)
+				this.dfEdge[i] = cross(this.dfCenters[i], this.dfCenters[(i + 1) % m]);
 			const cenx = this.dfCenters.slice(0, m).reduce((s, c) => s + c[0], 0);
 			const ceny = this.dfCenters.slice(0, m).reduce((s, c) => s + c[1], 0);
 			const cenz = this.dfCenters.slice(0, m).reduce((s, c) => s + c[2], 0);
@@ -1126,57 +1123,8 @@ export class IconGrid implements GridInterface {
 		return values[cell.index - this.nxStart];
 	}
 
-	// Build the equirectangular cell-index raster at roughly the native cell
-	// resolution (slightly oversampled so cell boundaries stay crisp). Uses the
-	// coherence caches, so the scan is fast; runs once per grid instance.
-	private buildIndexRaster(): void {
-		const cellAngle = Math.sqrt((4 * Math.PI) / this.nx); // mean cell size (rad)
-		const oversample = 1.3;
-		const W = Math.max(2, Math.ceil((2 * Math.PI) / cellAngle) * oversample) | 0;
-		const H = Math.max(2, Math.ceil(Math.PI / cellAngle) * oversample) | 0;
-		const raster = new Int32Array(W * H);
-		const dLat = 180 / H;
-		const dLon = 360 / W;
-		for (let iy = 0; iy < H; iy++) {
-			const lat = -90 + (iy + 0.5) * dLat;
-			const row = iy * W;
-			for (let ix = 0; ix < W; ix++) {
-				raster[row + ix] = this.findCell(lat, -180 + (ix + 0.5) * dLon);
-			}
-		}
-		this.rasterW = W;
-		this.rasterH = H;
-		this.idxRaster = raster;
-	}
-
-	/**
-	 * Opt-in: build the equirectangular cell-index lookup raster so that
-	 * subsequent nearest-neighbour sampling becomes a direct array read (~5 ns,
-	 * on par with a regular grid) instead of a per-pixel descent. The lookup is
-	 * APPROXIMATE — it snaps the query to the nearest raster pixel, so cell
-	 * boundaries are quantized to the raster resolution — and the one-time build
-	 * scans O(W·H) cells (~seconds for a global grid). Intended for the render
-	 * path where exactness is not required; getNearestNeighborValue stays exact
-	 * until this is called.
-	 */
-	buildNearestLookup(): void {
-		if (!this.idxRaster) this.buildIndexRaster();
-	}
-
-	// O(1) approximate cell lookup via the raster (regular-grid speed).
-	private rasterCell(lat: number, lon: number): number {
-		const W = this.rasterW;
-		let iy = (((lat + 90) * this.rasterH) / 180) | 0;
-		if (iy < 0) iy = 0;
-		else if (iy >= this.rasterH) iy = this.rasterH - 1;
-		let ix = (((lon + 180) * W) / 360) | 0;
-		ix = ((ix % W) + W) % W;
-		return this.idxRaster![iy * W + ix];
-	}
-
 	getNearestNeighborValue(values: Float32Array, lat: number, lon: number): number {
-		// exact by default; fast approximate lookup once buildNearestLookup() is called
-		return values[this.idxRaster ? this.rasterCell(lat, lon) : this.findCell(lat, lon)];
+		return values[this.findCell(lat, lon)];
 	}
 
 	getInterpolatedValue(
@@ -1200,6 +1148,231 @@ export class IconGrid implements GridInterface {
 				throw new Error(`Unknown interpolation method: ${_exhaustive}`);
 			}
 		}
+	}
+
+	// value at a primal vertex for smooth (Gouraud) rasterization: the mean of the
+	// cells around it. Reuses the dual-mesh ring walk; cached by vertex geometry so
+	// the ~6 shared cells are only gathered once per vertex per tile.
+	private vertexValue(
+		values: Float32Array,
+		cell: LeafContext & { index: number },
+		V: Vec3
+	): number {
+		// (re)use the dual-face cache machinery via getDualValue's helpers: build
+		// the ring around V and average its finite cell values
+		this.vertexRing(cell, V);
+		let s = 0;
+		let cnt = 0;
+		for (let i = 0; i < this.dfCount; i++) {
+			const v = values[this.dfIdx[i]];
+			if (isFinite(v)) {
+				s += v;
+				cnt++;
+			}
+		}
+		return cnt ? s / cnt : NaN;
+	}
+
+	/**
+	 * Rasterise this grid's native (warped) triangles directly into a mercator
+	 * tile, forward (cell → pixels) instead of sampling per pixel. Returns a
+	 * tileSize² value buffer (NaN where no cell covers the pixel). The cells that
+	 * touch the tile are found by descending the icosahedral hierarchy and pruning
+	 * subtrees whose projected bounding box misses the tile — no per-pixel descent,
+	 * no lat/lon re-gridding, exact triangular boundaries. 'nearest' flat-fills each
+	 * triangle with its cell value; 'linear' Gouraud-interpolates the three
+	 * primal-vertex values (dual-mesh means).
+	 */
+	renderTile(
+		values: Float32Array,
+		x: number,
+		y: number,
+		z: number,
+		tileSize: number,
+		method: InterpolationMethod
+	): Float32Array {
+		const out = new Float32Array(tileSize * tileSize).fill(NaN);
+		const smooth = method !== 'nearest';
+		const worldPx = 2 ** z * tileSize;
+		const VS = this.n * 2 ** this.k + 1; // face lattice edge size, for vertex keys
+		const vcache = new Map<number, number>(); // primal-vertex value memo (smooth)
+		// tile lat/lon box (mercator is monotonic in lat & lon, so a lat/lon
+		// overlap test is equivalent to a pixel-box test but immune to projection
+		// distortion). A little padding covers the warp + straddling cells.
+		const tLonL = tile2lon(x, z);
+		let tLonR = tile2lon(x + 1, z);
+		if (tLonR <= tLonL) tLonR += 360;
+		const tLatT = tile2lat(y, z);
+		const tLatB = tile2lat(y + 1, z);
+		const pad = ((tLonR - tLonL) * 0.05 + 0.05) * (Math.PI / 180); // radians, small
+		// project a unit vector to tile-local pixel coords, unwrapping longitude
+		// so antimeridian-straddling triangles stay contiguous near this tile
+		const project = (v: Vec3): [number, number] => {
+			const lat = radiansToDegrees(Math.asin(Math.max(-0.9999, Math.min(0.9999, v[2]))));
+			const lon = radiansToDegrees(Math.atan2(v[1], v[0]));
+			let px = (lon2tile(lon, z) - x) * tileSize;
+			px -= Math.round((px - tileSize / 2) / worldPx) * worldPx;
+			const py = (lat2tile(lat, z) - y) * tileSize;
+			return [px, py];
+		};
+		const fill = (
+			a: [number, number],
+			b: [number, number],
+			c: [number, number],
+			va: number,
+			vb: number,
+			vc: number
+		): void => {
+			const d = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
+			if (d === 0) return;
+			const inv = 1 / d;
+			const minX = Math.max(0, Math.floor(Math.min(a[0], b[0], c[0])));
+			const maxX = Math.min(tileSize - 1, Math.ceil(Math.max(a[0], b[0], c[0])));
+			const minY = Math.max(0, Math.floor(Math.min(a[1], b[1], c[1])));
+			const maxY = Math.min(tileSize - 1, Math.ceil(Math.max(a[1], b[1], c[1])));
+			for (let py = minY; py <= maxY; py++) {
+				const sy = py + 0.5;
+				const row = py * tileSize;
+				for (let px = minX; px <= maxX; px++) {
+					const sx = px + 0.5;
+					const l0 = ((b[1] - c[1]) * (sx - c[0]) + (c[0] - b[0]) * (sy - c[1])) * inv;
+					const l1 = ((c[1] - a[1]) * (sx - c[0]) + (a[0] - c[0]) * (sy - c[1])) * inv;
+					const l2 = 1 - l0 - l1;
+					if (l0 >= 0 && l1 >= 0 && l2 >= 0)
+						out[row + px] = smooth ? l0 * va + l1 * vb + l2 * vc : va;
+				}
+			}
+		};
+
+		// recursive descent over the bisection tree carrying the leaf context
+		const rasterize = (
+			v0: Vec3,
+			v1: Vec3,
+			v2: Vec3,
+			c: LeafContext['c'],
+			index: number,
+			level: number,
+			face: number,
+			lbV: LeafContext['lbV'],
+			lbC: LeafContext['lbC']
+		): void => {
+			// prune with a spherical cap (centroid + circumradius) that contains the
+			// whole triangle, bulges included — in lat/lon, so it's exact w.r.t. the
+			// monotone mercator tile box and needs no projection guessing.
+			const cx = v0[0] + v1[0] + v2[0];
+			const cy = v0[1] + v1[1] + v2[1];
+			const cz = v0[2] + v1[2] + v2[2];
+			const cl = Math.sqrt(cx * cx + cy * cy + cz * cz);
+			const ux = cx / cl;
+			const uy = cy / cl;
+			const uz = cz / cl;
+			const cosR = Math.min(
+				ux * v0[0] + uy * v0[1] + uz * v0[2],
+				ux * v1[0] + uy * v1[1] + uz * v1[2],
+				ux * v2[0] + uy * v2[1] + uz * v2[2]
+			);
+			const r = Math.acos(Math.max(-1, Math.min(1, cosR))) + pad; // cap angular radius
+			const cLat = Math.asin(Math.max(-1, Math.min(1, uz)));
+			if ((cLat - r) * (180 / Math.PI) > tLatT || (cLat + r) * (180 / Math.PI) < tLatB) return;
+			const cLon = Math.atan2(uy, ux) * (180 / Math.PI);
+			const lonR = (r / Math.max(Math.cos(cLat), 1e-3)) * (180 / Math.PI); // lon half-extent (deg)
+			// longitude overlap with wrap: bring the cap's lon window near the tile
+			let loMin = cLon - lonR;
+			let loMax = cLon + lonR;
+			if (loMax - loMin >= 360) {
+				// spans all longitudes (near a pole) — keep
+			} else {
+				loMin -= Math.round((0.5 * (loMin + loMax) - 0.5 * (tLonL + tLonR)) / 360) * 360;
+				loMax = loMin + 2 * lonR;
+				if (loMax < tLonL || loMin > tLonR) return;
+			}
+
+			if (level === this.k) {
+				const ctx: LeafContext = { face, v0, v1, v2, c, lbV, lbC };
+				const [w0, w1, w2] = this.warp ? this.warpTriangleCtx(ctx) : [v0, v1, v2];
+				if (smooth) {
+					const cell = { ...ctx, index };
+					const verts = [v0, v1, v2];
+					const vv = (s: number): number => {
+						// cache the primal-vertex mean by lattice id (shared by ~6 cells)
+						const key = ((face * VS + c[2 * s]) * VS + c[2 * s + 1]) | 0;
+						let val = vcache.get(key);
+						if (val === undefined) {
+							val = this.vertexValue(values, cell, verts[s]);
+							vcache.set(key, val);
+						}
+						return val;
+					};
+					fill(project(w0), project(w1), project(w2), vv(0), vv(1), vv(2));
+				} else {
+					const v = values[index - this.nxStart];
+					fill(project(w0), project(w1), project(w2), v, v, v);
+				}
+				return;
+			}
+
+			const m01 = mid(v0, v1);
+			const m12 = mid(v1, v2);
+			const m20 = mid(v2, v0);
+			const x01 = (c[0] + c[2]) / 2;
+			const y01 = (c[1] + c[3]) / 2;
+			const x12 = (c[2] + c[4]) / 2;
+			const y12 = (c[3] + c[5]) / 2;
+			const x20 = (c[4] + c[0]) / 2;
+			const y20 = (c[5] + c[1]) / 2;
+			const scale = 4 ** (this.k - 1 - level);
+			const capture = level + 1 === this.captureLevel;
+			const rec = (a: Vec3, b: Vec3, cc: Vec3, cd: LeafContext['c'], digit: number): void => {
+				rasterize(
+					a,
+					b,
+					cc,
+					cd,
+					index + digit * scale,
+					level + 1,
+					face,
+					capture ? [a, b, cc] : lbV,
+					capture ? [...cd] : lbC
+				);
+			};
+			rec(v0, m01, m20, [c[0], c[1], x01, y01, x20, y20], 0);
+			rec(m01, v1, m12, [x01, y01, c[2], c[3], x12, y12], 1);
+			rec(m12, m20, m01, [x12, y12, x20, y20, x01, y01], 2);
+			rec(m20, m12, v2, [x20, y20, x12, y12, c[4], c[5]], 3);
+		};
+
+		for (let f = 0; f < 20; f++) {
+			for (let rl = 0; rl < this.n * this.n; rl++) {
+				const root = this.faces[f].roots[rl];
+				const c: LeafContext['c'] = [...root.c];
+				rasterize(
+					root.v0,
+					root.v1,
+					root.v2,
+					c,
+					(f * this.n * this.n + rl) * this.cellsPerRoot,
+					0,
+					f,
+					[root.v0, root.v1, root.v2],
+					c
+				);
+			}
+		}
+		// close the rare sub-pixel slivers between adjacent triangles: any leftover
+		// NaN takes a filled neighbour's value (ICON is global, so every in-tile
+		// pixel belongs to some cell — a NaN here is always a seam, not real gap).
+		for (let py = 0; py < tileSize; py++) {
+			for (let px = 0; px < tileSize; px++) {
+				const i = py * tileSize + px;
+				if (out[i] === out[i]) continue; // already filled
+				let n = px > 0 ? out[i - 1] : NaN;
+				if (n !== n) n = px < tileSize - 1 ? out[i + 1] : NaN;
+				if (n !== n) n = py > 0 ? out[i - tileSize] : NaN;
+				if (n !== n) n = py < tileSize - 1 ? out[i + tileSize] : NaN;
+				if (n === n) out[i] = n;
+			}
+		}
+		return out;
 	}
 
 	forEachPoint(callback: (point: GridPoint) => void | false, bounds?: Bounds): void {

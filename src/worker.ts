@@ -57,6 +57,11 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 		// per-pixel `switch` and the rgba index division out of the inner loop.
 		const sampleColor = makeColorSampler(colorScale, colorBlend);
 
+		// Fast path: grids that can rasterise their native cells forward (ICON)
+		// fill the whole tile's value buffer in one call — far faster than the
+		// per-pixel descent below, with exact cell boundaries.
+		const raster = grid.renderTile?.(values, x, y, z, tileSize, interpolation);
+
 		// Longitude depends only on the column (j), so resolve all tileSize values
 		// once up front instead of re-deriving them for every row — turns tileSize²
 		// tile2lon() calls (each with its own Math.pow) into tileSize.
@@ -82,7 +87,9 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 					if (checkAgainstBounds(lon, clippingOptions.bounds[0], clippingOptions.bounds[2]))
 						continue;
 
-				const px = grid.getInterpolatedValue(values, lat, lon, interpolation);
+				const px = raster
+					? raster[ind]
+					: grid.getInterpolatedValue(values, lat, lon, interpolation);
 
 				if (isFinite(px)) {
 					const color = sampleColor(px + halfQuantum, colorOut);

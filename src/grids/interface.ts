@@ -25,6 +25,23 @@ export interface GridInterface {
 	getCoveringRanges(south: number, west: number, north: number, east: number): DimensionRange[];
 
 	/**
+	 * Optional fast path: rasterise the grid's native cells directly into a
+	 * mercator tile (forward, cell → pixels) instead of sampling per pixel.
+	 * Returns a `tileSize²` row-major value buffer (NaN where uncovered). Grids
+	 * that implement it (e.g. the native ICON triangular grid) render far faster
+	 * and keep exact cell boundaries; the worker falls back to per-pixel
+	 * `getInterpolatedValue` when it is absent.
+	 */
+	renderTile?(
+		values: Float32Array,
+		x: number,
+		y: number,
+		z: number,
+		tileSize: number,
+		method: InterpolationMethod
+	): Float32Array;
+
+	/**
 	 * Iterates over grid points, invoking the callback with the flat array index
 	 * and the geographic coordinates for each point.
 	 * When `bounds` is provided, only points within the geographic bounding box
