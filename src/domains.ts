@@ -201,7 +201,7 @@ export const domainOptions: Array<Domain> = [
 			type: 'icon-mesh',
 			nx: 659156,
 			ny: 1,
-			geometry: 'http://localhost:8090/grid-geometry/dwd_icon_eu.bin',
+			geometry: '/grid-geometry/dwd_icon_eu.bin',
 			zoom: 3.2
 		},
 		time_interval: 'hourly',
@@ -215,7 +215,7 @@ export const domainOptions: Array<Domain> = [
 			type: 'icon-mesh',
 			nx: 542040,
 			ny: 1,
-			geometry: 'http://localhost:8090/grid-geometry/dwd_icon_d2.bin',
+			geometry: '/grid-geometry/dwd_icon_d2.bin',
 			zoom: 5.2
 		},
 		time_interval: 'hourly',

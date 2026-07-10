@@ -36,9 +36,16 @@ export class GridFactory {
 	 */
 	static async preload(data: GridData): Promise<void> {
 		if (data.type !== 'icon-mesh' || geometryCache.has(data.geometry)) return;
-		const res = await fetch(data.geometry);
-		if (!res.ok)
-			throw new Error(`icon-mesh geometry fetch failed (${res.status}): ${data.geometry}`);
+		// A root-relative geometry path ('/grid-geometry/…') can't be fetched from
+		// an inline (blob) worker — it has no document base to resolve against — so
+		// make it absolute against the page origin. Absolute URLs pass through.
+		const origin =
+			typeof location !== 'undefined' && location.origin && location.origin !== 'null'
+				? location.origin
+				: undefined;
+		const url = origin ? new URL(data.geometry, origin).href : data.geometry;
+		const res = await fetch(url);
+		if (!res.ok) throw new Error(`icon-mesh geometry fetch failed (${res.status}): ${url}`);
 		geometryCache.set(data.geometry, parseIconMeshGeometry(await res.arrayBuffer()));
 	}
 
