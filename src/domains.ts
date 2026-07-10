@@ -193,13 +193,13 @@ export const domainOptions: Array<Domain> = [
 	{
 		value: 'dwd_icon_eu',
 		label: 'DWD ICON EU',
-		// Native ICON-EU nest grid (R3B07, 13 km, 164 984 cells). File-based: the
-		// triangle geometry is served next to the data (icon-native-test dev
-		// endpoint) and loaded by GridFactory.preload. Requires the converted .om
-		// files in native cell order (icon-native-test/convert-mesh-run.mts).
+		// Native ICON-EU nest grid (R3B08, 6.5 km, 659 156 cells — DWD grid 0027,
+		// from icon-downloads.mpimet.mpg.de). File-based: the triangle geometry is
+		// served next to the data (icon-native-test dev endpoint) and loaded by
+		// GridFactory.preload.
 		grid: {
 			type: 'icon-mesh',
-			nx: 164984,
+			nx: 659156,
 			ny: 1,
 			geometry: 'http://localhost:8090/grid-geometry/dwd_icon_eu.bin',
 			zoom: 3.2
