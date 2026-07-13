@@ -110,6 +110,24 @@ describe('Request Options', () => {
 			}
 		});
 
+		it('resolves domain from urls without a data_spatial prefix', async () => {
+			const domainOptions = [createTestDomain('domain1')];
+			const settings = createTestSettings({ domainOptions });
+
+			const url1 =
+				'om://https://example.b-cdn.net/domain1/2026/07/13/0600Z/2026-07-13T1300.om?variable=temperature&dark=true&intervals=2';
+
+			const url2 =
+				'om://https://example.com/nested/bucket/structure/domain1/2026/07/13/0600Z/2026-07-13T1300.om?variable=temperature&dark=true&intervals=2';
+
+			for (const url of [url1, url2]) {
+				const { dataOptions, renderOptions } = parseRequest(url, settings);
+				expect(dataOptions.domain.value).toBe('domain1');
+				expect(dataOptions.variable).toBe('temperature');
+				expect(renderOptions.intervals).toStrictEqual([2]);
+			}
+		});
+
 		it('throws for invalid domain', async () => {
 			const settings = createTestSettings({ domainOptions: [] });
 			const url = 'om://https://example.com/data_spatial/unknown/file.om?variable=temp';

@@ -5,6 +5,7 @@ import {
 	DEFAULT_INTERPOLATION,
 	DEFAULT_INTERVAL,
 	DEFAULT_TILE_SIZE,
+	RESOLVE_DOMAIN_MODEL_RUN_REGEX,
 	RESOLVE_DOMAIN_REGEX,
 	VALID_INTERPOLATIONS,
 	VALID_TILE_SIZES
@@ -81,7 +82,8 @@ const defaultResolveDataIdentity = (
 ): DataIdentityOptions => {
 	const { baseUrl, params } = urlComponents;
 
-	const match = baseUrl.match(RESOLVE_DOMAIN_REGEX);
+	const match =
+		baseUrl.match(RESOLVE_DOMAIN_REGEX) ?? baseUrl.match(RESOLVE_DOMAIN_MODEL_RUN_REGEX);
 	const domainValue = match?.groups?.domain;
 
 	if (!domainValue) {
