@@ -19,6 +19,7 @@ export { getColor, getColorScale } from './utils/styling';
 export { GridFactory, IconGrid } from './grids/index';
 export { IconGridAnalytical } from './grids/icon/icon-analytical';
 export { IconGridGeometric } from './grids/icon/icon-geometric';
+export { IconMeshGrid, parseIconMeshGeometry } from './grids/icon/icon-mesh';
 export { gridConfig } from './grids/factory';
 export type { IconGridMode } from './types';
 

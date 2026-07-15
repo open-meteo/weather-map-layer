@@ -245,9 +245,12 @@ export class IconMeshGrid implements GridInterface {
 		return out;
 	}
 
-	getNearestNeighborValue(values: Float32Array, lat: number, lon: number): number {
-		// point → cell: scan the candidate bucket (and neighbours) for the triangle
-		// that contains the point on the sphere
+	/**
+	 * The cell containing a coordinate, or -1 when the point lies outside the
+	 * limited-area domain. Scans the candidate bucket (and neighbours) for the
+	 * triangle that contains the point on the sphere.
+	 */
+	findCell(lat: number, lon: number): number {
 		const px = Math.cos((lat * Math.PI) / 180) * Math.cos((lon * Math.PI) / 180);
 		const py = Math.cos((lat * Math.PI) / 180) * Math.sin((lon * Math.PI) / 180);
 		const pz = Math.sin((lat * Math.PI) / 180);
@@ -282,10 +285,38 @@ export class IconMeshGrid implements GridInterface {
 						py * (c[2] * a[0] - c[0] * a[2]) +
 						pz * (c[0] * a[1] - c[1] * a[0]);
 					if ((s0 >= 0 && s1 >= 0 && s2 >= 0) || (s0 <= 0 && s1 <= 0 && s2 <= 0))
-						return values[cell - this.nxStart];
+						return cell - this.nxStart;
 				}
 			}
-		return NaN;
+		return -1;
+	}
+
+	/** Cell-centre lat/lon (the mass point stored in the grid file). */
+	cellCoordinates(index: number): { lat: number; lon: number } {
+		const i = index + this.nxStart;
+		return { lat: this.centres[2 * i], lon: this.centres[2 * i + 1] };
+	}
+
+	/** The three triangle corners of a cell (true grid-file vertex positions). */
+	cellVertices(index: number): { lat: number; lon: number }[] {
+		const i = index + this.nxStart;
+		const out: { lat: number; lon: number }[] = [];
+		for (let s = 0; s < 3; s++) {
+			const v = this.voc[3 * i + s];
+			const x = this.verts[3 * v],
+				y = this.verts[3 * v + 1],
+				z = this.verts[3 * v + 2];
+			out.push({
+				lat: (Math.asin(Math.max(-1, Math.min(1, z))) * 180) / Math.PI,
+				lon: (Math.atan2(y, x) * 180) / Math.PI
+			});
+		}
+		return out;
+	}
+
+	getNearestNeighborValue(values: Float32Array, lat: number, lon: number): number {
+		const cell = this.findCell(lat, lon);
+		return cell < 0 ? NaN : values[cell];
 	}
 
 	getInterpolatedValue(
