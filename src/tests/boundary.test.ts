@@ -32,6 +32,28 @@ describe('getBoundaryPolygon', () => {
 		]);
 	});
 
+	it('hugs the data for a regular grid stored north-to-south (negative dy)', () => {
+		const domain = domainOptions.find((d) => d.value === 'cams_europe') as Domain; // dy < 0
+		const grid = GridFactory.create(domain.grid, null);
+		const ring = grid.getBoundaryPolygon();
+		const [minLon, minLat, maxLon, maxLat] = grid.getBounds();
+
+		// With dy < 0 the origin row is the northernmost data point, so bounds
+		// overshoot on the SOUTH side instead — the outline pulls the south edge in
+		// by one cell and keeps the north edge at the origin row.
+		const { nx, ny } = domain.grid;
+		const east = maxLon - (maxLon - minLon) / nx;
+		const south = minLat + (maxLat - minLat) / ny;
+
+		expect(ring).toEqual([
+			[minLon, south],
+			[east, south],
+			[east, maxLat],
+			[minLon, maxLat],
+			[minLon, south]
+		]);
+	});
+
 	it('outlines the real outer rows for a gaussian grid (inside the poles)', () => {
 		const domain = domainOptions.find((d) => d.value === 'ecmwf_ifs') as Domain; // type: 'gaussian'
 		const grid = GridFactory.create(domain.grid, null);
