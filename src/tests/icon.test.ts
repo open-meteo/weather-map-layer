@@ -1,4 +1,5 @@
 import { IconGrid } from '../grids/icon/icon';
+import { IconGridGeometric } from '../grids/icon/icon-geometric';
 import { describe, expect, test } from 'vitest';
 
 import type { IconGridData } from '../types';
@@ -264,5 +265,43 @@ describe('IconGrid', () => {
 			if (count === 10) return false;
 		});
 		expect(count).toBe(10);
+	});
+});
+
+describe('IconGridGeometric', () => {
+	test('is the uncorrected construction: self-consistent but km-scale away from IconGrid', () => {
+		const geometric = new IconGridGeometric(globalGridData);
+		const corrected = new IconGrid(globalGridData);
+		let maxSeparationDeg = 0;
+		for (let index = 0; index < globalGridData.nx; index += 9973) {
+			// exact roundtrip must hold without any warp machinery
+			const { lat, lon } = geometric.cellCoordinates(index);
+			expect(geometric.findCell(lat, lon)).toBe(index);
+			// and the positions must show the (uncorrected) spring-dynamics warp
+			const c = corrected.cellCoordinates(index);
+			const dLat = c.lat - lat;
+			let dLon = Math.abs(c.lon - lon);
+			if (dLon > 180) dLon = 360 - dLon;
+			const cosLat = Math.cos((lat * Math.PI) / 180);
+			maxSeparationDeg = Math.max(
+				maxSeparationDeg,
+				Math.sqrt(dLat * dLat + dLon * cosLat * (dLon * cosLat))
+			);
+		}
+		// warp is ~21 km mean / 65 km max — the sampled max must be km-scale
+		expect(maxSeparationDeg * 111.19).toBeGreaterThan(20);
+		expect(maxSeparationDeg * 111.19).toBeLessThan(70);
+	});
+
+	test('reference DWD centre deviates by the documented warp, not more', () => {
+		const geometric = new IconGridGeometric(globalGridData);
+		// same reference cell as the warp-table test: true centre (89.913098, 72)
+		const c = geometric.cellCoordinates(0);
+		const dist =
+			Math.sqrt(
+				(c.lat - 89.913098) ** 2 + ((c.lon - 72) * Math.cos((89.913098 * Math.PI) / 180)) ** 2
+			) * 111.19;
+		expect(dist).toBeGreaterThan(1); // clearly uncorrected…
+		expect(dist).toBeLessThan(93); // …but within the documented max warp
 	});
 });

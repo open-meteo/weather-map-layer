@@ -1,6 +1,7 @@
 import { GaussianGrid } from './gaussian';
 import { IconGrid } from './icon/icon';
 import { IconGridAnalytical } from './icon/icon-analytical';
+import { IconGridGeometric } from './icon/icon-geometric';
 import { IconMeshGrid, parseIconMeshGeometry } from './icon/icon-mesh';
 import { GridInterface } from './interface';
 import { ProjectionGrid } from './projected';
@@ -14,6 +15,8 @@ import { DimensionRange, GridData, IconGridMode, IconMeshGeometry } from '../typ
 //                    ~0.5 km accuracy (default — this is the real renderer)
 //   - 'analytical' : no table — polynomial warp model (~33 KB, ~1.7 km accuracy),
 //                    native cells but much slower per call (see icon-analytical.ts)
+//   - 'geometric'  : no correction at all — the raw idealized subdivision,
+//                    ~21 km spring-dynamics deviation (see icon-geometric.ts)
 export const gridConfig: { iconMode: IconGridMode } = { iconMode: 'table' };
 
 // The worker builds a grid per tile; ICON construction (table decode + lattice
@@ -68,6 +71,7 @@ export class GridFactory {
 				return new GaussianGrid(data, ranges);
 			case 'icon': {
 				if (gridConfig.iconMode === 'analytical') return new IconGridAnalytical(data, ranges);
+				if (gridConfig.iconMode === 'geometric') return new IconGridGeometric(data, ranges);
 				return new IconGrid(data, ranges);
 			}
 			case 'projectedFromBounds':

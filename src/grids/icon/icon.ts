@@ -301,6 +301,12 @@ export class IconGrid implements GridInterface {
 	private readonly dfSy = new Float64Array(10);
 	private readonly dfR = new Float64Array(10);
 
+	// The warp table for this root division; overridden by IconGridGeometric to
+	// disable the correction entirely (this.n is set before the call).
+	protected lookupWarpTable(): string | undefined {
+		return ICON_WARP_TABLES[this.n];
+	}
+
 	constructor(data: IconGridData, ranges: DimensionRange[] | null = null) {
 		this.n = data.iconRoot;
 		this.k = data.iconBisections;
@@ -316,7 +322,7 @@ export class IconGrid implements GridInterface {
 			);
 		}
 
-		const tableB64 = ICON_WARP_TABLES[this.n];
+		const tableB64 = this.lookupWarpTable();
 		this.warp = tableB64 ? decodeWarpTable(tableB64) : null;
 		this.captureLevel = this.warp ? Math.min(this.k, this.warp.baseLevel) : this.k;
 
