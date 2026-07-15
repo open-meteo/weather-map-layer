@@ -5,20 +5,20 @@ import { checkAgainstBounds } from './utils/bounds';
 import { clipRasterToPolygons } from './utils/clipping';
 import { generateContours } from './utils/contours';
 import { type GridPointSource, generateGridPoints } from './utils/grid-points';
-import { tile2lat, tile2lon } from './utils/math';
+import { halfQuantum as computeHalfQuantum, tile2lat, tile2lon } from './utils/math';
 import {
 	type ValueSampler,
 	type VectorSampler,
 	sampleBlendedValue,
 	sampleBlendedVector
 } from './utils/seamless-sampling';
-import { getColor } from './utils/styling';
+import { makeColorSampler } from './utils/styling';
 
 import { GridFactory } from './grids/index';
 
-import type { Domain, TileRequest } from './types';
+import type { Domain, WorkerRequest } from './types';
 
-self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
+self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => {
 	const key = message.data.key;
 
 	// Handle cancellation messages
@@ -32,6 +32,8 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 	const ranges = message.data.ranges;
 	const domain = message.data.dataOptions.domain;
 	const tileSize = message.data.renderOptions.tileSize;
+	const interpolation = message.data.renderOptions.interpolation;
+	const colorBlend = message.data.renderOptions.colorBlend;
 	const colorScale = message.data.renderOptions.colorScale;
 	const clippingOptions = message.data.clippingOptions;
 	const seamlessLayers = message.data.seamlessLayers;
@@ -57,21 +59,44 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 			// Full-domain grids (uncropped) so the blend edge distance follows the real
 			// domain boundary instead of the viewport crop.
 			const fullGrids = seamlessLayers.map((layer) => GridFactory.create(layer.domain.grid, null));
-			getPixelValue = sampleBlendedValue(layerGrids, seamlessLayers, fullGrids);
+			getPixelValue = sampleBlendedValue(layerGrids, seamlessLayers, fullGrids, interpolation);
 		} else {
 			const grid = GridFactory.create((domain as Domain).grid, ranges);
-			getPixelValue = (lat, lon) => grid.getLinearInterpolatedValue(values!, lat, lon);
+			getPixelValue = (lat, lon) => grid.getInterpolatedValue(values!, lat, lon, interpolation);
+		}
+
+		// Offset the colour threshold by half the data's quantization step so
+		// band edges fall inside grid cells (smooth) instead of snapping to the
+		// cell corners when a breakpoint coincides with a quantization level.
+		const halfQuantum = computeHalfQuantum(message.data.data.scaleFactor);
+
+		// Reused per-pixel so colour blending doesn't allocate an array per pixel.
+		const colorOut: [number, number, number, number] = [0, 0, 0, 0];
+
+		// Specialise the colour lookup to this tile's scale once, hoisting the
+		// per-pixel `switch` and the rgba index division out of the inner loop.
+		const sampleColor = makeColorSampler(colorScale, colorBlend);
+
+		// Longitude depends only on the column (j), so resolve all tileSize values
+		// once up front instead of re-deriving them for every row — turns tileSize²
+		// tile2lon() calls (each with its own Math.pow) into tileSize.
+		const lons = new Float64Array(tileSize);
+		for (let j = 0; j < tileSize; j++) {
+			lons[j] = tile2lon(x + (j + 0.5) / tileSize, z);
 		}
 
 		for (let i = 0; i < tileSize; i++) {
-			const lat = tile2lat(y + i / tileSize, z);
+			// sample at the pixel centre ((i+0.5)/tileSize), not the top-left
+			// corner, so the value is registered where the pixel is displayed
+			// (fixes the half-pixel up-left shift visible when zooming)
+			const lat = tile2lat(y + (i + 0.5) / tileSize, z);
 
 			if (clippingOptions?.bounds)
 				if (checkAgainstBounds(lat, clippingOptions.bounds[1], clippingOptions.bounds[3])) continue;
 
 			for (let j = 0; j < tileSize; j++) {
 				const ind = j + i * tileSize;
-				const lon = tile2lon(x + j / tileSize, z);
+				const lon = lons[j];
 
 				if (clippingOptions?.bounds)
 					if (checkAgainstBounds(lon, clippingOptions.bounds[0], clippingOptions.bounds[2]))
@@ -80,7 +105,7 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 				const px = getPixelValue(lat, lon);
 
 				if (isFinite(px)) {
-					const color = getColor(colorScale, px);
+					const color = sampleColor(px + halfQuantum, colorOut);
 					rgba[4 * ind] = color[0];
 					rgba[4 * ind + 1] = color[1];
 					rgba[4 * ind + 2] = color[2];
@@ -128,8 +153,8 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 			// Full-domain grids (uncropped) so the blend edge distance follows the real
 			// domain boundary instead of the viewport crop.
 			const fullGrids = seamlessLayers.map((layer) => GridFactory.create(layer.domain.grid, null));
-			sampleValue = sampleBlendedValue(layerGrids, seamlessLayers, fullGrids);
-			sampleVector = sampleBlendedVector(layerGrids, seamlessLayers, fullGrids);
+			sampleValue = sampleBlendedValue(layerGrids, seamlessLayers, fullGrids, interpolation);
+			sampleVector = sampleBlendedVector(layerGrids, seamlessLayers, fullGrids, interpolation);
 			gridSources = seamlessLayers.map((layer, i) => ({
 				grid: layerGrids[i],
 				values: layer.data.values ?? new Float32Array(0),
@@ -138,9 +163,11 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 		} else {
 			const grid = GridFactory.create((domain as Domain).grid, ranges);
 			const vectorValues = values ?? new Float32Array(0);
-			sampleValue = (lat, lon) => grid.getLinearInterpolatedValue(vectorValues, lat, lon);
+			sampleValue = (lat, lon) => grid.getInterpolatedValue(vectorValues, lat, lon, interpolation);
+			// Sample the magnitude with the selected method so arrow size/colour
+			// matches the raster; direction stays linear (averaging angles would be wrong).
 			sampleVector = (lat, lon) => ({
-				value: grid.getLinearInterpolatedValue(vectorValues, lat, lon),
+				value: grid.getInterpolatedValue(vectorValues, lat, lon, interpolation),
 				direction: directions ? grid.getLinearInterpolatedValue(directions, lat, lon) : 0
 			});
 			gridSources = [{ grid, values: vectorValues, directions }];
@@ -161,7 +188,8 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 				z,
 				tileSize,
 				renderOptions.intervals,
-				clippingOptions
+				clippingOptions,
+				computeHalfQuantum(message.data.data.scaleFactor)
 			);
 		}
 

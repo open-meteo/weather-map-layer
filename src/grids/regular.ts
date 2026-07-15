@@ -1,7 +1,12 @@
 import { GridInterface, GridPoint } from './interface';
-import { interpolateLinear } from './interpolations';
+import {
+	interpolateCubic,
+	interpolateLinear,
+	interpolateMonotone,
+	interpolateNearest
+} from './interpolations';
 
-import { Bounds, DimensionRange, RegularGridData } from '../types';
+import { Bounds, DimensionRange, InterpolationMethod, RegularGridData } from '../types';
 
 // Regular grid implementation
 export class RegularGrid implements GridInterface {
@@ -10,8 +15,17 @@ export class RegularGrid implements GridInterface {
 	private dx: number;
 	private dy: number;
 
+	// Coordinates at grid index [0, 0]
+	private originLon: number;
+	private originLat: number;
+
+	// Bounds: [west, south, east, north]
 	private bounds: Bounds;
 	private longitudeWrap: boolean;
+	// True only for global grids stored one grid point short of the seam (e.g.
+	// ICON), whose final cell is physically 2*dx wide. Complete global grids
+	// (e.g. GFS/GEFS) keep a normal final cell.
+	private wrapLastCellDouble: boolean;
 	private center?: { lng: number; lat: number };
 
 	constructor(data: RegularGridData, ranges: DimensionRange[] | null = null) {
@@ -60,38 +74,122 @@ export class RegularGrid implements GridInterface {
 		this.nx = ranges[1].end - ranges[1].start;
 		this.ny = ranges[0].end - ranges[0].start;
 
-		const lonMin = originLon + this.dx * ranges[1].start;
-		const latMin = originLat + this.dy * ranges[0].start;
-		const lonMax = originLon + this.dx * ranges[1].end;
-		const latMax = originLat + this.dy * ranges[0].end;
-		this.bounds = [lonMin, latMin, lonMax, latMax];
+		// Origin = coordinates at grid index [0, 0] of this (sub)grid
+		this.originLon = originLon + this.dx * ranges[1].start;
+		this.originLat = originLat + this.dy * ranges[0].start;
 
-		// icon global is one grid point short, therefore compare to 359.875
-		this.longitudeWrap = lonMax - lonMin >= 359.875 ? true : false;
+		// End = coordinates one step past the last grid index
+		const endLon = originLon + this.dx * ranges[1].end;
+		const endLat = originLat + this.dy * ranges[0].end;
+
+		// Bounds: [west, south, east, north]
+		// Longitude preserves natural direction for antimeridian support
+		// Latitude is always ordered south <= north
+		const west = this.dx >= 0 ? this.originLon : endLon;
+		const east = this.dx >= 0 ? endLon : this.originLon;
+		const south = this.dy >= 0 ? this.originLat : endLat;
+		const north = this.dy >= 0 ? endLat : this.originLat;
+		this.bounds = [west, south, east, north];
+
+		// Detect global longitude wrapping relative to the grid resolution so it
+		// holds at any dx. A complete global grid spans |dx|*nx == 360; some grids
+		// (ICON family) are stored one grid point short, spanning |dx|*nx == 360 - |dx|.
+		// Both must wrap across the antimeridian — anything ≥2 cells short is
+		// regional. The old hardcoded 359.875 threshold only matched the 0.125°
+		// ICON grid, so e.g. dwd_icon_eps (0.25°, 359.75°) failed to wrap and left
+		// a missing column at the antimeridian.
+		const absDx = Math.abs(this.dx);
+		const lonSpan = this.nx * absDx;
+		this.longitudeWrap = lonSpan >= 360 - 1.5 * absDx;
+		// Only the one-grid-point-short grids have a final cell that is physically
+		// 2*dx wide (the seam node is missing and bridged by the wrap column). A
+		// truly complete global grid already has a full-width final cell, so
+		// widening it shifts the last column and smears the data near the
+		// antimeridian (the artefact seen on e.g. ncep_gefs025/ncep_gfs025).
+		this.wrapLastCellDouble = this.longitudeWrap && lonSpan < 360 - 0.5 * absDx;
 	}
 
 	getLinearInterpolatedValue(values: Float32Array, lat: number, lon: number): number {
-		// check longitude is within bounds
+		return this.getInterpolatedValue(values, lat, lon, 'linear');
+	}
+
+	getInterpolatedValue(
+		values: Float32Array,
+		lat: number,
+		lon: number,
+		method: InterpolationMethod
+	): number {
+		// Compute floating-point grid indices from origin
+		const xRaw = (lon - this.originLon) / this.dx;
+		const yRaw = (lat - this.originLat) / this.dy;
+
+		// Check y bounds (works for both positive and negative dy)
+		if (yRaw < 0 || yRaw >= this.ny) {
+			return NaN;
+		}
+
+		// Check x bounds
 		if (!this.longitudeWrap) {
-			if (lon < this.bounds[0] || lon > this.bounds[2]) {
+			if (xRaw < 0 || xRaw >= this.nx) {
 				return NaN;
 			}
 		}
 
-		// check latitude is within bounds
-		if (lat < this.bounds[1] || lat >= this.bounds[3]) {
-			return NaN;
-		}
-		const y = Math.floor((lat - this.bounds[1]) / this.dy);
-		const yFraction = ((lat - this.bounds[1]) % this.dy) / this.dy;
+		const y = Math.floor(yRaw);
+		const yFraction = yRaw - y;
 
 		// small visual hack for "incomplete" icon global grids
 		// compare: https://github.com/open-meteo/weather-map-layer/pull/148#discussion_r2681391084
-		const x = Math.min(Math.floor((lon - this.bounds[0]) / this.dx), this.nx - 1);
-		const dx = this.longitudeWrap && lon >= this.bounds[2] - this.dx ? this.dx * 2 : this.dx;
-		const xFraction = ((lon - this.bounds[0]) % dx) / dx;
+		const x = Math.min(Math.floor(xRaw), this.nx - 1);
+		const absDx = Math.abs(this.dx);
+		const effectiveDx = this.wrapLastCellDouble && xRaw >= this.nx - 1 ? absDx * 2 : absDx;
+		const xFraction = Math.abs((lon - this.originLon) % effectiveDx) / effectiveDx;
 
-		return interpolateLinear(values, x, y, xFraction, yFraction, this.nx, this.longitudeWrap);
+		switch (method) {
+			// 'nearest' returns the value of the closest grid node (round), centred on the node exactly like the
+			// interpolating methods. Flooring would offset every cell by half a
+			// cell up/right (RegularGrid.swift registers values at lonMin+i*dx).
+			case 'nearest':
+				return interpolateNearest(
+					values,
+					x,
+					y,
+					xFraction,
+					yFraction,
+					this.nx,
+					this.ny,
+					this.longitudeWrap
+				);
+			case 'cubic':
+				return interpolateCubic(
+					values,
+					x,
+					y,
+					xFraction,
+					yFraction,
+					this.nx,
+					this.ny,
+					this.longitudeWrap
+				);
+			case 'monotone':
+				return interpolateMonotone(
+					values,
+					x,
+					y,
+					xFraction,
+					yFraction,
+					this.nx,
+					this.ny,
+					this.longitudeWrap
+				);
+			case 'linear':
+				return interpolateLinear(values, x, y, xFraction, yFraction, this.nx, this.longitudeWrap);
+			default: {
+				// Exhaustiveness check; also throws at runtime for untyped callers.
+				const _exhaustive: never = method;
+				throw new Error(`Unknown interpolation method: ${_exhaustive}`);
+			}
+		}
 	}
 
 	getBounds(): Bounds {
@@ -123,66 +221,30 @@ export class RegularGrid implements GridInterface {
 	getCenter(): { lng: number; lat: number } {
 		if (!this.center) {
 			this.center = {
-				lng: this.bounds[0] + this.dx * (this.nx * 0.5),
-				lat: this.bounds[1] + this.dy * (this.ny * 0.5)
+				lng: this.originLon + this.dx * (this.nx * 0.5),
+				lat: this.originLat + this.dy * (this.ny * 0.5)
 			};
 		}
 		return this.center;
 	}
 
 	getCoveringRanges(south: number, west: number, north: number, east: number): DimensionRange[] {
-		const dx = this.dx;
-		const dy = this.dy;
-		const nx = this.nx;
-		const ny = this.ny;
+		// Convert geographic bounds to floating-point grid indices
+		const yFromSouth = (south - this.originLat) / this.dy;
+		const yFromNorth = (north - this.originLat) / this.dy;
+		const xFromWest = (west - this.originLon) / this.dx;
+		const xFromEast = (east - this.originLon) / this.dx;
 
-		let xPrecision, yPrecision;
-		if (String(dx).split('.')[1]) {
-			xPrecision = String(dx).split('.')[1].length;
-			yPrecision = String(dy).split('.')[1].length;
-		} else {
-			xPrecision = 2;
-			yPrecision = 2;
-		}
+		// Use min/max on grid indices (not geographic coordinates) to handle both positive and negative dx/dy
+		const minY = Math.max(Math.floor(Math.min(yFromSouth, yFromNorth)) - 1, 0);
+		const maxY = Math.min(Math.ceil(Math.max(yFromSouth, yFromNorth)) + 1, this.ny);
+		const minX = Math.max(Math.floor(Math.min(xFromWest, xFromEast)) - 1, 0);
+		const maxX = Math.min(Math.ceil(Math.max(xFromWest, xFromEast)) + 1, this.nx);
 
-		const originX = this.bounds[0];
-		const originY = this.bounds[1];
-
-		const s = Number((south - (south % dy)).toFixed(yPrecision));
-		const w = Number((west - (west % dx)).toFixed(xPrecision));
-		const n = Number((north - (north % dy) + dy).toFixed(yPrecision));
-		const e = Number((east - (east % dx) + dx).toFixed(xPrecision));
-
-		let minX: number, minY: number, maxX: number, maxY: number;
-
-		if (s - originY < 0) {
-			minY = 0;
-		} else {
-			minY = Math.floor(Math.max((s - originY) / dy - 1, 0));
-		}
-
-		if (w - originX < 0) {
-			minX = 0;
-		} else {
-			minX = Math.floor(Math.max((w - originX) / dx - 1, 0));
-		}
-
-		if (n - originY < 0) {
-			maxY = ny;
-		} else {
-			maxY = Math.ceil(Math.min((n - originY) / dy + 1, ny));
-		}
-
-		if (e - originX < 0) {
-			maxX = nx;
-		} else {
-			maxX = Math.ceil(Math.min((e - originX) / dx + 1, nx));
-		}
-		const ranges = [
+		return [
 			{ start: minY, end: maxY },
 			{ start: minX, end: maxX }
 		];
-		return ranges;
 	}
 
 	forEachPoint(callback: (point: GridPoint) => void | false, bounds?: Bounds): void {
@@ -193,18 +255,22 @@ export class RegularGrid implements GridInterface {
 
 		if (bounds) {
 			const [minLon, minLat, maxLon, maxLat] = bounds;
-			jStart = Math.max(0, Math.floor((minLat - this.bounds[1]) / this.dy));
-			jEnd = Math.min(this.ny, Math.ceil((maxLat - this.bounds[1]) / this.dy) + 1);
+			const yFromMinLat = (minLat - this.originLat) / this.dy;
+			const yFromMaxLat = (maxLat - this.originLat) / this.dy;
+			jStart = Math.max(0, Math.floor(Math.min(yFromMinLat, yFromMaxLat)));
+			jEnd = Math.min(this.ny, Math.ceil(Math.max(yFromMinLat, yFromMaxLat)) + 1);
 			if (!this.longitudeWrap) {
-				iStart = Math.max(0, Math.floor((minLon - this.bounds[0]) / this.dx));
-				iEnd = Math.min(this.nx, Math.ceil((maxLon - this.bounds[0]) / this.dx) + 1);
+				const xFromMinLon = (minLon - this.originLon) / this.dx;
+				const xFromMaxLon = (maxLon - this.originLon) / this.dx;
+				iStart = Math.max(0, Math.floor(Math.min(xFromMinLon, xFromMaxLon)));
+				iEnd = Math.min(this.nx, Math.ceil(Math.max(xFromMinLon, xFromMaxLon)) + 1);
 			}
 		}
 
 		for (let j = jStart; j < jEnd; j++) {
-			const lat = this.bounds[1] + this.dy * j;
+			const lat = this.originLat + this.dy * j;
 			for (let i = iStart; i < iEnd; i++) {
-				const lon = this.bounds[0] + this.dx * i;
+				const lon = this.originLon + this.dx * i;
 				const result = callback({ index: j * this.nx + i, lat, lon });
 				if (result === false) return;
 			}

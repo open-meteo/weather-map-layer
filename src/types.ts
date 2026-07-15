@@ -15,8 +15,15 @@ export interface DataIdentityOptions {
 	bounds: Bounds | undefined;
 }
 
+export type InterpolationMethod = 'nearest' | 'linear' | 'cubic' | 'monotone';
+
+export type TileSize = 64 | 128 | 256 | 512 | 1024 | 2048;
+
 export interface RenderOptions {
-	tileSize: 64 | 128 | 256 | 512 | 1024 | 2048;
+	tileSize: TileSize;
+	interpolation: InterpolationMethod;
+	// Interpolate colours between colour-scale breakpoints instead of hard bands.
+	colorBlend: boolean;
 	drawGrid: boolean;
 	drawArrows: boolean;
 	drawContours: boolean;
@@ -59,8 +66,7 @@ export type RequestResolver = (
 ) => { dataOptions: DataIdentityOptions; renderOptions: RenderOptions };
 
 export type PostReadCallback =
-	| ((omFileReader: WeatherMapLayerFileReader, data: Data, state: OmUrlState) => void)
-	| undefined;
+	((omFileReader: WeatherMapLayerFileReader, data: Data, state: OmUrlState) => void) | undefined;
 
 export interface OmProtocolSettings {
 	// static
@@ -83,6 +89,10 @@ export interface OmProtocolSettings {
 export interface Data {
 	values: Float32Array | undefined;
 	directions: Float32Array | undefined;
+	// Storage scale factor of `values`: stored ints are `round(value * scaleFactor)`,
+	// so the quantization step is 1 / scaleFactor. Simple variables use the .om
+	// file's stored factor; derived variables get one from their derivation rule.
+	scaleFactor?: number;
 }
 
 export type TileJSON = {
@@ -138,6 +148,8 @@ export interface TileRequest {
 	/** Present when the original request was for a seamless composite domain. */
 	seamlessLayers?: SeamlessLayerRenderData[];
 }
+
+export type WorkerRequest = TileRequest;
 
 export type TileResponse = ImageBitmap | ArrayBuffer;
 export interface TileResult {
@@ -238,9 +250,7 @@ export interface RegularGridFromBounds extends BaseGridData {
 }
 
 export type AnyProjectionGridData =
-	| ProjectionGridFromBounds
-	| ProjectionGridFromGeographicOrigin
-	| ProjectionGridFromProjectedOrigin;
+	ProjectionGridFromBounds | ProjectionGridFromGeographicOrigin | ProjectionGridFromProjectedOrigin;
 
 export interface ProjectionGridFromBounds extends BaseGridData {
 	type: 'projectedFromBounds';
@@ -328,12 +338,7 @@ export type ModelDt =
 	| 'monthly';
 
 export type ModelUpdateInterval =
-	| 'hourly'
-	| '3_hourly'
-	| '6_hourly'
-	| '12_hourly'
-	| 'daily'
-	| 'monthly';
+	'hourly' | '3_hourly' | '6_hourly' | '12_hourly' | 'daily' | 'monthly';
 
 /** A single layer within a seamless domain, referencing a concrete grid-based domain. */
 export interface SeamlessLayer {
@@ -430,10 +435,7 @@ export type GeoJsonFeature = {
 };
 
 export type GeoJson =
-	| GeoJsonGeometry
-	| GeoJsonFeature
-	| { type: 'FeatureCollection'; features: GeoJsonFeature[] };
+	GeoJsonGeometry | GeoJsonFeature | { type: 'FeatureCollection'; features: GeoJsonFeature[] };
 
 export type ClippingOptions =
-	| { geojson?: GeoJson; bounds?: Bounds; fillRule?: 'nonzero' | 'evenodd' }
-	| undefined;
+	{ geojson?: GeoJson; bounds?: Bounds; fillRule?: 'nonzero' | 'evenodd' } | undefined;

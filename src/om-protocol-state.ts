@@ -1,4 +1,5 @@
 import { boundsIncluded, constrainBounds } from './utils/bounds';
+import { DEFAULT_INTERPOLATION, VALID_INTERPOLATIONS } from './utils/constants';
 import { normalizeLon } from './utils/math';
 import { parseUrlComponents } from './utils/parse-url';
 import { normalizeUrl } from './utils/parse-url';
@@ -13,6 +14,7 @@ import type {
 	DimensionRange,
 	Domain,
 	GridData,
+	InterpolationMethod,
 	OmProtocolInstance,
 	OmProtocolSettings,
 	OmUrlState,
@@ -210,7 +212,7 @@ export const getValueFromLatLong = async (
 
 	const url = await normalizeUrl(omUrl);
 
-	const { fileAndVariableKey } = parseUrlComponents(url);
+	const { fileAndVariableKey, params } = parseUrlComponents(url);
 	const state = omProtocolInstance.stateByKey.get(fileAndVariableKey);
 	if (!state) {
 		throw new Error(`State not found for key: ${fileAndVariableKey}`);
@@ -224,9 +226,20 @@ export const getValueFromLatLong = async (
 
 	const grid = GridFactory.create((state.dataOptions.domain as Domain).grid, state.ranges);
 	const lonNormalized = normalizeLon(lon);
-	const value = grid.getLinearInterpolatedValue(state.data.values, lat, lonNormalized);
+	// Sample with the same interpolation the tiles are rendered with (encoded in
+	// the URL) so the popup value matches the pixel under the cursor.
+	const interpolation = resolveInterpolation(params.get('interpolation'));
+	const value = grid.getInterpolatedValue(state.data.values, lat, lonNormalized, interpolation);
 
 	return { value };
+};
+
+/** Parse the `interpolation` URL param, falling back to the default on absent or invalid values. */
+const resolveInterpolation = (value: string | null): InterpolationMethod => {
+	if (value && VALID_INTERPOLATIONS.includes(value as InterpolationMethod)) {
+		return value as InterpolationMethod;
+	}
+	return DEFAULT_INTERPOLATION;
 };
 
 /**
