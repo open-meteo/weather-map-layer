@@ -1,7 +1,12 @@
 import { GridInterface, GridPoint } from './interface';
-import { interpolateLinear } from './interpolations';
+import {
+	interpolateCubic,
+	interpolateLinear,
+	interpolateMonotone,
+	interpolateNearest
+} from './interpolations';
 
-import { Bounds, DimensionRange, RegularGridData } from '../types';
+import { Bounds, DimensionRange, InterpolationMethod, RegularGridData } from '../types';
 
 // Regular grid implementation
 export class RegularGrid implements GridInterface {
@@ -17,11 +22,28 @@ export class RegularGrid implements GridInterface {
 	// Bounds: [west, south, east, north]
 	private bounds: Bounds;
 	private longitudeWrap: boolean;
+	// True only for global grids stored one grid point short of the seam (e.g.
+	// ICON), whose final cell is physically 2*dx wide. Complete global grids
+	// (e.g. GFS/GEFS) keep a normal final cell.
+	private wrapLastCellDouble: boolean;
 	private center?: { lng: number; lat: number };
 
 	constructor(data: RegularGridData, ranges: DimensionRange[] | null = null) {
-		this.dx = data.dx;
-		this.dy = data.dy;
+		// normalise both forms to an origin (lonMin/latMin) + spacing (dx/dy)
+		let originLon: number;
+		let originLat: number;
+		if (data.latitude && data.longitude) {
+			originLon = data.longitude[0];
+			originLat = data.latitude[0];
+			// inclusive bounds: divide by (n - 1) so the last node lands on the upper bound
+			this.dx = (data.longitude[1] - data.longitude[0]) / (data.nx - 1);
+			this.dy = (data.latitude[1] - data.latitude[0]) / (data.ny - 1);
+		} else {
+			originLon = data.lonMin;
+			originLat = data.latMin;
+			this.dx = data.dx;
+			this.dy = data.dy;
+		}
 
 		if (!ranges) {
 			// if ranges are not provided, use the full grid dimensions
@@ -53,12 +75,12 @@ export class RegularGrid implements GridInterface {
 		this.ny = ranges[0].end - ranges[0].start;
 
 		// Origin = coordinates at grid index [0, 0] of this (sub)grid
-		this.originLon = data.lonMin + this.dx * ranges[1].start;
-		this.originLat = data.latMin + this.dy * ranges[0].start;
+		this.originLon = originLon + this.dx * ranges[1].start;
+		this.originLat = originLat + this.dy * ranges[0].start;
 
 		// End = coordinates one step past the last grid index
-		const endLon = data.lonMin + this.dx * ranges[1].end;
-		const endLat = data.latMin + this.dy * ranges[0].end;
+		const endLon = originLon + this.dx * ranges[1].end;
+		const endLat = originLat + this.dy * ranges[0].end;
 
 		// Bounds: [west, south, east, north]
 		// Longitude preserves natural direction for antimeridian support
@@ -69,11 +91,34 @@ export class RegularGrid implements GridInterface {
 		const north = this.dy >= 0 ? endLat : this.originLat;
 		this.bounds = [west, south, east, north];
 
-		// icon global is one grid point short, therefore compare to 359.875
-		this.longitudeWrap = Math.abs(this.nx * this.dx) >= 359.875;
+		// Detect global longitude wrapping relative to the grid resolution so it
+		// holds at any dx. A complete global grid spans |dx|*nx == 360; some grids
+		// (ICON family) are stored one grid point short, spanning |dx|*nx == 360 - |dx|.
+		// Both must wrap across the antimeridian — anything ≥2 cells short is
+		// regional. The old hardcoded 359.875 threshold only matched the 0.125°
+		// ICON grid, so e.g. dwd_icon_eps (0.25°, 359.75°) failed to wrap and left
+		// a missing column at the antimeridian.
+		const absDx = Math.abs(this.dx);
+		const lonSpan = this.nx * absDx;
+		this.longitudeWrap = lonSpan >= 360 - 1.5 * absDx;
+		// Only the one-grid-point-short grids have a final cell that is physically
+		// 2*dx wide (the seam node is missing and bridged by the wrap column). A
+		// truly complete global grid already has a full-width final cell, so
+		// widening it shifts the last column and smears the data near the
+		// antimeridian (the artefact seen on e.g. ncep_gefs025/ncep_gfs025).
+		this.wrapLastCellDouble = this.longitudeWrap && lonSpan < 360 - 0.5 * absDx;
 	}
 
 	getLinearInterpolatedValue(values: Float32Array, lat: number, lon: number): number {
+		return this.getInterpolatedValue(values, lat, lon, 'linear');
+	}
+
+	getInterpolatedValue(
+		values: Float32Array,
+		lat: number,
+		lon: number,
+		method: InterpolationMethod
+	): number {
 		// Compute floating-point grid indices from origin
 		const xRaw = (lon - this.originLon) / this.dx;
 		const yRaw = (lat - this.originLat) / this.dy;
@@ -94,13 +139,57 @@ export class RegularGrid implements GridInterface {
 		const yFraction = yRaw - y;
 
 		// small visual hack for "incomplete" icon global grids
-		// compare: https://github.com/open-meteo/mapbox-layer/pull/148#discussion_r2681391084
+		// compare: https://github.com/open-meteo/weather-map-layer/pull/148#discussion_r2681391084
 		const x = Math.min(Math.floor(xRaw), this.nx - 1);
 		const absDx = Math.abs(this.dx);
-		const effectiveDx = this.longitudeWrap && xRaw >= this.nx - 1 ? absDx * 2 : absDx;
+		const effectiveDx = this.wrapLastCellDouble && xRaw >= this.nx - 1 ? absDx * 2 : absDx;
 		const xFraction = Math.abs((lon - this.originLon) % effectiveDx) / effectiveDx;
 
-		return interpolateLinear(values, x, y, xFraction, yFraction, this.nx, this.longitudeWrap);
+		switch (method) {
+			// 'nearest' returns the value of the closest grid node (round), centred on the node exactly like the
+			// interpolating methods. Flooring would offset every cell by half a
+			// cell up/right (RegularGrid.swift registers values at lonMin+i*dx).
+			case 'nearest':
+				return interpolateNearest(
+					values,
+					x,
+					y,
+					xFraction,
+					yFraction,
+					this.nx,
+					this.ny,
+					this.longitudeWrap
+				);
+			case 'cubic':
+				return interpolateCubic(
+					values,
+					x,
+					y,
+					xFraction,
+					yFraction,
+					this.nx,
+					this.ny,
+					this.longitudeWrap
+				);
+			case 'monotone':
+				return interpolateMonotone(
+					values,
+					x,
+					y,
+					xFraction,
+					yFraction,
+					this.nx,
+					this.ny,
+					this.longitudeWrap
+				);
+			case 'linear':
+				return interpolateLinear(values, x, y, xFraction, yFraction, this.nx, this.longitudeWrap);
+			default: {
+				// Exhaustiveness check; also throws at runtime for untyped callers.
+				const _exhaustive: never = method;
+				throw new Error(`Unknown interpolation method: ${_exhaustive}`);
+			}
+		}
 	}
 
 	getBounds(): Bounds {

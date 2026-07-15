@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Weather Map Layer - Interpolation Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
+		<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+		<!-- x-release-please-start-version -->
+		<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.0.19/dist/index.js"></script>
+		<!-- x-release-please-end -->
+		<!-- Local development -->
+		<script>
+			if (location.hostname === 'localhost' || location.href.startsWith('file://')) {
+				document.write('<script src="../dist/index.js"><\/script>');
+			}
+		</script>
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+			#controls {
+				position: absolute;
+				top: 12px;
+				left: 12px;
+				z-index: 1;
+				background: rgba(255, 255, 255, 0.92);
+				padding: 10px 12px;
+				border-radius: 6px;
+				font-family: system-ui, sans-serif;
+				font-size: 14px;
+				box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+			}
+			#controls label {
+				display: block;
+			}
+			#controls label + label {
+				margin-top: 8px;
+			}
+			#controls select {
+				margin-left: 6px;
+			}
+			#controls #costNote {
+				display: block;
+				margin-top: 8px;
+				color: #555;
+				font-size: 12px;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<div id="controls">
+			<label>
+				Interpolation
+				<select id="interpolation">
+					<option value="nearest">Nearest (1×)</option>
+					<option value="cubic">Cubic (1.6×)</option>
+					<option value="linear" selected>Linear (2.1×)</option>
+					<option value="monotone">Monotone (2.4×)</option>
+				</select>
+			</label>
+			<small id="costNote">(N×) = approx. render cost relative to nearest</small>
+		</div>
+		<script>
+			maplibregl.addProtocol('om', OMWeatherMapLayer.omProtocol);
+
+			const map = new maplibregl.Map({
+				container: 'map',
+				style: 'https://map-assets.open-meteo.com/styles/minimal-planet-maps.json', // replace with your own style sheet
+				hash: true
+			});
+
+			const interpolationSelect = document.getElementById('interpolation');
+
+			function buildSourceUrl() {
+				const interpolation = interpolationSelect.value;
+				// the 'interpolation' query param is read by the om protocol and applied
+				// when rendering each raster tile
+				const url =
+					'https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json' +
+					'?time_step=current_time_1H&variable=temperature_2m' +
+					'&interpolation=' +
+					interpolation;
+				return 'om://' + url;
+			}
+
+			function updateLayer() {
+				// changing a query param changes the source URL; update it in place so
+				// the tiles are re-requested without re-creating the source/layer
+				const source = map.getSource('omFileSource');
+				if (source) {
+					source.setUrl(buildSourceUrl());
+					return;
+				}
+
+				// first run: create the source + layer
+				map.addSource('omFileSource', {
+					url: buildSourceUrl(),
+					type: 'raster',
+					maxzoom: 12
+				});
+				map.addLayer(
+					{
+						id: 'omFileLayer',
+						type: 'raster',
+						source: 'omFileSource',
+						paint: {
+							'raster-opacity': 0.75
+						}
+					},
+					'waterway-tunnel'
+				);
+			}
+
+			map.on('load', updateLayer);
+			interpolationSelect.addEventListener('change', updateLayer);
+		</script>
+	</body>
+</html>

@@ -3,6 +3,7 @@ import type { Domain } from './types';
 export const domainGroups = [
 	// { value: 'bom', label: 'BOM Australia' },
 	{ value: 'cams', label: 'CAMS' },
+	{ value: 'chmi', label: 'CHMI' },
 	{ value: 'cma', label: 'CMA China' },
 	{ value: 'dmi', label: 'DMI Denmark' },
 	{ value: 'dwd', label: 'DWD Germany' },
@@ -86,6 +87,46 @@ export const domainOptions: Array<Domain> = [
 		},
 		time_interval: 'hourly',
 		model_interval: 'daily'
+	},
+
+	// CHMI
+	{
+		value: 'chmi_aladin_central_europe_2km',
+		label: 'Aladin Central Europe 2km',
+		grid: {
+			type: 'projectedFromGeographicOrigin',
+			nx: 1053,
+			ny: 837,
+			latitude: 38.599,
+			longitude: 1.334,
+			dx: 2325,
+			dy: 2325,
+			zoom: 4,
+			projection: {
+				λ0: 17,
+				ϕ0: 46.244,
+				ϕ1: 46.244,
+				ϕ2: 46.244,
+				radius: 6371229,
+				name: 'LambertConformalConicProjection'
+			}
+		},
+		time_interval: 'hourly',
+		model_interval: '6_hourly'
+	},
+	{
+		value: 'chmi_aladin_cz_1km',
+		label: 'Aladin CZ 1km',
+		grid: {
+			type: 'regular',
+			nx: 501,
+			ny: 290,
+			latitude: [48.5, 51.098],
+			longitude: [12.0, 18.995],
+			zoom: 4
+		},
+		time_interval: 'hourly',
+		model_interval: '6_hourly'
 	},
 
 	// CMA
@@ -399,8 +440,8 @@ export const domainOptions: Array<Domain> = [
 			type: 'projectedFromBounds',
 			nx: 1799,
 			ny: 1059,
-			latitudeBounds: [21.138, 47.8424],
-			longitudeBounds: [-122.72, -60.918],
+			latitude: [21.138, 47.8424],
+			longitude: [-122.72, -60.918],
 			zoom: 3.5,
 			projection: {
 				λ0: -97.5,
@@ -420,8 +461,8 @@ export const domainOptions: Array<Domain> = [
 			type: 'projectedFromBounds',
 			nx: 1799,
 			ny: 1059,
-			latitudeBounds: [21.138, 47.8424],
-			longitudeBounds: [-122.72, -60.918],
+			latitude: [21.138, 47.8424],
+			longitude: [-122.72, -60.918],
 			zoom: 3.5,
 			projection: {
 				λ0: -97.5,
@@ -465,8 +506,8 @@ export const domainOptions: Array<Domain> = [
 			type: 'projectedFromBounds',
 			nx: 1799,
 			ny: 1059,
-			latitudeBounds: [21.138, 47.8424],
-			longitudeBounds: [-122.72, -60.918],
+			latitude: [21.138, 47.8424],
+			longitude: [-122.72, -60.918],
 			zoom: 3.5,
 			projection: {
 				λ0: -97.5,
@@ -713,8 +754,8 @@ export const domainOptions: Array<Domain> = [
 			type: 'projectedFromBounds',
 			nx: 2540,
 			ny: 1290,
-			latitudeBounds: [39.626034, 47.876457],
-			longitudeBounds: [-133.62952, -40.708557],
+			latitude: [39.626034, 47.876457],
+			longitude: [-133.62952, -40.708557],
 			zoom: 1,
 			projection: {
 				rotatedLat: -36.0885,
@@ -732,8 +773,8 @@ export const domainOptions: Array<Domain> = [
 			type: 'projectedFromProjectedOrigin',
 			nx: 1330,
 			ny: 1180,
-			projectedLatitudeOrigin: 5.308595 + 1180 * -0.00899,
-			projectedLongitudeOrigin: -22.18489,
+			latitudeProjectionOrigin: 5.308595 + 1180 * -0.00899,
+			longitudeProjectionOrigin: -22.18489,
 			dx: 0.00899,
 			dy: 0.00899,
 			zoom: 1,
@@ -753,8 +794,8 @@ export const domainOptions: Array<Domain> = [
 			type: 'projectedFromProjectedOrigin',
 			nx: 1140,
 			ny: 1045,
-			projectedLatitudeOrigin: -48.806,
-			projectedLongitudeOrigin: 306.141 - 360,
+			latitudeProjectionOrigin: -48.806,
+			longitudeProjectionOrigin: 306.141 - 360,
 			dx: 0.090298,
 			dy: 0.090298,
 			zoom: 1,
@@ -1025,8 +1066,8 @@ export const domainOptions: Array<Domain> = [
 			type: 'projectedFromBounds',
 			nx: 1796,
 			ny: 2321,
-			latitudeBounds: [52.30272, 72.18527],
-			longitudeBounds: [1.9184653, 41.764282],
+			latitude: [52.30272, 72.18527],
+			longitude: [1.9184653, 41.764282],
 			zoom: 4,
 			projection: {
 				λ0: 15,
@@ -1091,8 +1132,8 @@ export const domainOptions: Array<Domain> = [
 			type: 'projectedFromBounds',
 			nx: 676,
 			ny: 564,
-			latitudeBounds: [39.740627, 62.619324],
-			longitudeBounds: [-25.162262, 38.75702],
+			latitude: [39.740627, 62.619324],
+			longitude: [-25.162262, 38.75702],
 			zoom: 3.5,
 			projection: {
 				rotatedLat: -35,
@@ -1101,7 +1142,7 @@ export const domainOptions: Array<Domain> = [
 			}
 		},
 		time_interval: 'hourly',
-		model_interval: '3_hourly'
+		model_interval: 'hourly'
 	},
 	{
 		value: 'knmi_harmonie_arome_netherlands',
@@ -1117,7 +1158,7 @@ export const domainOptions: Array<Domain> = [
 			zoom: 6
 		},
 		time_interval: 'hourly',
-		model_interval: '3_hourly'
+		model_interval: 'hourly'
 	},
 
 	// MeteoSwiss ICON
@@ -1128,8 +1169,8 @@ export const domainOptions: Array<Domain> = [
 			type: 'projectedFromProjectedOrigin',
 			nx: 1089,
 			ny: 705,
-			projectedLatitudeOrigin: -4.06,
-			projectedLongitudeOrigin: -6.46,
+			latitudeProjectionOrigin: -4.06,
+			longitudeProjectionOrigin: -6.46,
 			dx: 0.01,
 			dy: 0.01,
 			zoom: 5.2,
@@ -1149,8 +1190,8 @@ export const domainOptions: Array<Domain> = [
 			type: 'projectedFromProjectedOrigin',
 			nx: 1089,
 			ny: 705,
-			projectedLatitudeOrigin: -4.06,
-			projectedLongitudeOrigin: -6.46,
+			latitudeProjectionOrigin: -4.06,
+			longitudeProjectionOrigin: -6.46,
 			dx: 0.01,
 			dy: 0.01,
 			zoom: 5.2,
@@ -1170,8 +1211,8 @@ export const domainOptions: Array<Domain> = [
 			type: 'projectedFromProjectedOrigin',
 			nx: 545,
 			ny: 353,
-			projectedLatitudeOrigin: -4.06,
-			projectedLongitudeOrigin: -6.46,
+			latitudeProjectionOrigin: -4.06,
+			longitudeProjectionOrigin: -6.46,
 			dx: 0.02,
 			dy: 0.02,
 			zoom: 5.2,
@@ -1191,8 +1232,8 @@ export const domainOptions: Array<Domain> = [
 			type: 'projectedFromProjectedOrigin',
 			nx: 545,
 			ny: 353,
-			projectedLatitudeOrigin: -4.06,
-			projectedLongitudeOrigin: -6.46,
+			latitudeProjectionOrigin: -4.06,
+			longitudeProjectionOrigin: -6.46,
 			dx: 0.02,
 			dy: 0.02,
 			zoom: 5.2,
@@ -1230,8 +1271,8 @@ export const domainOptions: Array<Domain> = [
 			type: 'projectedFromProjectedOrigin',
 			nx: 1042,
 			ny: 970,
-			projectedLatitudeOrigin: -1036000,
-			projectedLongitudeOrigin: -1158000,
+			latitudeProjectionOrigin: -1036000,
+			longitudeProjectionOrigin: -1158000,
 			dx: 2000,
 			dy: 2000,
 			zoom: 4,
