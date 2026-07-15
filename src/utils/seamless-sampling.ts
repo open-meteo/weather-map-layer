@@ -13,7 +13,7 @@ import type { GridInterface } from '../grids/interface';
 import { degreesToRadians, radiansToDegrees } from './math';
 import { computeNanDistanceField } from './nan-distance';
 
-import type { SeamlessLayerRenderData } from '../types';
+import type { InterpolationMethod, SeamlessLayerRenderData } from '../types';
 
 export type ValueSampler = (lat: number, lon: number) => number;
 
@@ -98,21 +98,31 @@ const blendValue = (
 	seamlessLayers: SeamlessLayerRenderData[],
 	lat: number,
 	lon: number,
-	startIdx: number
+	startIdx: number,
+	method: InterpolationMethod
 ): number => {
 	for (let i = startIdx; i < seamlessLayers.length; i++) {
 		const layer = seamlessLayers[i];
 		const vals = layer.data.values;
 		if (!vals) continue;
 
-		const value = layerGrids[i].getLinearInterpolatedValue(vals, lat, lon);
+		const value = layerGrids[i].getInterpolatedValue(vals, lat, lon, method);
 		if (!isFinite(value)) continue; // point not covered by this domain
 
 		if (i === seamlessLayers.length - 1) return value;
 		const t = edgeBlendWeight(edgeGrids[i], layerGrids[i], fields[i], layer, lat, lon);
 		if (t >= 1) return value;
 
-		const fallback = blendValue(layerGrids, edgeGrids, fields, seamlessLayers, lat, lon, i + 1);
+		const fallback = blendValue(
+			layerGrids,
+			edgeGrids,
+			fields,
+			seamlessLayers,
+			lat,
+			lon,
+			i + 1,
+			method
+		);
 		if (!isFinite(fallback)) return value;
 		return value * t + fallback * (1 - t);
 	}
@@ -130,10 +140,12 @@ const blendValue = (
 export const sampleBlendedValue = (
 	layerGrids: GridInterface[],
 	seamlessLayers: SeamlessLayerRenderData[],
-	edgeGrids: GridInterface[] = layerGrids
+	edgeGrids: GridInterface[] = layerGrids,
+	method: InterpolationMethod = 'linear'
 ): ValueSampler => {
 	const fields = seamlessLayers.map(getNanField);
-	return (lat, lon) => blendValue(layerGrids, edgeGrids, fields, seamlessLayers, lat, lon, 0);
+	return (lat, lon) =>
+		blendValue(layerGrids, edgeGrids, fields, seamlessLayers, lat, lon, 0, method);
 };
 
 /**
@@ -148,7 +160,8 @@ const blendVector = (
 	seamlessLayers: SeamlessLayerRenderData[],
 	lat: number,
 	lon: number,
-	startIdx: number
+	startIdx: number,
+	method: InterpolationMethod
 ): { u: number; v: number } | null => {
 	for (let i = startIdx; i < seamlessLayers.length; i++) {
 		const layer = seamlessLayers[i];
@@ -156,7 +169,9 @@ const blendVector = (
 		const dirs = layer.data.directions;
 		if (!vals || !dirs) continue;
 
-		const speed = layerGrids[i].getLinearInterpolatedValue(vals, lat, lon);
+		// Sample the magnitude with the selected method so arrow size/colour
+		// matches the raster; direction stays linear (averaging angles would be wrong).
+		const speed = layerGrids[i].getInterpolatedValue(vals, lat, lon, method);
 		if (!isFinite(speed)) continue; // point not covered by this domain
 
 		const rad = degreesToRadians(layerGrids[i].getLinearInterpolatedValue(dirs, lat, lon));
@@ -167,7 +182,16 @@ const blendVector = (
 		const t = edgeBlendWeight(edgeGrids[i], layerGrids[i], fields[i], layer, lat, lon);
 		if (t >= 1) return { u, v };
 
-		const fallback = blendVector(layerGrids, edgeGrids, fields, seamlessLayers, lat, lon, i + 1);
+		const fallback = blendVector(
+			layerGrids,
+			edgeGrids,
+			fields,
+			seamlessLayers,
+			lat,
+			lon,
+			i + 1,
+			method
+		);
 		if (!fallback) return { u, v };
 		return { u: u * t + fallback.u * (1 - t), v: v * t + fallback.v * (1 - t) };
 	}
@@ -178,11 +202,12 @@ const blendVector = (
 export const sampleBlendedVector = (
 	layerGrids: GridInterface[],
 	seamlessLayers: SeamlessLayerRenderData[],
-	edgeGrids: GridInterface[] = layerGrids
+	edgeGrids: GridInterface[] = layerGrids,
+	method: InterpolationMethod = 'linear'
 ): VectorSampler => {
 	const fields = seamlessLayers.map(getNanField);
 	return (lat, lon) => {
-		const uv = blendVector(layerGrids, edgeGrids, fields, seamlessLayers, lat, lon, 0);
+		const uv = blendVector(layerGrids, edgeGrids, fields, seamlessLayers, lat, lon, 0, method);
 		if (!uv) return { value: NaN, direction: NaN };
 		let direction = radiansToDegrees(Math.atan2(uv.u, uv.v));
 		if (direction < 0) direction += 360;

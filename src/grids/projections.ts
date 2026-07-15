@@ -55,10 +55,20 @@ export class MercatorProjection implements Projection {
 export class RotatedLatLonProjection implements Projection {
 	θ: number;
 	ϕ: number;
+	// forward()/reverse() run per pixel; θ and ϕ are constant, so pre-compute
+	// their trig once here instead of recomputing ~12 sin/cos per call.
+	cosθ: number;
+	sinθ: number;
+	cosϕ: number;
+	sinϕ: number;
 
 	constructor(projectionData: RotatedLatLonProjectionData) {
 		this.θ = degreesToRadians(90 + projectionData.rotatedLat);
 		this.ϕ = degreesToRadians(projectionData.rotatedLon);
+		this.cosθ = Math.cos(this.θ);
+		this.sinθ = Math.sin(this.θ);
+		this.cosϕ = Math.cos(this.ϕ);
+		this.sinϕ = Math.sin(this.ϕ);
 	}
 
 	forward(latitude: number, longitude: number): [x: number, y: number] {
@@ -69,15 +79,9 @@ export class RotatedLatLonProjection implements Projection {
 		const y1 = Math.sin(lon) * Math.cos(lat);
 		const z1 = Math.sin(lat);
 
-		const x2 =
-			Math.cos(this.θ) * Math.cos(this.ϕ) * x1 +
-			Math.cos(this.θ) * Math.sin(this.ϕ) * y1 +
-			Math.sin(this.θ) * z1;
-		const y2 = -Math.sin(this.ϕ) * x1 + Math.cos(this.ϕ) * y1;
-		const z2 =
-			-Math.sin(this.θ) * Math.cos(this.ϕ) * x1 -
-			Math.sin(this.θ) * Math.sin(this.ϕ) * y1 +
-			Math.cos(this.θ) * z1;
+		const x2 = this.cosθ * this.cosϕ * x1 + this.cosθ * this.sinϕ * y1 + this.sinθ * z1;
+		const y2 = -this.sinϕ * x1 + this.cosϕ * y1;
+		const z2 = -this.sinθ * this.cosϕ * x1 - this.sinθ * this.sinϕ * y1 + this.cosθ * z1;
 
 		const x = -1 * radiansToDegrees(Math.atan2(y2, x2));
 		const y = -1 * radiansToDegrees(Math.asin(z2));
@@ -91,16 +95,10 @@ export class RotatedLatLonProjection implements Projection {
 
 		// quick solution without conversion in cartesian space
 		const lat2 =
-			-1 *
-			Math.asin(
-				Math.cos(this.θ) * Math.sin(lat1) - Math.cos(lon1) * Math.sin(this.θ) * Math.cos(lat1)
-			);
+			-1 * Math.asin(this.cosθ * Math.sin(lat1) - Math.cos(lon1) * this.sinθ * Math.cos(lat1));
 		const lon2 =
 			-1 *
-			(Math.atan2(
-				Math.sin(lon1),
-				Math.tan(lat1) * Math.sin(this.θ) + Math.cos(lon1) * Math.cos(this.θ)
-			) -
+			(Math.atan2(Math.sin(lon1), Math.tan(lat1) * this.sinθ + Math.cos(lon1) * this.cosθ) -
 				this.ϕ);
 
 		const lon = ((radiansToDegrees(lon2) + 180) % 360) - 180;
@@ -182,6 +180,8 @@ export class LambertConformalConicProjection implements Projection {
 export class LambertAzimuthalEqualAreaProjection implements Projection {
 	λ0;
 	ϕ1;
+	sinϕ1: number; // Sine of central latitude (constant — see StereographicProjection)
+	cosϕ1: number; // Cosine of central latitude
 	R = 6371229; // Radius of the Earth
 
 	constructor(projectionData: LAEAProjectionData) {
@@ -190,6 +190,8 @@ export class LambertAzimuthalEqualAreaProjection implements Projection {
 		const radius = projectionData.radius;
 		this.λ0 = degreesToRadians(λ0_dec);
 		this.ϕ1 = degreesToRadians(ϕ1_dec);
+		this.sinϕ1 = Math.sin(this.ϕ1);
+		this.cosϕ1 = Math.cos(this.ϕ1);
 		if (radius) {
 			this.R = radius;
 		}
@@ -200,17 +202,12 @@ export class LambertAzimuthalEqualAreaProjection implements Projection {
 		const ϕ = degreesToRadians(latitude);
 
 		const k = Math.sqrt(
-			2 /
-				(1 +
-					Math.sin(this.ϕ1) * Math.sin(ϕ) +
-					Math.cos(this.ϕ1) * Math.cos(ϕ) * Math.cos(λ - this.λ0))
+			2 / (1 + this.sinϕ1 * Math.sin(ϕ) + this.cosϕ1 * Math.cos(ϕ) * Math.cos(λ - this.λ0))
 		);
 
 		const x = this.R * k * Math.cos(ϕ) * Math.sin(λ - this.λ0);
 		const y =
-			this.R *
-			k *
-			(Math.cos(this.ϕ1) * Math.sin(ϕ) - Math.sin(this.ϕ1) * Math.cos(ϕ) * Math.cos(λ - this.λ0));
+			this.R * k * (this.cosϕ1 * Math.sin(ϕ) - this.sinϕ1 * Math.cos(ϕ) * Math.cos(λ - this.λ0));
 
 		return [x, y];
 	}
@@ -220,15 +217,10 @@ export class LambertAzimuthalEqualAreaProjection implements Projection {
 		y = y / this.R;
 		const ρ = Math.sqrt(x * x + y * y);
 		const c = 2 * Math.asin(0.5 * ρ);
-		const ϕ = Math.asin(
-			Math.cos(c) * Math.sin(this.ϕ1) + (y * Math.sin(c) * Math.cos(this.ϕ1)) / ρ
-		);
+		const ϕ = Math.asin(Math.cos(c) * this.sinϕ1 + (y * Math.sin(c) * this.cosϕ1) / ρ);
 		const λ =
 			this.λ0 +
-			Math.atan(
-				(x * Math.sin(c)) /
-					(ρ * Math.cos(this.ϕ1) * Math.cos(c) - y * Math.sin(this.ϕ1) * Math.sin(c))
-			);
+			Math.atan((x * Math.sin(c)) / (ρ * this.cosϕ1 * Math.cos(c) - y * this.sinϕ1 * Math.sin(c)));
 
 		const lat = radiansToDegrees(ϕ);
 		const lon = radiansToDegrees(λ);

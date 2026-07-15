@@ -22,13 +22,16 @@ const fakeGrid = (
 	dirsRef: Float32Array | undefined,
 	covers: Coverage,
 	bounds: Bounds
-): GridInterface =>
-	({
-		getLinearInterpolatedValue: (arr: Float32Array, lat: number, lon: number) =>
-			covers(lat, lon) ? (dirsRef && arr === dirsRef ? dir : speed) : NaN,
+): GridInterface => {
+	const sample = (arr: Float32Array, lat: number, lon: number) =>
+		covers(lat, lon) ? (dirsRef && arr === dirsRef ? dir : speed) : NaN;
+	return {
+		getLinearInterpolatedValue: sample,
+		getInterpolatedValue: sample,
 		edgeDistanceDeg: (lat: number, lon: number) =>
 			Math.min(lon - bounds[0], bounds[2] - lon, lat - bounds[1], bounds[3] - lat)
-	}) as unknown as GridInterface;
+	} as unknown as GridInterface;
+};
 
 const fakeLayer = (
 	values: Float32Array,
