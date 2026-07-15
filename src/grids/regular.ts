@@ -233,18 +233,22 @@ export class RegularGrid implements GridInterface {
 
 		if (bounds) {
 			const [minLon, minLat, maxLon, maxLat] = bounds;
-			jStart = Math.max(0, Math.floor((minLat - this.bounds[1]) / this.dy));
-			jEnd = Math.min(this.ny, Math.ceil((maxLat - this.bounds[1]) / this.dy) + 1);
+			const yFromMinLat = (minLat - this.originLat) / this.dy;
+			const yFromMaxLat = (maxLat - this.originLat) / this.dy;
+			jStart = Math.max(0, Math.floor(Math.min(yFromMinLat, yFromMaxLat)));
+			jEnd = Math.min(this.ny, Math.ceil(Math.max(yFromMinLat, yFromMaxLat)) + 1);
 			if (!this.longitudeWrap) {
-				iStart = Math.max(0, Math.floor((minLon - this.bounds[0]) / this.dx));
-				iEnd = Math.min(this.nx, Math.ceil((maxLon - this.bounds[0]) / this.dx) + 1);
+				const xFromMinLon = (minLon - this.originLon) / this.dx;
+				const xFromMaxLon = (maxLon - this.originLon) / this.dx;
+				iStart = Math.max(0, Math.floor(Math.min(xFromMinLon, xFromMaxLon)));
+				iEnd = Math.min(this.nx, Math.ceil(Math.max(xFromMinLon, xFromMaxLon)) + 1);
 			}
 		}
 
 		for (let j = jStart; j < jEnd; j++) {
-			const lat = this.bounds[1] + this.dy * j;
+			const lat = this.originLat + this.dy * j;
 			for (let i = iStart; i < iEnd; i++) {
-				const lon = this.bounds[0] + this.dx * i;
+				const lon = this.originLon + this.dx * i;
 				const result = callback({ index: j * this.nx + i, lat, lon });
 				if (result === false) return;
 			}

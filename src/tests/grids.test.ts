@@ -242,6 +242,40 @@ describe('RegularGrid', () => {
 			expect(ranges[1].end).toBe(4);
 		});
 
+		test('forEachPoint emits coordinates from the row-zero origin with negative dy', () => {
+			const grid = new RegularGrid(gridDataNegDy);
+			const points: Array<{ index: number; lat: number; lon: number }> = [];
+			grid.forEachPoint((point) => {
+				points.push(point);
+			});
+
+			expect(points).toHaveLength(30);
+			expect(points[0]).toEqual({ index: 0, lat: 56, lon: 10 });
+			expect(points[9]).toEqual({ index: 9, lat: 56, lon: 19 });
+			expect(points[10]).toEqual({ index: 10, lat: 54, lon: 10 });
+			expect(points[29]).toEqual({ index: 29, lat: 52, lon: 19 });
+		});
+
+		test('forEachPoint uses direction-normalized bounds with negative dy', () => {
+			const grid = new RegularGrid(gridDataNegDy);
+			const points: Array<{ index: number; lat: number; lon: number }> = [];
+			grid.forEachPoint(
+				(point) => {
+					points.push(point);
+				},
+				[11, 52, 13, 54]
+			);
+
+			expect(points).toEqual([
+				{ index: 11, lat: 54, lon: 11 },
+				{ index: 12, lat: 54, lon: 12 },
+				{ index: 13, lat: 54, lon: 13 },
+				{ index: 21, lat: 52, lon: 11 },
+				{ index: 22, lat: 52, lon: 12 },
+				{ index: 23, lat: 52, lon: 13 }
+			]);
+		});
+
 		test('negative dy grid produces same interpolated values as positive dy for matching coordinates', () => {
 			const gridPos = new RegularGrid(gridData);
 			const gridNeg = new RegularGrid(gridDataNegDy);
