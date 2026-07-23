@@ -21,12 +21,13 @@ export const TILE_SUFFIX_REGEX = /(?:\/)(\d+)(?:\/)(\d+)(?:\/)(\d+)$/i;
 export const TIME_SELECTED_REGEX = /([0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}00)/;
 
 /* Variables */
-export const RESOLVE_DOMAIN_REGEX = /data_spatial\/(?<domain>[^/]+)/;
-
-// Hosts serving from within the data_spatial directory (e.g. a CDN pull zone) have
-// no "data_spatial/" path segment: the domain is the segment directly before the
-// model-run path "<domain>/YYYY/MM/DD/HHMMZ/".
-export const RESOLVE_DOMAIN_MODEL_RUN_REGEX = /(?<domain>[^/]+)\/\d{4}\/\d{2}\/\d{2}\/\d{4}Z\//;
+// The domain is the path segment before the ".om" file, independent of any
+// "data_spatial/" prefix (CDN pull zones drop it). An optional model-run path
+// "YYYY/MM/DD/HHMMZ/" may sit between the domain and the file, so it is skipped:
+//   <domain>/file.om                         -> <domain>
+//   <domain>/YYYY/MM/DD/HHMMZ/<time>.om      -> <domain>
+export const RESOLVE_DOMAIN_REGEX =
+	/(?<domain>[^/]+)\/(?:\d{4}\/\d{2}\/\d{2}\/\d{4}Z\/)?[^/]+\.om$/;
 
 export const DOMAIN_META_REGEX =
 	/(http|https):\/\/(?<uri>[\s\S]+)\/(?<domain>[\s\S]+)\/(?<meta>[\s\S]+).json/;
