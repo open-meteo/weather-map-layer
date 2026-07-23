@@ -6,7 +6,7 @@
  *  - Clipping applied to seamless TileJSON bounds
  *  - Zoom-level layer filtering (minZoom gating)
  *  - Sequential data loading (no shared-reader race)
- *  - postReadCallback is NOT invoked for sub-layer loads
+ *  - postReadCallback IS invoked once per real sub-layer load
  *  - Correct URL substitution for each concrete layer
  *  - Failed layers are skipped; surviving layers still render
  *  - All layers failing returns { data: null }
@@ -493,6 +493,36 @@ describe('SeamlessDomain – state caching', () => {
 		// Second request should hit state.data — no new setToOmFile calls
 		await omProtocol(tileParams(5), new AbortController(), settings);
 		expect(mockSetToOmFileSpy.calls).toHaveLength(firstCallCount);
+	});
+});
+
+describe('SeamlessDomain – postReadCallback', () => {
+	it('invokes postReadCallback once per real sub-layer load', async () => {
+		const { omProtocol } = await import('../om-protocol');
+		const postReadCallback = vi.fn();
+		const settings = makeSettings({ postReadCallback });
+
+		// zoom 5 loads all three layers (d2, eu, global)
+		await omProtocol(tileParams(5), new AbortController(), settings);
+
+		expect(postReadCallback).toHaveBeenCalledTimes(3);
+		const domainValues = postReadCallback.mock.calls.map(
+			([, , state]) => state.omFileUrl.match(/\/data_spatial\/([^/]+)\//)?.[1]
+		);
+		expect(domainValues).toEqual(['test_d2', 'test_eu', 'test_global']);
+	});
+
+	it('does not re-invoke postReadCallback for cached sub-layer state', async () => {
+		const { omProtocol } = await import('../om-protocol');
+		const postReadCallback = vi.fn();
+		const settings = makeSettings({ postReadCallback });
+
+		await omProtocol(tileParams(5), new AbortController(), settings);
+		postReadCallback.mockClear();
+
+		// Second request hits state.data — ensureData short-circuits, no callback
+		await omProtocol(tileParams(5), new AbortController(), settings);
+		expect(postReadCallback).not.toHaveBeenCalled();
 	});
 });
 

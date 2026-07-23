@@ -249,7 +249,11 @@ export const handleSeamlessRequest = async (
 
 		let data: Data;
 		try {
-			data = await ensureData(state, instance.omFileReader, undefined, signal);
+			// Run the same postReadCallback the regular path uses. ensureData
+			// short-circuits on state.data, so it fires once per real sub-layer load
+			// (not per tile), letting consumers warm caches / transform values
+			// (e.g. the pressure_msl unit fix) for seamless composites too.
+			data = await ensureData(state, instance.omFileReader, settings.postReadCallback, signal);
 		} catch {
 			continue;
 		}
