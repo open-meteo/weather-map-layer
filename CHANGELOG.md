@@ -1,5 +1,52 @@
 # Changelog
 
+## [0.0.20](https://github.com/open-meteo/weather-map-layer/compare/v0.0.19...v0.0.20) (2026-07-28)
+
+
+### Features
+
+* add CHMI Aladin  models ([#267](https://github.com/open-meteo/weather-map-layer/issues/267)) ([ca209e7](https://github.com/open-meteo/weather-map-layer/commit/ca209e7410c89c6ce40182c60bf385f7306ce0d3))
+* interpolation as option, color blending, added interpolation methods ([#264](https://github.com/open-meteo/weather-map-layer/issues/264)) ([6b99d4d](https://github.com/open-meteo/weather-map-layer/commit/6b99d4d6ac349bbc729c083cf86e5da1ed345af6))
+
+
+### Bug Fixes
+
+* add file reader type to exports ([#271](https://github.com/open-meteo/weather-map-layer/issues/271)) ([a7a4d82](https://github.com/open-meteo/weather-map-layer/commit/a7a4d829053cc90b8587bdf4c64737f3cff8ebb1))
+* add minifying for cjs and mjs ([34dbf6a](https://github.com/open-meteo/weather-map-layer/commit/34dbf6aea393c0e8c0f13055bbad03a19b78df17))
+* bump @types/node from 25.6.2 to 25.7.0 in the openmeteo group ([#249](https://github.com/open-meteo/weather-map-layer/issues/249)) ([d9042e4](https://github.com/open-meteo/weather-map-layer/commit/d9042e4f6c2c370a1946ccd683ff8a2f0e6aeb33))
+* bump @types/node from 25.9.0 to 26.0.0 in the openmeteo group ([#269](https://github.com/open-meteo/weather-map-layer/issues/269)) ([ec86a47](https://github.com/open-meteo/weather-map-layer/commit/ec86a477836a2328554b6669e6229fb743504cd7))
+* bump actions/checkout from 6 to 6.0.2 ([#256](https://github.com/open-meteo/weather-map-layer/issues/256)) ([f8aefe8](https://github.com/open-meteo/weather-map-layer/commit/f8aefe88c99e23f4f7cb982d55a1c7433bf2747a))
+* bump actions/checkout from 6.0.2 to 6.0.3 ([#262](https://github.com/open-meteo/weather-map-layer/issues/262)) ([f9d0502](https://github.com/open-meteo/weather-map-layer/commit/f9d0502730ad41223abf95ed141817a31f3cdbbc))
+* bump actions/checkout from 6.0.3 to 7.0.0 ([#268](https://github.com/open-meteo/weather-map-layer/issues/268)) ([7ee4684](https://github.com/open-meteo/weather-map-layer/commit/7ee468498f651190c16969842a63e40ecb19f522))
+* bump actions/checkout from 7.0.0 to 7.0.1 ([#289](https://github.com/open-meteo/weather-map-layer/issues/289)) ([b45a975](https://github.com/open-meteo/weather-map-layer/commit/b45a9757fc81c9712d9a9a9afc1047467b8a9484))
+* bump actions/setup-node from 6 to 6.3.0 ([#238](https://github.com/open-meteo/weather-map-layer/issues/238)) ([80a637c](https://github.com/open-meteo/weather-map-layer/commit/80a637c134df7af42a62d73f67e2dff64abb7cc5))
+* bump actions/setup-node from 6.3.0 to 6.4.0 ([#240](https://github.com/open-meteo/weather-map-layer/issues/240)) ([208c638](https://github.com/open-meteo/weather-map-layer/commit/208c638b0c27a51ee6f93c73b5797c25e67b1f3e))
+* bump actions/setup-node from 6.4.0 to 7.0.0 ([#286](https://github.com/open-meteo/weather-map-layer/issues/286)) ([e651cc1](https://github.com/open-meteo/weather-map-layer/commit/e651cc1b0dae06ceec6f8827b217289bab3075d7))
+* bump codecov/codecov-action from 6 to 6.0.1 ([#253](https://github.com/open-meteo/weather-map-layer/issues/253)) ([85bd3c0](https://github.com/open-meteo/weather-map-layer/commit/85bd3c086374c140ba79262da35ae6196d95671a))
+* bump codecov/codecov-action from 6.0.1 to 7.0.0 ([#263](https://github.com/open-meteo/weather-map-layer/issues/263)) ([6f89b97](https://github.com/open-meteo/weather-map-layer/commit/6f89b9715ceaee60ef7a32518a6fc7c82b9c1315))
+* bump googleapis/release-please-action from 4 to 4.4.1 ([#241](https://github.com/open-meteo/weather-map-layer/issues/241)) ([12eeb65](https://github.com/open-meteo/weather-map-layer/commit/12eeb657f8eb6014fac83422d1266813edae14b8))
+* bump googleapis/release-please-action from 4.4.1 to 5.0.0 ([#243](https://github.com/open-meteo/weather-map-layer/issues/243)) ([ba120dd](https://github.com/open-meteo/weather-map-layer/commit/ba120dded0f4f2f9afc3a9ba3b22831e62403be5))
+* bump the openmeteo group with 2 updates ([#284](https://github.com/open-meteo/weather-map-layer/issues/284)) ([7ccee54](https://github.com/open-meteo/weather-map-layer/commit/7ccee541af512b930656e83466b123ab36742bf5))
+* bump the openmeteo group with 3 updates ([#254](https://github.com/open-meteo/weather-map-layer/issues/254)) ([a393e6f](https://github.com/open-meteo/weather-map-layer/commit/a393e6f60ff614bfa0cf2ed07a2ecb496a2b5607))
+* bump the openmeteo group with 3 updates ([#255](https://github.com/open-meteo/weather-map-layer/issues/255)) ([909939c](https://github.com/open-meteo/weather-map-layer/commit/909939ccb6fb0e19ecee399c163ab0aa91993af6))
+* bump the openmeteo group with 3 updates ([#257](https://github.com/open-meteo/weather-map-layer/issues/257)) ([9f58021](https://github.com/open-meteo/weather-map-layer/commit/9f58021b9e09fb3206d14ba23f6f1ffb6dd04d01))
+* bump the openmeteo group with 4 updates ([#265](https://github.com/open-meteo/weather-map-layer/issues/265)) ([e65d690](https://github.com/open-meteo/weather-map-layer/commit/e65d69040f66215b46254c14eba1acfc0aa7af31))
+* bump the openmeteo group with 7 updates ([#276](https://github.com/open-meteo/weather-map-layer/issues/276)) ([afd61c1](https://github.com/open-meteo/weather-map-layer/commit/afd61c1bc9cbb18c008b6d7244e9f74578e2fda9))
+* cams eu domain ([#209](https://github.com/open-meteo/weather-map-layer/issues/209)) ([7888ba4](https://github.com/open-meteo/weather-map-layer/commit/7888ba44303f074b46e74e9fbb855f7e32ecbf69))
+* correct export paths ([#252](https://github.com/open-meteo/weather-map-layer/issues/252)) ([cb8d22d](https://github.com/open-meteo/weather-map-layer/commit/cb8d22d92754e7060c04ec20eaa7ddf0f104e57c))
+* correct GEM model strings ([#261](https://github.com/open-meteo/weather-map-layer/issues/261)) ([27ee616](https://github.com/open-meteo/weather-map-layer/commit/27ee6164f301b7ad58c57cf856c40b26300a4062))
+* correct interpolation method popup ([4a13836](https://github.com/open-meteo/weather-map-layer/commit/4a1383675a9a3f623a54056b551b5cb66757e69a))
+* export getCachedResolvedClipping ([#235](https://github.com/open-meteo/weather-map-layer/issues/235)) ([e65e070](https://github.com/open-meteo/weather-map-layer/commit/e65e07029794285a64ec19f5f96e0e0c18a3e539))
+* hoist constant trig out of rotated-latlon and laea projections ([#281](https://github.com/open-meteo/weather-map-layer/issues/281)) ([aa0d565](https://github.com/open-meteo/weather-map-layer/commit/aa0d56526d436cf8b59d22136a301e6092e6d87a))
+* hoist lon calculation outside of lat loop ([#275](https://github.com/open-meteo/weather-map-layer/issues/275)) ([30a2830](https://github.com/open-meteo/weather-map-layer/commit/30a2830cefb41372409e21086daae5dbc0614f75))
+* improve color scales ([#190](https://github.com/open-meteo/weather-map-layer/issues/190)) ([42cedad](https://github.com/open-meteo/weather-map-layer/commit/42cedad03b3c94505f4241690ec877ebe2ea89e0))
+* knmi update interval ([#270](https://github.com/open-meteo/weather-map-layer/issues/270)) ([dfb794f](https://github.com/open-meteo/weather-map-layer/commit/dfb794f53ef7e9fb10918a5ccb8ec4cee1549d60))
+* missing changes and old version in example file ([#259](https://github.com/open-meteo/weather-map-layer/issues/259)) ([1f157ef](https://github.com/open-meteo/weather-map-layer/commit/1f157ef5a35a6c10660340d6cbe7c22341f68c16))
+* non blocking tilejson ([#272](https://github.com/open-meteo/weather-map-layer/issues/272)) ([8d1cfc5](https://github.com/open-meteo/weather-map-layer/commit/8d1cfc510e0bf8a269e8d8712cd56a3ec805cb1f))
+* remove unused exports from index ([#245](https://github.com/open-meteo/weather-map-layer/issues/245)) ([f9ca176](https://github.com/open-meteo/weather-map-layer/commit/f9ca1768e680b7f0236ad8921c8b1f7f42632ccb))
+* support endpoints without data_spatial ([#285](https://github.com/open-meteo/weather-map-layer/issues/285)) ([f95a862](https://github.com/open-meteo/weather-map-layer/commit/f95a862c3eef7a6d0998de9c322bf0e31a97c4bd))
+* update to rolldown vite v8 and ts v6 ([#246](https://github.com/open-meteo/weather-map-layer/issues/246)) ([46c4f2f](https://github.com/open-meteo/weather-map-layer/commit/46c4f2f06f1ede0ec30f2b5b19e38dea47403685))
+
 ## [0.0.19](https://github.com/open-meteo/weather-map-layer/compare/v0.0.18...v0.0.19) (2026-04-13)
 
 
