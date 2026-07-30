@@ -52,15 +52,8 @@
 		<div id="controls">
 			<label>
 				Speed:
-				<input
-					type="range"
-					id="speedControl"
-					min="0.00001"
-					max="0.0001"
-					step="0.00001"
-					value="0.00001"
-				/>
-				<span id="speedValue">0.001</span>
+				<input type="range" id="speedControl" min="300" max="3600" step="100" value="1800" />
+				<span id="speedValue">1800</span>
 			</label>
 			<label>
 				Particle Count:
@@ -94,7 +87,7 @@
 			});
 
 			// Wind data URLs - U and V components
-			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2026/06/06/1200Z/2026-06-06T1400.om`;
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2026/07/30/1200Z/2026-07-30T1400.om`;
 			const variableName = 'wind_u_component_10m';
 
 			const domain = OMWeatherMapLayer.domainOptions.find((d) => d.value === 'dwd_icon');
@@ -103,15 +96,17 @@
 			let windLayer;
 
 			map.on('load', () => {
+				const source = new OMWeatherMapLayer.WebGLWeatherDataSource(omUrl, domain);
 				const rasterLayer = new OMWeatherMapLayer.WebGLRasterLayer(
 					'omFileLayer',
-					omUrl,
-					domain,
+					source,
 					variableName,
-					OMWeatherMapLayer.WebGLRasterLayer.windSpeedColorScale
+					{ opacity: 0.6 }
 				);
 				map.addLayer(rasterLayer);
-				windLayer = new OMWeatherMapLayer.WebGLWindLayer('windLayer', omUrl, domain, variableName);
+				windLayer = new OMWeatherMapLayer.WebGLWindLayer('windLayer', source, variableName, {
+					onError: (error) => console.error('WebGL wind layer:', error)
+				});
 				map.addLayer(windLayer);
 			});
 
@@ -127,22 +122,24 @@
 				const value = parseFloat(e.target.value);
 				speedValue.textContent = value;
 				if (windLayer) {
-					windLayer.speedFactor = value;
+					windLayer.setOptions({ simulationSpeed: value });
 				}
 			});
 
 			particleControl.addEventListener('input', (e) => {
 				const value = parseInt(e.target.value);
 				particleValue.textContent = value;
-				// Note: Changing particle count requires recreating the layer
-				// This would need additional implementation
+				if (windLayer) {
+					windLayer.setOptions({ minParticles: value, maxParticles: value });
+				}
 			});
 
 			dropControl.addEventListener('input', (e) => {
 				const value = parseFloat(e.target.value);
 				dropValue.textContent = value;
 				if (windLayer) {
-					windLayer.dropRate = value;
+					const halfLife = Math.max(0.1, 1.5 - value * 100);
+					windLayer.setOptions({ trailHalfLife: halfLife });
 				}
 			});
 
@@ -152,14 +149,12 @@
 
 				switch (e.key) {
 					case 'ArrowUp':
-						windLayer.speedFactor = Math.min(0.01, windLayer.speedFactor + 0.0005);
-						speedControl.value = windLayer.speedFactor;
-						speedValue.textContent = windLayer.speedFactor.toFixed(4);
+						speedControl.value = Math.min(3600, parseFloat(speedControl.value) + 100);
+						speedControl.dispatchEvent(new Event('input'));
 						break;
 					case 'ArrowDown':
-						windLayer.speedFactor = Math.max(0.0001, windLayer.speedFactor - 0.0005);
-						speedControl.value = windLayer.speedFactor;
-						speedValue.textContent = windLayer.speedFactor.toFixed(4);
+						speedControl.value = Math.max(300, parseFloat(speedControl.value) - 100);
+						speedControl.dispatchEvent(new Event('input'));
 						break;
 					case ' ':
 						e.preventDefault();

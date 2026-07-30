@@ -1,230 +1,671 @@
-import { CustomLayerInterface, CustomRenderMethodInput, Map } from 'maplibre-gl';
+import type {
+	CustomLayerInterface,
+	CustomRenderMethodInput,
+	Map as MapLibreMap
+} from 'maplibre-gl';
 
-import { GridFactory } from './grids';
-import { WeatherMapLayerFileReader } from './om-file-reader';
+import type { WebGLLayerStatus } from './webgl-raster-layer';
+import { colorScaleRange, createColorRampBytes, resolveWebGLColorScale } from './webgl/color-ramp';
+import type { WebGLColorScale } from './webgl/color-ramp';
+import { WebGLWeatherDataSource } from './webgl/data-source';
+import {
+	createProgram,
+	createRampTexture,
+	requireWebGL2,
+	textureSizeSupported
+} from './webgl/gl-utils';
+import { gridTransformShader } from './webgl/grid-transform';
+import { computeParticleCount } from './webgl/wind-math';
 
-import { Domain } from './types';
+import type { Domain } from './types';
+
+export interface WebGLWindLayerOptions {
+	simulationSpeed?: number;
+	particleDensity?: number;
+	minParticles?: number;
+	maxParticles?: number;
+	lineWidth?: number;
+	trailHalfLife?: number;
+	opacity?: number;
+	colorScale?: WebGLColorScale;
+	colorBlend?: boolean;
+	darkMode?: boolean;
+	onLoad?: () => void;
+	onError?: (error: Error) => void;
+}
+
+type ResolvedWindOptions = Required<
+	Pick<
+		WebGLWindLayerOptions,
+		| 'simulationSpeed'
+		| 'particleDensity'
+		| 'minParticles'
+		| 'maxParticles'
+		| 'lineWidth'
+		| 'trailHalfLife'
+		| 'opacity'
+		| 'colorBlend'
+		| 'darkMode'
+	>
+> &
+	Omit<
+		WebGLWindLayerOptions,
+		| 'simulationSpeed'
+		| 'particleDensity'
+		| 'minParticles'
+		| 'maxParticles'
+		| 'lineWidth'
+		| 'trailHalfLife'
+		| 'opacity'
+		| 'colorBlend'
+		| 'darkMode'
+	>;
+
+const QUAD = new Float32Array([0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1]);
+const MAX_REAL_FRAME_DELTA = 0.1;
+
+const samplingShader = (
+	nx: number,
+	ny: number,
+	longitudeWrap: boolean,
+	manualLinear: boolean
+): string => {
+	if (!manualLinear) {
+		return `
+			float sampleField(sampler2D field, vec2 grid) {
+				return texture(field, (grid + 0.5) / vec2(${nx}.0, ${ny}.0)).r;
+			}
+		`;
+	}
+	const wrap = longitudeWrap
+		? `x = mod(mod(x, ${nx}.0) + ${nx}.0, ${nx}.0);`
+		: `x = clamp(x, 0.0, ${nx - 1}.0);`;
+	return `
+		float fieldTexel(sampler2D field, float x, float y) {
+			${wrap}
+			y = clamp(y, 0.0, ${ny - 1}.0);
+			return texture(field, (vec2(x, y) + 0.5) / vec2(${nx}.0, ${ny}.0)).r;
+		}
+		float sampleField(sampler2D field, vec2 grid) {
+			vec2 lower = floor(grid);
+			vec2 f = fract(grid);
+			float a = fieldTexel(field, lower.x, lower.y);
+			float b = fieldTexel(field, lower.x + 1.0, lower.y);
+			float c = fieldTexel(field, lower.x, lower.y + 1.0);
+			float d = fieldTexel(field, lower.x + 1.0, lower.y + 1.0);
+			return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+		}
+	`;
+};
 
 export class WebGLWindLayer implements CustomLayerInterface {
 	id: string;
-	type: 'custom' = 'custom' as const;
-	renderingMode: '2d' = '2d' as const;
+	type = 'custom' as const;
+	renderingMode = '2d' as const;
 
-	private map: Map | undefined;
-	private gl: WebGL2RenderingContext | undefined;
-	private program: WebGLProgram | undefined;
-	private windUTexture: WebGLTexture | undefined;
-	private windVTexture: WebGLTexture | undefined;
-	private particleStateTexture: WebGLTexture | undefined;
-	private particleNextStateTexture: WebGLTexture | undefined;
-	private framebuffer: WebGLFramebuffer | undefined;
-	private particleVertexBuffer: WebGLBuffer | undefined;
-	private backgroundVertexBuffer: WebGLBuffer | undefined;
-	private backgroundIndexBuffer: WebGLBuffer | undefined;
+	private readonly source: WebGLWeatherDataSource;
+	private readonly ownsSource: boolean;
+	private readonly variable: string;
+	private options: ResolvedWindOptions;
+	private colorScale: WebGLColorScale;
+	private statusValue: WebGLLayerStatus = 'idle';
+	private map?: MapLibreMap;
+	private gl?: WebGL2RenderingContext;
+	private abortController?: AbortController;
+	private animationFrame?: number;
+	private lastUpdateTime?: number;
+	private cameraSignature?: string;
+	private projectionErrorReported = false;
 
-	private omUrl: string;
-	private omFileReader: WeatherMapLayerFileReader;
-	private domain: Domain;
-	private variable: string;
-	private dataLoaded = false;
-	private backgroundVertexCount = 0;
+	private updateProgram?: WebGLProgram;
+	private fadeProgram?: WebGLProgram;
+	private segmentProgram?: WebGLProgram;
+	private compositeProgram?: WebGLProgram;
+	private quadBuffer?: WebGLBuffer;
+	private quadVertexArray?: WebGLVertexArrayObject;
+	private segmentVertexArray?: WebGLVertexArrayObject;
+	private framebuffer?: WebGLFramebuffer;
+	private speedTexture?: WebGLTexture;
+	private windUTexture?: WebGLTexture;
+	private windVTexture?: WebGLTexture;
+	private colorRampTexture?: WebGLTexture;
+	private particleTextures: WebGLTexture[] = [];
+	private trailTextures: WebGLTexture[] = [];
+	private particleTextureSize = 0;
+	private particleCount = 0;
+	private trailWidth = 0;
+	private trailHeight = 0;
+	private currentParticleTexture = 0;
+	private currentTrailTexture = 0;
+	private readonly handleContextLost = (): void => {
+		if (this.statusValue === 'removed') return;
+		if (this.animationFrame !== undefined) cancelAnimationFrame(this.animationFrame);
+		this.statusValue = 'loading';
+		this.resetGPUReferences();
+	};
+	private readonly handleContextRestored = (): void => {
+		if (!this.gl || this.statusValue === 'removed') return;
+		this.abortController = new AbortController();
+		this.initialize(this.gl, this.abortController.signal).catch((error: unknown) =>
+			this.reportError(error)
+		);
+	};
 
-	// Animation parameters
-	private numParticles = 65536; // Must be a perfect square for texture dimensions
-	private particleTextureSize = 256; // sqrt(65536) = 256
-	private speedFactor = 0.00004;
-	private dropRate = 0.003;
-	private animationTime = 0;
-
-	constructor(id: string, omUrl: string, domain: Domain, variable: string) {
+	constructor(
+		id: string,
+		source: WebGLWeatherDataSource,
+		variable: string,
+		options?: WebGLWindLayerOptions
+	);
+	constructor(
+		id: string,
+		omUrl: string,
+		domain: Domain,
+		variable: string,
+		options?: WebGLWindLayerOptions
+	);
+	constructor(
+		id: string,
+		sourceOrUrl: WebGLWeatherDataSource | string,
+		domainOrVariable: Domain | string,
+		variableOrOptions?: string | WebGLWindLayerOptions,
+		legacyOptions?: WebGLWindLayerOptions
+	) {
 		this.id = id;
-		this.domain = domain;
-		this.variable = variable;
-		this.omUrl = omUrl;
-		this.omFileReader = new WeatherMapLayerFileReader();
+		if (sourceOrUrl instanceof WebGLWeatherDataSource) {
+			this.source = sourceOrUrl;
+			this.ownsSource = false;
+			this.variable = domainOrVariable as string;
+			this.options = this.resolveOptions(variableOrOptions as WebGLWindLayerOptions | undefined);
+		} else {
+			this.source = new WebGLWeatherDataSource(sourceOrUrl, domainOrVariable as Domain);
+			this.ownsSource = true;
+			this.variable = variableOrOptions as string;
+			this.options = this.resolveOptions(legacyOptions);
+		}
+		this.colorScale = resolveWebGLColorScale(
+			this.variable,
+			this.options.colorScale,
+			this.options.darkMode
+		);
 	}
 
-	private getBounds() {
-		const grid = GridFactory.create(this.domain.grid);
-		return grid.getBounds();
+	get status(): WebGLLayerStatus {
+		return this.statusValue;
 	}
 
-	private createBackgroundMesh(resolution: number = 50): {
-		vertices: Float32Array;
-		indices: Uint16Array;
-	} {
-		const vertices: number[] = [];
-		const indices: number[] = [];
+	setOptions(options: Partial<WebGLWindLayerOptions>): void {
+		const previousDensity = this.options.particleDensity;
+		const previousMinimum = this.options.minParticles;
+		const previousMaximum = this.options.maxParticles;
+		this.options = this.resolveOptions({ ...this.options, ...options });
+		this.colorScale = resolveWebGLColorScale(
+			this.variable,
+			this.options.colorScale,
+			this.options.darkMode
+		);
+		if (this.gl && this.colorRampTexture) {
+			this.gl.deleteTexture(this.colorRampTexture);
+			this.colorRampTexture = createRampTexture(
+				this.gl,
+				createColorRampBytes(this.colorScale, this.options.colorBlend)
+			);
+		}
+		if (
+			this.gl &&
+			(previousDensity !== this.options.particleDensity ||
+				previousMinimum !== this.options.minParticles ||
+				previousMaximum !== this.options.maxParticles)
+		) {
+			this.recreateParticles(this.gl);
+		}
+		this.clearTrails();
+		this.map?.triggerRepaint();
+	}
 
-		// Create a grid of vertices for the background mesh
-		for (let y = 0; y <= resolution; y++) {
-			for (let x = 0; x <= resolution; x++) {
-				const u = x / resolution;
-				const v = y / resolution;
-				vertices.push(u, v, u, v); // position (u,v), texCoord (u,v)
+	onAdd(map: MapLibreMap, context: WebGLRenderingContext | WebGL2RenderingContext): void {
+		this.map = map;
+		map.on('webglcontextlost', this.handleContextLost);
+		map.on('webglcontextrestored', this.handleContextRestored);
+		this.statusValue = 'loading';
+		this.abortController = new AbortController();
+		this.initialize(context, this.abortController.signal).catch((error: unknown) => {
+			if (
+				this.statusValue === 'removed' ||
+				(error instanceof DOMException && error.name === 'AbortError')
+			) {
+				return;
 			}
-		}
-
-		// Create triangle indices
-		for (let y = 0; y < resolution; y++) {
-			for (let x = 0; x < resolution; x++) {
-				const topLeft = y * (resolution + 1) + x;
-				const topRight = topLeft + 1;
-				const bottomLeft = (y + 1) * (resolution + 1) + x;
-				const bottomRight = bottomLeft + 1;
-
-				indices.push(topLeft, bottomLeft, topRight, topRight, bottomLeft, bottomRight);
-			}
-		}
-
-		this.backgroundVertexCount = indices.length;
-		return { vertices: new Float32Array(vertices), indices: new Uint16Array(indices) };
+			this.reportError(error);
+		});
 	}
 
-	private createParticleVertices(): Float32Array {
-		const vertices: number[] = [];
+	prerender(
+		glContext: WebGLRenderingContext | WebGL2RenderingContext,
+		renderOptions: CustomRenderMethodInput
+	): void {
+		if (this.statusValue !== 'ready' || !this.map || !this.gl) return;
+		if (!this.supportsCurrentProjection()) return;
+		const gl = glContext as WebGL2RenderingContext;
+		this.ensureScreenResources(gl);
+		if (!this.trailTextures.length || !this.particleTextures.length) return;
 
-		// Create vertices for particle rendering (simple points)
-		for (let i = 0; i < this.numParticles; i++) {
-			const x = (i % this.particleTextureSize) / this.particleTextureSize;
-			const y = Math.floor(i / this.particleTextureSize) / this.particleTextureSize;
-			vertices.push(x, y); // Texture coordinates to sample particle state
+		const now = performance.now();
+		const realDelta = this.lastUpdateTime
+			? Math.min(MAX_REAL_FRAME_DELTA, Math.max(0, (now - this.lastUpdateTime) / 1000))
+			: 0;
+		this.lastUpdateTime = now;
+
+		const signature = this.getCameraSignature();
+		if (signature !== this.cameraSignature) {
+			this.cameraSignature = signature;
+			this.clearTrails();
 		}
+		if (realDelta <= 0) return;
 
-		return new Float32Array(vertices);
+		const oldState = this.particleTextures[this.currentParticleTexture];
+		const newState = this.particleTextures[1 - this.currentParticleTexture];
+		try {
+			this.updateParticles(gl, oldState, newState, realDelta, now / 1000);
+			this.accumulateTrails(gl, oldState, newState, realDelta, renderOptions);
+		} catch (error) {
+			this.reportError(error);
+			gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+			return;
+		}
+		this.currentParticleTexture = 1 - this.currentParticleTexture;
+		this.currentTrailTexture = 1 - this.currentTrailTexture;
+		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 	}
 
-	private getZoomAdjustedParameters() {
-		const zoom = this.map?.getZoom() || 0;
+	render(
+		glContext: WebGLRenderingContext | WebGL2RenderingContext,
+		_options: CustomRenderMethodInput
+	): void {
+		if (
+			this.statusValue !== 'ready' ||
+			!this.compositeProgram ||
+			!this.quadBuffer ||
+			!this.trailTextures.length ||
+			!this.supportsCurrentProjection()
+		) {
+			return;
+		}
+		const gl = glContext as WebGL2RenderingContext;
+		gl.useProgram(this.compositeProgram);
+		this.bindQuad(gl, this.compositeProgram);
+		gl.activeTexture(gl.TEXTURE0);
+		gl.bindTexture(gl.TEXTURE_2D, this.trailTextures[this.currentTrailTexture]);
+		gl.uniform1i(gl.getUniformLocation(this.compositeProgram, 'u_trail'), 0);
+		gl.enable(gl.BLEND);
+		gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+		gl.drawArrays(gl.TRIANGLES, 0, 6);
+		this.unbindQuad(gl, this.compositeProgram);
+	}
 
-		// Reduce speed at higher zoom levels so particles don't fly across the screen
-		const zoomFactor = Math.max(1, zoom) / 2;
+	onRemove(_map: MapLibreMap, context: WebGLRenderingContext | WebGL2RenderingContext): void {
+		this.statusValue = 'removed';
+		this.abortController?.abort();
+		if (this.animationFrame !== undefined) cancelAnimationFrame(this.animationFrame);
+		this.map?.off('webglcontextlost', this.handleContextLost);
+		this.map?.off('webglcontextrestored', this.handleContextRestored);
+		this.destroyGPUResources(context as WebGL2RenderingContext);
+		if (this.ownsSource) this.source.dispose();
+		this.map = undefined;
+		this.gl = undefined;
+	}
 
+	private resolveOptions(options: WebGLWindLayerOptions = {}): ResolvedWindOptions {
+		const minimum = Math.max(1, Math.round(options.minParticles ?? 4096));
+		const maximum = Math.max(minimum, Math.round(options.maxParticles ?? 65536));
 		return {
-			dropRate: this.dropRate * (1 + zoomFactor * 2),
-			speedFactor: this.speedFactor / (1 + zoomFactor * 0.5)
+			...options,
+			simulationSpeed: Math.max(0, options.simulationSpeed ?? 1800),
+			particleDensity: Math.max(0.00001, options.particleDensity ?? 0.01),
+			minParticles: minimum,
+			maxParticles: maximum,
+			lineWidth: Math.max(0.5, options.lineWidth ?? 1.2),
+			trailHalfLife: Math.max(0.05, options.trailHalfLife ?? 0.8),
+			opacity: Math.max(0, Math.min(1, options.opacity ?? 0.8)),
+			colorBlend: options.colorBlend ?? true,
+			darkMode: options.darkMode ?? false
 		};
 	}
 
-	private initializeParticles(): Float32Array {
-		const data = new Float32Array(this.numParticles * 4); // RGBA
-
-		for (let i = 0; i < this.numParticles; i++) {
-			const idx = i * 4;
-			// x, y position (normalized 0-1)
-			data[idx] = Math.random();
-			data[idx + 1] = Math.random();
-			// age and life (for particle lifecycle)
-			data[idx + 2] = Math.random() * 100; // age
-			data[idx + 3] = 100; // max life
-		}
-
-		console.log('Initialized particles:', {
-			totalParticles: this.numParticles,
-			dataLength: data.length,
-			samplePositions: [
-				{ x: data[0], y: data[1], age: data[2], life: data[3] },
-				{ x: data[4], y: data[5], age: data[6], life: data[7] },
-				{ x: data[8], y: data[9], age: data[10], life: data[11] }
-			]
-		});
-
-		return data;
-	}
-
-	async onAdd(map: Map, gl: WebGL2RenderingContext): Promise<void> {
+	private async initialize(
+		context: WebGLRenderingContext | WebGL2RenderingContext,
+		signal: AbortSignal
+	): Promise<void> {
+		const gl = requireWebGL2(context);
 		this.gl = gl;
-		this.map = map;
-
-		// Enable required extensions explicitly
-		const floatLinearExt = gl.getExtension('OES_texture_float_linear');
-		const floatBlendExt = gl.getExtension('EXT_float_blend');
-
-		if (!floatLinearExt) {
-			console.warn('Float linear filtering not supported');
+		if (!gl.getExtension('EXT_color_buffer_float')) {
+			throw new Error('Animated WebGL wind trails require the EXT_color_buffer_float extension.');
 		}
-		if (!floatBlendExt) {
-			console.warn('Float blend extension not supported');
+		const descriptor = this.source.grid;
+		if (!textureSizeSupported(gl, descriptor.nx, descriptor.ny)) {
+			throw new Error(
+				`Wind texture ${descriptor.nx}×${descriptor.ny} exceeds this device's MAX_TEXTURE_SIZE.`
+			);
 		}
-
-		// Load wind data
-		await this.omFileReader.setToOmFile(this.omUrl);
-		await this.loadWindData(map);
-
-		// Create shaders and program
-		const vertexShaderUpdate = this.createShader(
-			gl,
-			gl.VERTEX_SHADER,
-			this.getUpdateVertexShader()
-		);
-		const fragmentShaderUpdate = this.createShader(
-			gl,
-			gl.FRAGMENT_SHADER,
-			this.getUpdateFragmentShader()
-		);
-
-		this.program = gl.createProgram()!;
-		gl.attachShader(this.program, vertexShaderUpdate);
-		gl.attachShader(this.program, fragmentShaderUpdate);
-		gl.linkProgram(this.program);
-
-		if (!gl.getProgramParameter(this.program, gl.LINK_STATUS)) {
-			console.error('Program link error:', gl.getProgramInfoLog(this.program));
-		}
-
-		// Create buffers
-		const backgroundMesh = this.createBackgroundMesh();
-
-		this.backgroundVertexBuffer = gl.createBuffer()!;
-		gl.bindBuffer(gl.ARRAY_BUFFER, this.backgroundVertexBuffer);
-		gl.bufferData(gl.ARRAY_BUFFER, backgroundMesh.vertices, gl.STATIC_DRAW);
-
-		this.backgroundIndexBuffer = gl.createBuffer()!;
-		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.backgroundIndexBuffer);
-		gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, backgroundMesh.indices, gl.STATIC_DRAW);
-
-		this.particleVertexBuffer = gl.createBuffer()!;
-		gl.bindBuffer(gl.ARRAY_BUFFER, this.particleVertexBuffer);
-		gl.bufferData(gl.ARRAY_BUFFER, this.createParticleVertices(), gl.STATIC_DRAW);
-
-		// Create particle state textures
-		this.particleStateTexture = this.createParticleTexture(gl);
-		this.particleNextStateTexture = this.createParticleTexture(gl);
-
-		// Create framebuffer for particle updates
+		const floatLinear = Boolean(gl.getExtension('OES_texture_float_linear'));
+		this.createPrograms(gl, !floatLinear);
+		this.quadBuffer = gl.createBuffer()!;
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);
+		gl.bufferData(gl.ARRAY_BUFFER, QUAD, gl.STATIC_DRAW);
+		this.quadVertexArray = gl.createVertexArray()!;
+		gl.bindVertexArray(this.quadVertexArray);
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);
+		const quadPosition = gl.getAttribLocation(this.updateProgram!, 'a_position');
+		gl.enableVertexAttribArray(quadPosition);
+		gl.vertexAttribPointer(quadPosition, 2, gl.FLOAT, false, 0, 0);
+		gl.bindVertexArray(null);
+		this.segmentVertexArray = gl.createVertexArray()!;
 		this.framebuffer = gl.createFramebuffer()!;
 
-		// Test framebuffer completeness
-		gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
-		gl.framebufferTexture2D(
-			gl.FRAMEBUFFER,
-			gl.COLOR_ATTACHMENT0,
-			gl.TEXTURE_2D,
-			this.particleNextStateTexture,
-			0
+		const data = await this.source.loadWindVariable(this.variable, signal);
+		if (signal.aborted || this.statusValue === 'removed') return;
+		this.speedTexture = this.createFieldTexture(gl, data.values!, floatLinear);
+		this.windUTexture = this.createFieldTexture(gl, data.u, floatLinear);
+		this.windVTexture = this.createFieldTexture(gl, data.v, floatLinear);
+		this.colorRampTexture = createRampTexture(
+			gl,
+			createColorRampBytes(this.colorScale, this.options.colorBlend)
 		);
-
-		const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
-		if (status !== gl.FRAMEBUFFER_COMPLETE) {
-			console.error('Framebuffer not complete:', status);
-		} else {
-			console.log('Framebuffer is complete');
-		}
-		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-
-		// Start animation loop
+		this.ensureScreenResources(gl);
+		this.recreateParticles(gl);
+		this.statusValue = 'ready';
+		this.options.onLoad?.();
 		this.startAnimation();
 	}
 
-	private createParticleTexture(gl: WebGL2RenderingContext): WebGLTexture {
+	private createPrograms(gl: WebGL2RenderingContext, manualLinear: boolean): void {
+		const descriptor = this.source.grid;
+		const gridShader = gridTransformShader(descriptor);
+		const sampleShader = samplingShader(
+			descriptor.nx,
+			descriptor.ny,
+			descriptor.longitudeWrap,
+			manualLinear
+		);
+		const quadVertex = `#version 300 es
+			layout(location = 0) in vec2 a_position;
+			out vec2 v_uv;
+			void main() {
+				v_uv = a_position;
+				gl_Position = vec4(a_position * 2.0 - 1.0, 0.0, 1.0);
+			}`;
+
+		this.updateProgram = createProgram(
+			gl,
+			quadVertex,
+			`#version 300 es
+			precision highp float;
+			uniform sampler2D u_particles;
+			uniform sampler2D u_wind_u;
+			uniform sampler2D u_wind_v;
+			uniform vec4 u_spawn_bounds;
+			uniform float u_real_delta;
+			uniform float u_simulation_delta;
+			uniform float u_time;
+			in vec2 v_uv;
+			out vec4 fragmentColor;
+			${gridShader}
+			${sampleShader}
+			const float EARTH_RADIUS = 6371000.0;
+			bool validGrid(vec2 grid) {
+				return grid.x >= -0.5 && grid.x <= ${descriptor.nx - 0.5} &&
+					grid.y >= -0.5 && grid.y <= ${descriptor.ny - 0.5};
+			}
+			float random(vec2 value) {
+				return fract(sin(dot(value, vec2(12.9898, 78.233))) * 43758.5453123);
+			}
+			vec2 windAt(vec2 lonLat, out bool valid) {
+				vec2 grid = geographicToGrid(lonLat);
+				valid = validGrid(grid);
+				if (!valid) return vec2(0.0);
+				float u = sampleField(u_wind_u, grid);
+				float v = sampleField(u_wind_v, grid);
+				valid = u == u && v == v &&
+					abs(u) < 3.402823e38 && abs(v) < 3.402823e38;
+				return vec2(u, v);
+			}
+			vec2 advect(vec2 lonLat, vec2 wind, float seconds) {
+				float latitude = radians(lonLat.y);
+				float dLat = degrees(wind.y * seconds / EARTH_RADIUS);
+				float dLon = degrees(wind.x * seconds /
+					(EARTH_RADIUS * max(0.01, cos(latitude))));
+				return vec2(lonLat.x + dLon, clamp(lonLat.y + dLat, -85.05112878, 85.05112878));
+			}
+			vec4 respawn(vec2 seed) {
+				vec2 randomPosition = vec2(
+					random(seed + vec2(u_time, 17.0)),
+					random(seed * 1.37 + vec2(31.0, u_time))
+				);
+				vec2 position = mix(u_spawn_bounds.xy, u_spawn_bounds.zw, randomPosition);
+				return vec4(position, 0.0, 4.0 + 4.0 * random(seed + 71.0));
+			}
+			void main() {
+				vec4 particle = texture(u_particles, v_uv);
+				vec2 position = particle.xy;
+				float age = particle.z + u_real_delta;
+				float life = particle.w;
+				bool validStart;
+				vec2 initialWind = windAt(position, validStart);
+				vec2 midpoint = advect(position, initialWind, u_simulation_delta * 0.5);
+				bool validMidpoint;
+				vec2 midpointWind = windAt(midpoint, validMidpoint);
+				vec2 nextPosition = advect(position, midpointWind, u_simulation_delta);
+				bool inViewport =
+					nextPosition.x >= u_spawn_bounds.x && nextPosition.x <= u_spawn_bounds.z &&
+					nextPosition.y >= u_spawn_bounds.y && nextPosition.y <= u_spawn_bounds.w;
+				float dropProbability = 1.0 - exp(-0.12 * u_real_delta);
+				bool drop = random(v_uv + vec2(u_time, age)) < dropProbability;
+				if (!validStart || !validMidpoint || !inViewport || age >= life || drop) {
+					fragmentColor = respawn(v_uv + particle.ww);
+				} else {
+					fragmentColor = vec4(nextPosition, age, life);
+				}
+			}`
+		);
+
+		this.fadeProgram = createProgram(
+			gl,
+			quadVertex,
+			`#version 300 es
+			precision mediump float;
+			uniform sampler2D u_previous;
+			uniform float u_decay;
+			in vec2 v_uv;
+			out vec4 fragmentColor;
+			void main() {
+				fragmentColor = texture(u_previous, v_uv) * u_decay;
+			}`
+		);
+
+		this.segmentProgram = createProgram(
+			gl,
+			`#version 300 es
+			precision highp float;
+			uniform sampler2D u_old_particles;
+			uniform sampler2D u_new_particles;
+			uniform sampler2D u_speed;
+			uniform mat4 u_matrix;
+			uniform vec2 u_viewport;
+			uniform float u_particle_texture_size;
+			uniform float u_line_width;
+			out float v_edge;
+			out float v_speed;
+			flat out float v_valid;
+			${gridShader}
+			${sampleShader}
+			vec2 toMercator(vec2 lonLat) {
+				float latitude = radians(clamp(lonLat.y, -85.05112878, 85.05112878));
+				return vec2(
+					lonLat.x / 360.0 + 0.5,
+					0.5 - log(tan(0.7853981633974483 + latitude * 0.5)) / 6.283185307179586
+				);
+			}
+			void main() {
+				int textureSize = int(u_particle_texture_size);
+				ivec2 particleCoordinate = ivec2(gl_InstanceID % textureSize, gl_InstanceID / textureSize);
+				vec4 oldParticle = texelFetch(u_old_particles, particleCoordinate, 0);
+				vec4 newParticle = texelFetch(u_new_particles, particleCoordinate, 0);
+				v_valid = newParticle.z >= oldParticle.z ? 1.0 : 0.0;
+				vec4 oldClip = u_matrix * vec4(toMercator(oldParticle.xy), 0.0, 1.0);
+				vec4 newClip = u_matrix * vec4(toMercator(newParticle.xy), 0.0, 1.0);
+				vec2 oldNdc = oldClip.xy / oldClip.w;
+				vec2 newNdc = newClip.xy / newClip.w;
+				vec2 pixelDirection = (newNdc - oldNdc) * u_viewport * 0.5;
+				vec2 normal = length(pixelDirection) > 0.001
+					? normalize(vec2(-pixelDirection.y, pixelDirection.x))
+					: vec2(0.0, 1.0);
+				bool atOld = gl_VertexID == 0 || gl_VertexID == 1 || gl_VertexID == 4;
+				bool negativeSide = gl_VertexID == 0 || gl_VertexID == 2 || gl_VertexID == 3;
+				float endpoint = atOld ? 0.0 : 1.0;
+				float side = negativeSide ? -1.0 : 1.0;
+				vec4 clip = mix(oldClip, newClip, endpoint);
+				vec2 offset = normal * side * u_line_width * 2.0 / u_viewport;
+				clip.xy += offset * clip.w;
+				gl_Position = clip;
+				v_edge = side;
+				vec2 grid = geographicToGrid(newParticle.xy);
+				v_speed = sampleField(u_speed, grid);
+			}`,
+			`#version 300 es
+			precision mediump float;
+			uniform sampler2D u_color_ramp;
+			uniform vec2 u_value_range;
+			uniform float u_opacity;
+			in float v_edge;
+			in float v_speed;
+			flat in float v_valid;
+			out vec4 fragmentColor;
+			void main() {
+				if (v_valid < 0.5 || v_speed != v_speed) discard;
+				float normalized = clamp(
+					(v_speed - u_value_range.x) / max(0.000001, u_value_range.y - u_value_range.x),
+					0.0,
+					1.0
+				);
+				vec4 color = texture(u_color_ramp, vec2(normalized, 0.5));
+				float coverage = 1.0 - smoothstep(0.65, 1.0, abs(v_edge));
+				color.a *= coverage * u_opacity;
+				color.rgb *= color.a;
+				fragmentColor = color;
+			}`
+		);
+
+		this.compositeProgram = createProgram(
+			gl,
+			quadVertex,
+			`#version 300 es
+			precision mediump float;
+			uniform sampler2D u_trail;
+			in vec2 v_uv;
+			out vec4 fragmentColor;
+			void main() {
+				fragmentColor = texture(u_trail, v_uv);
+			}`
+		);
+	}
+
+	private createFieldTexture(
+		gl: WebGL2RenderingContext,
+		values: Float32Array,
+		linear: boolean
+	): WebGLTexture {
+		const descriptor = this.source.grid;
+		const texture = gl.createTexture()!;
+		gl.bindTexture(gl.TEXTURE_2D, texture);
+		gl.texParameteri(
+			gl.TEXTURE_2D,
+			gl.TEXTURE_WRAP_S,
+			descriptor.longitudeWrap ? gl.REPEAT : gl.CLAMP_TO_EDGE
+		);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, linear ? gl.LINEAR : gl.NEAREST);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, linear ? gl.LINEAR : gl.NEAREST);
+		gl.texImage2D(
+			gl.TEXTURE_2D,
+			0,
+			gl.R32F,
+			descriptor.nx,
+			descriptor.ny,
+			0,
+			gl.RED,
+			gl.FLOAT,
+			values
+		);
+		if (gl.getError() !== gl.NO_ERROR) throw new Error('Failed to upload a wind field texture.');
+		return texture;
+	}
+
+	private ensureScreenResources(gl: WebGL2RenderingContext): void {
+		const canvas = gl.canvas as HTMLCanvasElement;
+		if (
+			canvas.width === this.trailWidth &&
+			canvas.height === this.trailHeight &&
+			this.trailTextures.length
+		) {
+			return;
+		}
+		for (const texture of this.trailTextures) gl.deleteTexture(texture);
+		this.trailTextures = [
+			this.createTrailTexture(gl, canvas.width, canvas.height),
+			this.createTrailTexture(gl, canvas.width, canvas.height)
+		];
+		this.trailWidth = canvas.width;
+		this.trailHeight = canvas.height;
+		this.currentTrailTexture = 0;
+		this.clearTrails();
+		if (this.statusValue === 'ready') this.recreateParticles(gl);
+	}
+
+	private createTrailTexture(
+		gl: WebGL2RenderingContext,
+		width: number,
+		height: number
+	): WebGLTexture {
+		const texture = gl.createTexture()!;
+		gl.bindTexture(gl.TEXTURE_2D, texture);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+		gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+		return texture;
+	}
+
+	private recreateParticles(gl: WebGL2RenderingContext): void {
+		if (!this.map) return;
+		for (const texture of this.particleTextures) gl.deleteTexture(texture);
+		const canvas = gl.canvas as HTMLCanvasElement;
+		const cssWidth = canvas.clientWidth || canvas.width;
+		const cssHeight = canvas.clientHeight || canvas.height;
+		this.particleCount = computeParticleCount(
+			cssWidth,
+			cssHeight,
+			this.options.particleDensity,
+			this.options.minParticles,
+			this.options.maxParticles
+		);
+		this.particleTextureSize = Math.ceil(Math.sqrt(this.particleCount));
+		const data = this.initialParticleData(this.particleTextureSize ** 2);
+		this.particleTextures = [
+			this.createParticleTexture(gl, data),
+			this.createParticleTexture(gl, data)
+		];
+		this.currentParticleTexture = 0;
+		this.lastUpdateTime = undefined;
+	}
+
+	private createParticleTexture(gl: WebGL2RenderingContext, data: Float32Array): WebGLTexture {
 		const texture = gl.createTexture()!;
 		gl.bindTexture(gl.TEXTURE_2D, texture);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-
-		const initialData = this.initializeParticles();
 		gl.texImage2D(
 			gl.TEXTURE_2D,
 			0,
@@ -234,389 +675,255 @@ export class WebGLWindLayer implements CustomLayerInterface {
 			0,
 			gl.RGBA,
 			gl.FLOAT,
-			initialData
+			data
 		);
-
-		// Check for errors
-		const error = gl.getError();
-		if (error !== gl.NO_ERROR) {
-			console.error('Error creating particle texture:', error);
-		}
-
 		return texture;
 	}
 
-	private async loadWindData(map: Map): Promise<void> {
-		console.log('Loading wind data...');
-
-		const data = await this.omFileReader.readVariable(this.variable, [
-			{ start: 0, end: this.domain.grid.ny },
-			{ start: 0, end: this.domain.grid.nx }
-		]);
-		console.log(data);
-
-		const speedValues = data.values!;
-		const directionValues = data.directions!;
-
-		if (!this.gl || !speedValues || !directionValues) return;
-
-		const uValues = new Float32Array(speedValues.length);
-		const vValues = new Float32Array(speedValues.length);
-
-		for (let i = 0; i < speedValues.length; i++) {
-			const speed = speedValues[i];
-			const direction = (directionValues[i] + 180) * (Math.PI / 180);
-			uValues[i] = speed * Math.sin(direction);
-			vValues[i] = speed * Math.cos(direction);
+	private initialParticleData(count: number): Float32Array {
+		const spawn = this.getSpawnBounds();
+		const data = new Float32Array(count * 4);
+		for (let index = 0; index < count; index++) {
+			const offset = index * 4;
+			data[offset] = spawn[0] + Math.random() * (spawn[2] - spawn[0]);
+			data[offset + 1] = spawn[1] + Math.random() * (spawn[3] - spawn[1]);
+			data[offset + 2] = Math.random() * 6;
+			data[offset + 3] = 4 + Math.random() * 4;
 		}
+		return data;
+	}
 
-		const { nx, ny } = this.domain.grid;
+	private updateParticles(
+		gl: WebGL2RenderingContext,
+		oldState: WebGLTexture,
+		newState: WebGLTexture,
+		realDelta: number,
+		time: number
+	): void {
+		const program = this.updateProgram!;
+		gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer!);
+		gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, newState, 0);
+		if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+			throw new Error('Wind particle framebuffer is incomplete.');
+		}
+		gl.viewport(0, 0, this.particleTextureSize, this.particleTextureSize);
+		gl.disable(gl.BLEND);
+		gl.disable(gl.DEPTH_TEST);
+		gl.disable(gl.STENCIL_TEST);
+		gl.useProgram(program);
+		this.bindQuad(gl, program);
+		this.bindTextureUniform(gl, program, 'u_particles', oldState, 0);
+		this.bindTextureUniform(gl, program, 'u_wind_u', this.windUTexture!, 1);
+		this.bindTextureUniform(gl, program, 'u_wind_v', this.windVTexture!, 2);
+		const spawn = this.getSpawnBounds();
+		gl.uniform4f(gl.getUniformLocation(program, 'u_spawn_bounds'), ...spawn);
+		gl.uniform1f(gl.getUniformLocation(program, 'u_real_delta'), realDelta);
+		gl.uniform1f(
+			gl.getUniformLocation(program, 'u_simulation_delta'),
+			realDelta * this.options.simulationSpeed
+		);
+		gl.uniform1f(gl.getUniformLocation(program, 'u_time'), time);
+		gl.drawArrays(gl.TRIANGLES, 0, 6);
+		this.unbindQuad(gl, program);
+	}
+
+	private accumulateTrails(
+		gl: WebGL2RenderingContext,
+		oldState: WebGLTexture,
+		newState: WebGLTexture,
+		realDelta: number,
+		renderOptions: CustomRenderMethodInput
+	): void {
+		const previousTrail = this.trailTextures[this.currentTrailTexture];
+		const nextTrail = this.trailTextures[1 - this.currentTrailTexture];
+		gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer!);
+		gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, nextTrail, 0);
+		gl.viewport(0, 0, this.trailWidth, this.trailHeight);
+		gl.disable(gl.DEPTH_TEST);
+		gl.disable(gl.STENCIL_TEST);
+
+		gl.disable(gl.BLEND);
+		gl.useProgram(this.fadeProgram!);
+		this.bindQuad(gl, this.fadeProgram!);
+		this.bindTextureUniform(gl, this.fadeProgram!, 'u_previous', previousTrail, 0);
+		const decay = Math.pow(0.5, realDelta / this.options.trailHalfLife);
+		gl.uniform1f(gl.getUniformLocation(this.fadeProgram!, 'u_decay'), decay);
+		gl.drawArrays(gl.TRIANGLES, 0, 6);
+		this.unbindQuad(gl, this.fadeProgram!);
+
+		const program = this.segmentProgram!;
+		gl.useProgram(program);
+		this.bindTextureUniform(gl, program, 'u_old_particles', oldState, 0);
+		this.bindTextureUniform(gl, program, 'u_new_particles', newState, 1);
+		this.bindTextureUniform(gl, program, 'u_speed', this.speedTexture!, 2);
+		this.bindTextureUniform(gl, program, 'u_color_ramp', this.colorRampTexture!, 3);
+		gl.uniformMatrix4fv(
+			gl.getUniformLocation(program, 'u_matrix'),
+			false,
+			renderOptions.defaultProjectionData.mainMatrix
+		);
+		gl.uniform2f(gl.getUniformLocation(program, 'u_viewport'), this.trailWidth, this.trailHeight);
+		gl.uniform1f(
+			gl.getUniformLocation(program, 'u_particle_texture_size'),
+			this.particleTextureSize
+		);
+		const pixelRatio = this.trailWidth / Math.max(1, (gl.canvas as HTMLCanvasElement).clientWidth);
+		gl.uniform1f(
+			gl.getUniformLocation(program, 'u_line_width'),
+			this.options.lineWidth * pixelRatio * 0.5
+		);
+		const range = colorScaleRange(this.colorScale);
+		gl.uniform2f(gl.getUniformLocation(program, 'u_value_range'), range[0], range[1]);
+		gl.uniform1f(gl.getUniformLocation(program, 'u_opacity'), this.options.opacity);
+		gl.enable(gl.BLEND);
+		gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+		gl.bindVertexArray(this.segmentVertexArray!);
+		gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.particleCount);
+		gl.bindVertexArray(null);
+	}
+
+	private bindQuad(gl: WebGL2RenderingContext, _program: WebGLProgram): void {
+		gl.bindVertexArray(this.quadVertexArray!);
+	}
+
+	private unbindQuad(gl: WebGL2RenderingContext, _program: WebGLProgram): void {
+		gl.bindVertexArray(null);
+	}
+
+	private bindTextureUniform(
+		gl: WebGL2RenderingContext,
+		program: WebGLProgram,
+		name: string,
+		texture: WebGLTexture,
+		unit: number
+	): void {
+		gl.activeTexture(gl.TEXTURE0 + unit);
+		gl.bindTexture(gl.TEXTURE_2D, texture);
+		gl.uniform1i(gl.getUniformLocation(program, name), unit);
+	}
+
+	private getSpawnBounds(): [number, number, number, number] {
+		const domain = this.source.grid.bounds;
+		if (!this.map) return [domain[0], domain[1], domain[2], domain[3]];
+		const viewport = this.map.getBounds();
+		const domainCenter = (domain[0] + domain[2]) * 0.5;
+		const world = Math.round((this.map.getCenter().lng - domainCenter) / 360) * 360;
+		const shiftedWest = domain[0] + world;
+		const shiftedEast = domain[2] + world;
+		const west = Math.max(viewport.getWest(), shiftedWest);
+		const south = Math.max(viewport.getSouth(), domain[1]);
+		const east = Math.min(viewport.getEast(), shiftedEast);
+		const north = Math.min(viewport.getNorth(), domain[3]);
+		return west < east && south < north
+			? [west, south, east, north]
+			: [shiftedWest, domain[1], shiftedEast, domain[3]];
+	}
+
+	private getCameraSignature(): string {
+		if (!this.map || !this.gl) return '';
+		const center = this.map.getCenter();
+		const canvas = this.gl.canvas as HTMLCanvasElement;
+		return [
+			center.lng.toFixed(7),
+			center.lat.toFixed(7),
+			this.map.getZoom().toFixed(5),
+			this.map.getBearing().toFixed(3),
+			this.map.getPitch().toFixed(3),
+			canvas.width,
+			canvas.height
+		].join(':');
+	}
+
+	private supportsCurrentProjection(): boolean {
+		if (!this.map || (this.map.getProjection()?.type ?? 'mercator') === 'mercator') {
+			this.projectionErrorReported = false;
+			return true;
+		}
+		if (!this.projectionErrorReported) {
+			this.projectionErrorReported = true;
+			const error = new Error(
+				'Animated WebGL wind trails currently support MapLibre Mercator projection only.'
+			);
+			if (this.options.onError) this.options.onError(error);
+			else console.error(`[WebGLWindLayer:${this.id}]`, error);
+		}
+		return false;
+	}
+
+	private clearTrails(): void {
+		if (!this.gl || !this.framebuffer || !this.trailTextures.length) return;
 		const gl = this.gl;
-
-		// Create U wind component texture
-		this.windUTexture = gl.createTexture()!;
-		gl.bindTexture(gl.TEXTURE_2D, this.windUTexture);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-		gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, nx, ny, 0, gl.RED, gl.FLOAT, uValues);
-
-		// Create V wind component texture
-		this.windVTexture = gl.createTexture()!;
-		gl.bindTexture(gl.TEXTURE_2D, this.windVTexture);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-		gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, nx, ny, 0, gl.RED, gl.FLOAT, vValues);
-
-		// Check for GL errors
-		const error = gl.getError();
-		if (error !== gl.NO_ERROR) {
-			console.error('WebGL error after wind texture upload:', error);
+		gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
+		gl.viewport(0, 0, this.trailWidth, this.trailHeight);
+		gl.clearColor(0, 0, 0, 0);
+		for (const texture of this.trailTextures) {
+			gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+			gl.clear(gl.COLOR_BUFFER_BIT);
 		}
-
-		this.dataLoaded = true;
-		console.log('Wind data loaded successfully');
-		map.triggerRepaint();
+		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 	}
 
 	private startAnimation(): void {
 		const animate = () => {
-			this.animationTime += 0.016; // ~60fps
-			if (this.map) {
-				this.map.triggerRepaint();
-			}
-			requestAnimationFrame(animate);
+			if (this.statusValue !== 'ready') return;
+			this.map?.triggerRepaint();
+			this.animationFrame = requestAnimationFrame(animate);
 		};
-		animate();
+		this.animationFrame = requestAnimationFrame(animate);
 	}
 
-	render(gl: WebGLRenderingContext, options: CustomRenderMethodInput): void {
-		if (!this.program || !this.dataLoaded) {
-			return;
+	private destroyGPUResources(gl: WebGL2RenderingContext): void {
+		for (const program of [
+			this.updateProgram,
+			this.fadeProgram,
+			this.segmentProgram,
+			this.compositeProgram
+		]) {
+			if (program) gl.deleteProgram(program);
 		}
-
-		// Update particles
-		this.updateParticles(gl as WebGL2RenderingContext, options);
-
-		// Render particles
-		this.renderParticles(gl as WebGL2RenderingContext, options);
-	}
-
-	private updateParticles(gl: WebGL2RenderingContext, options: CustomRenderMethodInput): void {
-		// Disable blending for the update pass
-		// The particle update step is a pure data-writing operation.
-		// Blending should be off to ensure the exact RGBA values calculated in the
-		// shader are written to the new state texture without being modified.
-		// We re-enable it before the render pass.
-		gl.disable(gl.BLEND);
-
-		// Switch to framebuffer for particle update
-		gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer!);
-		gl.framebufferTexture2D(
-			gl.FRAMEBUFFER,
-			gl.COLOR_ATTACHMENT0,
-			gl.TEXTURE_2D,
-			this.particleNextStateTexture!,
-			0
-		);
-
-		gl.viewport(0, 0, this.particleTextureSize, this.particleTextureSize);
-
-		gl.useProgram(this.program!);
-
-		// Bind wind textures
-		gl.activeTexture(gl.TEXTURE0);
-		gl.bindTexture(gl.TEXTURE_2D, this.windUTexture!);
-		gl.uniform1i(gl.getUniformLocation(this.program!, 'u_wind_u'), 0);
-
-		gl.activeTexture(gl.TEXTURE1);
-		gl.bindTexture(gl.TEXTURE_2D, this.windVTexture!);
-		gl.uniform1i(gl.getUniformLocation(this.program!, 'u_wind_v'), 1);
-
-		gl.activeTexture(gl.TEXTURE2);
-		gl.bindTexture(gl.TEXTURE_2D, this.particleStateTexture!);
-		gl.uniform1i(gl.getUniformLocation(this.program!, 'u_particles'), 2);
-
-		// Set uniforms
-		const bounds = this.getBounds();
-		gl.uniform4f(
-			gl.getUniformLocation(this.program!, 'u_bounds'),
-			bounds[0],
-			bounds[1],
-			bounds[2],
-			bounds[3]
-		);
-
-		// Compute viewport bounds in normalized 0-1 space
-		const mapBounds = this.map!.getBounds();
-		const viewportNorm = [
-			(mapBounds.getWest() - bounds[0]) / (bounds[2] - bounds[0]),
-			(mapBounds.getSouth() - bounds[1]) / (bounds[3] - bounds[1]),
-			(mapBounds.getEast() - bounds[0]) / (bounds[2] - bounds[0]),
-			(mapBounds.getNorth() - bounds[1]) / (bounds[3] - bounds[1])
-		];
-		gl.uniform4f(
-			gl.getUniformLocation(this.program!, 'u_viewport'),
-			viewportNorm[0],
-			viewportNorm[1],
-			viewportNorm[2],
-			viewportNorm[3]
-		);
-
-		const params = this.getZoomAdjustedParameters();
-		gl.uniform1f(gl.getUniformLocation(this.program!, 'u_drop_rate'), params.dropRate);
-		gl.uniform1f(gl.getUniformLocation(this.program!, 'u_speed_factor'), params.speedFactor);
-		gl.uniform1f(gl.getUniformLocation(this.program!, 'u_time'), this.animationTime);
-
-		// Render full screen quad to update particles
-		gl.bindBuffer(gl.ARRAY_BUFFER, this.backgroundVertexBuffer!);
-		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.backgroundIndexBuffer!);
-
-		const positionLoc = gl.getAttribLocation(this.program!, 'a_position');
-		gl.enableVertexAttribArray(positionLoc);
-		gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 16, 0);
-
-		gl.drawElements(gl.TRIANGLES, this.backgroundVertexCount, gl.UNSIGNED_SHORT, 0);
-		gl.disableVertexAttribArray(positionLoc);
-
-		// Swap particle textures
-		const temp = this.particleStateTexture;
-		this.particleStateTexture = this.particleNextStateTexture;
-		this.particleNextStateTexture = temp;
-
-		// Restore main framebuffer
-		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-		const canvas = gl.canvas as HTMLCanvasElement;
-		gl.viewport(0, 0, canvas.width, canvas.height);
-
-		// Re-enable blending for the render pass
-		gl.enable(gl.BLEND);
-	}
-
-	private renderParticles(gl: WebGL2RenderingContext, options: CustomRenderMethodInput): void {
-		const renderProgram = this.getRenderProgram(gl);
-		gl.useProgram(renderProgram);
-
-		// Set up matrix
-		const matrixLoc = gl.getUniformLocation(renderProgram, 'u_matrix');
-		gl.uniformMatrix4fv(
-			matrixLoc,
-			false,
-			new Float32Array(options.defaultProjectionData.mainMatrix)
-		);
-
-		// Set bounds
-		const bounds = this.getBounds();
-		gl.uniform4f(
-			gl.getUniformLocation(renderProgram, 'u_bounds'),
-			bounds[0],
-			bounds[1],
-			bounds[2],
-			bounds[3]
-		);
-
-		// Bind particle state texture
-		gl.activeTexture(gl.TEXTURE0);
-		gl.bindTexture(gl.TEXTURE_2D, this.particleStateTexture!);
-		gl.uniform1i(gl.getUniformLocation(renderProgram, 'u_particles'), 0);
-
-		// Enable blending
-		gl.enable(gl.BLEND);
-		gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-
-		// Render particles as points
-		gl.bindBuffer(gl.ARRAY_BUFFER, this.particleVertexBuffer!);
-
-		const texCoordLoc = gl.getAttribLocation(renderProgram, 'a_texCoord');
-		gl.enableVertexAttribArray(texCoordLoc);
-		gl.vertexAttribPointer(texCoordLoc, 2, gl.FLOAT, false, 8, 0);
-
-		gl.drawArrays(gl.POINTS, 0, this.numParticles);
-		gl.disableVertexAttribArray(texCoordLoc);
-	}
-
-	private renderProgram: WebGLProgram | undefined;
-
-	private getRenderProgram(gl: WebGL2RenderingContext): WebGLProgram {
-		if (!this.renderProgram) {
-			const vertexShader = this.createShader(gl, gl.VERTEX_SHADER, this.getRenderVertexShader());
-			const fragmentShader = this.createShader(
-				gl,
-				gl.FRAGMENT_SHADER,
-				this.getRenderFragmentShader()
-			);
-
-			this.renderProgram = gl.createProgram()!;
-			gl.attachShader(this.renderProgram, vertexShader);
-			gl.attachShader(this.renderProgram, fragmentShader);
-			gl.linkProgram(this.renderProgram);
-
-			if (!gl.getProgramParameter(this.renderProgram, gl.LINK_STATUS)) {
-				console.error('Render program link error:', gl.getProgramInfoLog(this.renderProgram));
-			}
-		}
-		return this.renderProgram;
-	}
-
-	onRemove(_map: Map, gl: WebGLRenderingContext): void {
-		if (this.program) gl.deleteProgram(this.program);
-		if (this.renderProgram) gl.deleteProgram(this.renderProgram);
-		if (this.backgroundVertexBuffer) gl.deleteBuffer(this.backgroundVertexBuffer);
-		if (this.backgroundIndexBuffer) gl.deleteBuffer(this.backgroundIndexBuffer);
-		if (this.particleVertexBuffer) gl.deleteBuffer(this.particleVertexBuffer);
-		if (this.windUTexture) gl.deleteTexture(this.windUTexture);
-		if (this.windVTexture) gl.deleteTexture(this.windVTexture);
-		if (this.particleStateTexture) gl.deleteTexture(this.particleStateTexture);
-		if (this.particleNextStateTexture) gl.deleteTexture(this.particleNextStateTexture);
+		if (this.quadBuffer) gl.deleteBuffer(this.quadBuffer);
+		if (this.quadVertexArray) gl.deleteVertexArray(this.quadVertexArray);
+		if (this.segmentVertexArray) gl.deleteVertexArray(this.segmentVertexArray);
 		if (this.framebuffer) gl.deleteFramebuffer(this.framebuffer);
-	}
-
-	private createShader(gl: WebGLRenderingContext, type: number, source: string): WebGLShader {
-		const shader = gl.createShader(type)!;
-		gl.shaderSource(shader, source);
-		gl.compileShader(shader);
-		if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-			console.error('Shader compile error:', gl.getShaderInfoLog(shader));
+		for (const texture of [
+			this.speedTexture,
+			this.windUTexture,
+			this.windVTexture,
+			this.colorRampTexture,
+			...this.particleTextures,
+			...this.trailTextures
+		]) {
+			if (texture) gl.deleteTexture(texture);
 		}
-		return shader;
+		this.particleTextures = [];
+		this.trailTextures = [];
+		this.resetGPUReferences();
 	}
 
-	private getUpdateVertexShader(): string {
-		return `
-			attribute vec2 a_position;
-			varying vec2 v_texCoord;
-
-			void main() {
-				v_texCoord = a_position;
-				gl_Position = vec4(2.0 * a_position - 1.0, 0.0, 1.0);
-			}
-		`;
+	private resetGPUReferences(): void {
+		this.updateProgram = undefined;
+		this.fadeProgram = undefined;
+		this.segmentProgram = undefined;
+		this.compositeProgram = undefined;
+		this.quadBuffer = undefined;
+		this.quadVertexArray = undefined;
+		this.segmentVertexArray = undefined;
+		this.framebuffer = undefined;
+		this.speedTexture = undefined;
+		this.windUTexture = undefined;
+		this.windVTexture = undefined;
+		this.colorRampTexture = undefined;
+		this.particleTextures = [];
+		this.trailTextures = [];
+		this.trailWidth = 0;
+		this.trailHeight = 0;
 	}
 
-	private getUpdateFragmentShader(): string {
-		return `
-        precision highp float;
-
-        uniform sampler2D u_particles;
-        uniform sampler2D u_wind_u;
-        uniform sampler2D u_wind_v;
-        uniform vec4 u_bounds; // [minLon, minLat, maxLon, maxLat]
-        uniform vec4 u_viewport; // [minNorm, maxNorm] normalized 0-1 viewport bounds
-        uniform float u_speed_factor;
-        uniform float u_drop_rate;
-        uniform float u_time;
-
-        varying vec2 v_texCoord;
-
-        // Random function
-        float random(vec2 st) {
-            return fract(sin(dot(st.xy, vec2(12.9898, 78.233))) * 43758.5453123);
-        }
-
-        void main() {
-            vec4 particle = texture2D(u_particles, v_texCoord);
-            vec2 pos = particle.xy;
-            float age = particle.z;
-            float life = particle.w;
-
-            // Sample wind at current position
-            float windU = texture2D(u_wind_u, pos).r;
-            float windV = texture2D(u_wind_v, pos).r;
-
-            // Advect particle: wind_vel is in m/s, u_speed_factor converts to
-            // a visually appropriate per-frame displacement in normalized coords.
-            pos += vec2(windU, windV) * u_speed_factor;
-
-            // Age the particle
-            age += 1.0;
-
-            // --- Improved Particle Reset Logic ---
-            // Reset particle if it's too old, has gone off the map, or randomly.
-            bool needs_reset = false;
-            if (age > life) needs_reset = true;
-            if (pos.y < 0.0 || pos.y > 1.0) needs_reset = true; // Gone off top/bottom
-            if (random(pos + u_time) < u_drop_rate) needs_reset = true;
-
-            // Wrap longitude
-            pos.x = fract(pos.x);
-
-if (needs_reset) {
-                // Respawn particle within the current viewport
-                vec2 viewportMin = u_viewport.xy;
-                vec2 viewportMax = u_viewport.zw;
-                vec2 range = viewportMax - viewportMin;
-                pos = viewportMin + range * vec2(random(v_texCoord * 127.0 + u_time), random(v_texCoord * 131.0 + u_time + 1.0));
-                age = 0.0;
-            }
-
-            gl_FragColor = vec4(pos, age, life);
-        }
-    `;
-	}
-
-	private getRenderVertexShader(): string {
-		return `
-        attribute vec2 a_texCoord;
-        uniform sampler2D u_particles;
-        uniform mat4 u_matrix;
-        uniform vec4 u_bounds;
-
-        varying float v_age;
-
-        void main() {
-            vec4 particle = texture2D(u_particles, a_texCoord);
-            vec2 pos = particle.xy;
-            v_age = particle.z / particle.w;
-
-            // Convert normalized position to lat/lon
-            float lon = mix(u_bounds.x, u_bounds.z, pos.x);
-            float lat = mix(u_bounds.y, u_bounds.w, pos.y);
-
-            // Convert to Mercator coordinates
-            float mercatorX = lon / 360.0 + 0.5;
-            float latRad = lat * 3.14159265359 / 180.0;
-            float mercatorY = 0.5 - log(tan(3.14159265359 / 4.0 + latRad / 2.0)) / (2.0 * 3.14159265359);
-
-            gl_Position = u_matrix * vec4(mercatorX, mercatorY, 0.0, 1.0);
-
-            gl_PointSize = 5.0; // Start here, increase if needed
-        }
-    `;
-	}
-
-	private getRenderFragmentShader(): string {
-		return `
-			precision mediump float;
-			varying float v_age;
-
-			void main() {
-				float alpha = 1.0 - v_age;
-				alpha = alpha * alpha; // Square for more dramatic fade
-				gl_FragColor = vec4(1.0, 1.0, 1.0, alpha * 0.8);
-			}
-		`;
+	private reportError(error: unknown): void {
+		const resolved = error instanceof Error ? error : new Error(String(error));
+		this.statusValue = 'error';
+		if (this.animationFrame !== undefined) cancelAnimationFrame(this.animationFrame);
+		if (this.options.onError) this.options.onError(resolved);
+		else console.error(`[WebGLWindLayer:${this.id}]`, resolved);
 	}
 }

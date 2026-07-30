@@ -1,416 +1,451 @@
-import { CustomLayerInterface, CustomRenderMethodInput, Map } from 'maplibre-gl';
+import type {
+	CustomLayerInterface,
+	CustomRenderMethodInput,
+	Map as MapLibreMap
+} from 'maplibre-gl';
 
-import { GridFactory } from './grids';
-import { WeatherMapLayerFileReader } from './om-file-reader';
+import { colorScaleRange, createColorRampBytes, resolveWebGLColorScale } from './webgl/color-ramp';
+import type { LegacyWebGLColorStop, WebGLColorScale } from './webgl/color-ramp';
+import { WebGLWeatherDataSource } from './webgl/data-source';
+import {
+	createProgram,
+	createRampTexture,
+	requireWebGL2,
+	textureSizeSupported
+} from './webgl/gl-utils';
+import {
+	gridTransformShader,
+	latitudeToMercatorY,
+	longitudeToMercatorX,
+	visibleWorldOffsets
+} from './webgl/grid-transform';
 
-import { Domain } from './types';
+import type { Domain, RenderableColorScale } from './types';
+
+export interface WebGLRasterLayerOptions {
+	colorScale?: WebGLColorScale;
+	opacity?: number;
+	colorBlend?: boolean;
+	darkMode?: boolean;
+	onLoad?: () => void;
+	onError?: (error: Error) => void;
+}
+
+export type WebGLLayerStatus = 'idle' | 'loading' | 'ready' | 'error' | 'removed';
+
+const QUAD = new Float32Array([0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1]);
+
+const fieldSamplingShader = (
+	nx: number,
+	ny: number,
+	longitudeWrap: boolean,
+	manualLinear: boolean
+): string => {
+	const wrapX = longitudeWrap
+		? `x = mod(mod(x, ${nx.toFixed(1)}) + ${nx.toFixed(1)}, ${nx.toFixed(1)});`
+		: `x = clamp(x, 0.0, ${(nx - 1).toFixed(1)});`;
+	if (!manualLinear) {
+		return `
+			float sampleField(vec2 grid) {
+				vec2 uv = (grid + 0.5) / vec2(${nx.toFixed(1)}, ${ny.toFixed(1)});
+				return texture2D(u_data_texture, uv).r;
+			}
+		`;
+	}
+	return `
+		float finiteValue(float value) {
+			return value == value && abs(value) < 3.402823e38 ? 1.0 : 0.0;
+		}
+		float fieldTexel(float x, float y) {
+			${wrapX}
+			y = clamp(y, 0.0, ${(ny - 1).toFixed(1)});
+			return texture2D(
+				u_data_texture,
+				(vec2(x, y) + 0.5) / vec2(${nx.toFixed(1)}, ${ny.toFixed(1)})
+			).r;
+		}
+		float sampleField(vec2 grid) {
+			vec2 lower = floor(grid);
+			vec2 fraction = fract(grid);
+			float v00 = fieldTexel(lower.x, lower.y);
+			float v10 = fieldTexel(lower.x + 1.0, lower.y);
+			float v01 = fieldTexel(lower.x, lower.y + 1.0);
+			float v11 = fieldTexel(lower.x + 1.0, lower.y + 1.0);
+			float w00 = (1.0 - fraction.x) * (1.0 - fraction.y) * finiteValue(v00);
+			float w10 = fraction.x * (1.0 - fraction.y) * finiteValue(v10);
+			float w01 = (1.0 - fraction.x) * fraction.y * finiteValue(v01);
+			float w11 = fraction.x * fraction.y * finiteValue(v11);
+			float weight = w00 + w10 + w01 + w11;
+			if (weight == 0.0) return 3.402823e38;
+			v00 = finiteValue(v00) > 0.5 ? v00 : 0.0;
+			v10 = finiteValue(v10) > 0.5 ? v10 : 0.0;
+			v01 = finiteValue(v01) > 0.5 ? v01 : 0.0;
+			v11 = finiteValue(v11) > 0.5 ? v11 : 0.0;
+			return (v00 * w00 + v10 * w10 + v01 * w01 + v11 * w11) / weight;
+		}
+	`;
+};
 
 export class WebGLRasterLayer implements CustomLayerInterface {
 	id: string;
-	type: 'custom' = 'custom' as const;
-	renderingMode: '2d' = '2d' as const;
+	type = 'custom' as const;
+	renderingMode = '2d' as const;
 
-	private map: Map | undefined;
-	private gl: WebGL2RenderingContext | undefined;
-	private program: WebGLProgram | undefined;
-	private dataTexture: WebGLTexture | undefined;
-	private colorRampTexture: WebGLTexture | undefined;
-	private buffer: WebGLBuffer | undefined;
-
-	private omUrl: string;
-	private omFileReader: WeatherMapLayerFileReader;
-	private domain: Domain;
-	private variable: string;
-	private dataLoaded = false;
-	private meshResolution = 50; // Adjustable resolution
-	private indexBuffer: WebGLBuffer | undefined;
-	private vertexCount = 0;
-	private colorScale: {
-		value: number;
-		color: number[];
-	}[];
-
-	public static temperatureColorScale = [
-		{ value: -35, color: [75, 0, 130, 255] }, // Deep Purple
-		{ value: -30, color: [128, 0, 128, 255] }, // Purple
-		{ value: -20, color: [75, 0, 130, 255] }, // Indigo
-		{ value: -15, color: [0, 0, 255, 255] }, // Blue
-		{ value: -10, color: [0, 128, 255, 255] }, // Light Blue
-		{ value: -5, color: [0, 255, 255, 255] }, // Cyan
-		{ value: 0, color: [0, 255, 128, 255] }, // Aqua-Green
-		{ value: 5, color: [64, 255, 128, 255] }, // Greenish Aqua
-		{ value: 10, color: [0, 255, 0, 255] }, // Green
-		{ value: 15, color: [128, 255, 0, 255] }, // Yellow-Green
-		{ value: 20, color: [192, 255, 0, 255] }, // Light Yellow-Green
-		{ value: 25, color: [255, 255, 0, 255] }, // Yellow
-		{ value: 30, color: [255, 192, 0, 255] }, // Orange-Yellow
-		{ value: 35, color: [255, 128, 0, 255] }, // Orange
-		{ value: 40, color: [255, 64, 0, 255] }, // Orange-Red
-		{ value: 45, color: [255, 0, 0, 255] }, // Red
-		{ value: 50, color: [200, 0, 0, 255] }, // Deep Red
-		{ value: 55, color: [128, 0, 0, 255] }, // Dark Red
-		{ value: 60, color: [75, 0, 0, 255] } // Very Dark Red
+	/** @deprecated Prefer the repository's variable-specific color scales. */
+	static readonly temperatureColorScale: LegacyWebGLColorStop[] = [
+		{ value: -35, color: [75, 0, 130, 255] },
+		{ value: -30, color: [128, 0, 128, 255] },
+		{ value: -20, color: [75, 0, 130, 255] },
+		{ value: -15, color: [0, 0, 255, 255] },
+		{ value: -10, color: [0, 128, 255, 255] },
+		{ value: -5, color: [0, 255, 255, 255] },
+		{ value: 0, color: [0, 255, 128, 255] },
+		{ value: 5, color: [64, 255, 128, 255] },
+		{ value: 10, color: [0, 255, 0, 255] },
+		{ value: 15, color: [128, 255, 0, 255] },
+		{ value: 20, color: [192, 255, 0, 255] },
+		{ value: 25, color: [255, 255, 0, 255] },
+		{ value: 30, color: [255, 192, 0, 255] },
+		{ value: 35, color: [255, 128, 0, 255] },
+		{ value: 40, color: [255, 64, 0, 255] },
+		{ value: 45, color: [255, 0, 0, 255] },
+		{ value: 50, color: [200, 0, 0, 255] },
+		{ value: 55, color: [128, 0, 0, 255] },
+		{ value: 60, color: [75, 0, 0, 255] }
 	];
 
-	public static windSpeedColorScale = [
-		{ value: 0, color: [0, 0, 255, 255] }, // Blue (calm)
-		{ value: 5, color: [0, 255, 255, 255] }, // Cyan
-		{ value: 10, color: [0, 255, 0, 255] }, // Green
-		{ value: 15, color: [255, 255, 0, 255] }, // Yellow
-		{ value: 20, color: [255, 128, 0, 255] }, // Orange
-		{ value: 25, color: [255, 0, 0, 255] }, // Red
-		{ value: 30, color: [128, 0, 0, 255] } // Dark Red (strong wind)
+	/** @deprecated Prefer the repository's variable-specific color scales. */
+	static readonly windSpeedColorScale: LegacyWebGLColorStop[] = [
+		{ value: 0, color: [0, 0, 255, 255] },
+		{ value: 5, color: [0, 255, 255, 255] },
+		{ value: 10, color: [0, 255, 0, 255] },
+		{ value: 15, color: [255, 255, 0, 255] },
+		{ value: 20, color: [255, 128, 0, 255] },
+		{ value: 25, color: [255, 0, 0, 255] },
+		{ value: 30, color: [128, 0, 0, 255] }
 	];
 
+	private readonly source: WebGLWeatherDataSource;
+	private readonly ownsSource: boolean;
+	private readonly variable: string;
+	private options: Required<Pick<WebGLRasterLayerOptions, 'opacity' | 'colorBlend' | 'darkMode'>> &
+		Omit<WebGLRasterLayerOptions, 'opacity' | 'colorBlend' | 'darkMode'>;
+	private colorScale: WebGLColorScale;
+	private map?: MapLibreMap;
+	private gl?: WebGL2RenderingContext;
+	private program?: WebGLProgram;
+	private buffer?: WebGLBuffer;
+	private vertexArray?: WebGLVertexArrayObject;
+	private dataTexture?: WebGLTexture;
+	private rampTexture?: WebGLTexture;
+	private matrixLocation?: WebGLUniformLocation;
+	private boundsLocation?: WebGLUniformLocation;
+	private rangeLocation?: WebGLUniformLocation;
+	private opacityLocation?: WebGLUniformLocation;
+	private statusValue: WebGLLayerStatus = 'idle';
+	private abortController?: AbortController;
+	private projectionErrorReported = false;
+	private readonly handleContextLost = (): void => {
+		if (this.statusValue === 'removed') return;
+		this.statusValue = 'loading';
+		this.program = undefined;
+		this.buffer = undefined;
+		this.vertexArray = undefined;
+		this.dataTexture = undefined;
+		this.rampTexture = undefined;
+	};
+	private readonly handleContextRestored = (): void => {
+		if (!this.gl || this.statusValue === 'removed') return;
+		this.abortController = new AbortController();
+		this.initialize(this.gl, this.abortController.signal).catch((error: unknown) =>
+			this.reportError(error)
+		);
+	};
+
+	constructor(
+		id: string,
+		source: WebGLWeatherDataSource,
+		variable: string,
+		options?: WebGLRasterLayerOptions
+	);
 	constructor(
 		id: string,
 		omUrl: string,
 		domain: Domain,
 		variable: string,
-		colorScale: {
-			value: number;
-			color: number[];
-		}[] = WebGLRasterLayer.temperatureColorScale
+		colorScale?: LegacyWebGLColorStop[],
+		options?: WebGLRasterLayerOptions
+	);
+	constructor(
+		id: string,
+		sourceOrUrl: WebGLWeatherDataSource | string,
+		domainOrVariable: Domain | string,
+		variableOrOptions?: string | WebGLRasterLayerOptions,
+		legacyColorScale?: LegacyWebGLColorStop[],
+		legacyOptions?: WebGLRasterLayerOptions
 	) {
 		this.id = id;
-		this.domain = domain;
-		this.variable = variable;
-		this.omUrl = omUrl;
-		this.omFileReader = new WeatherMapLayerFileReader();
-		this.colorScale = colorScale;
-		console.log(colorScale);
-	}
-
-	private createMeshVertices(resolution: number): Float32Array {
-		const vertices: number[] = [];
-
-		// Create a grid of vertices
-		for (let y = 0; y <= resolution; y++) {
-			for (let x = 0; x <= resolution; x++) {
-				const u = x / resolution; // 0 to 1
-				const v = y / resolution; // 0 to 1
-
-				// Position will be calculated from bounds in render()
-				// For now, store normalized coordinates
-				vertices.push(
-					u,
-					v, // a_position (will be transformed to Mercator)
-					u,
-					v // a_texCoord (for texture sampling)
-				);
-			}
+		if (sourceOrUrl instanceof WebGLWeatherDataSource) {
+			this.source = sourceOrUrl;
+			this.ownsSource = false;
+			this.variable = domainOrVariable as string;
+			this.options = this.resolveOptions(variableOrOptions as WebGLRasterLayerOptions | undefined);
+		} else {
+			this.source = new WebGLWeatherDataSource(sourceOrUrl, domainOrVariable as Domain);
+			this.ownsSource = true;
+			this.variable = variableOrOptions as string;
+			this.options = this.resolveOptions({
+				...legacyOptions,
+				colorScale: legacyColorScale ?? legacyOptions?.colorScale
+			});
 		}
-
-		return new Float32Array(vertices);
+		this.colorScale = resolveWebGLColorScale(
+			this.variable,
+			this.options.colorScale,
+			this.options.darkMode
+		);
 	}
 
-	private createMeshIndices(resolution: number): Uint16Array {
-		const indices: number[] = [];
+	get status(): WebGLLayerStatus {
+		return this.statusValue;
+	}
 
-		// Create triangle strip indices for the mesh
-		for (let y = 0; y < resolution; y++) {
-			for (let x = 0; x < resolution; x++) {
-				const topLeft = y * (resolution + 1) + x;
-				const topRight = topLeft + 1;
-				const bottomLeft = (y + 1) * (resolution + 1) + x;
-				const bottomRight = bottomLeft + 1;
-
-				// Two triangles per quad
-				indices.push(topLeft, bottomLeft, topRight, topRight, bottomLeft, bottomRight);
-			}
+	setOptions(options: Partial<WebGLRasterLayerOptions>): void {
+		this.options = this.resolveOptions({ ...this.options, ...options });
+		this.colorScale = resolveWebGLColorScale(
+			this.variable,
+			this.options.colorScale,
+			this.options.darkMode
+		);
+		if (this.gl) {
+			if (this.rampTexture) this.gl.deleteTexture(this.rampTexture);
+			this.rampTexture = createRampTexture(
+				this.gl,
+				createColorRampBytes(this.colorScale, this.options.colorBlend)
+			);
 		}
-
-		this.vertexCount = indices.length;
-		return new Uint16Array(indices);
+		this.map?.triggerRepaint();
 	}
 
-	async onAdd(map: Map, gl: WebGL2RenderingContext): Promise<void> {
-		this.gl = gl;
+	onAdd(map: MapLibreMap, context: WebGLRenderingContext | WebGL2RenderingContext): void {
 		this.map = map;
-
-		// Check for float linear extension
-		const floatLinearExt = gl.getExtension('OES_texture_float_linear');
-
-		if (!floatLinearExt) {
-			console.error('Float linear filtering not supported, using manual interpolation');
-		}
-
-		const vertexShader = this.createShader(
-			gl,
-			gl.VERTEX_SHADER,
-			`
-			attribute vec2 a_position; // Normalized coordinates (0-1)
-      attribute vec2 a_texCoord; // Texture coordinates (0-1)
-      uniform mat4 u_matrix;
-      uniform vec4 u_bounds; // [minLon, minLat, maxLon, maxLat]
-      varying vec2 v_texCoord;
-
-      // Convert latitude to Web Mercator Y coordinate
-      float latToMercatorY(float lat) {
-          float rad = lat * 3.14159265359 / 180.0;
-          return log(tan(3.14159265359 / 4.0 + rad / 2.0));
-      }
-
-      // Convert Web Mercator Y back to latitude
-      float mercatorYToLat(float y) {
-          return atan(exp(y)) * 2.0 - 3.14159265359 / 2.0;
-      }
-
-      void main() {
-          // Convert normalized position to actual lat/lon
-          float lon = mix(u_bounds.x, u_bounds.z, a_position.x);
-          float lat = mix(u_bounds.y, u_bounds.w, a_position.y);
-
-          // Convert to Mercator coordinates for positioning
-          float mercatorX = lon / 360.0 + 0.5; // Simple longitude to X
-          float latRad = lat * 3.14159265359 / 180.0;
-          float mercatorY = 0.5 - log(tan(3.14159265359 / 4.0 + latRad / 2.0)) / (2.0 * 3.14159265359);
-
-          // Set position
-          gl_Position = u_matrix * vec4(mercatorX, mercatorY, 0.0, 1.0);
-
-          // For texture sampling, we need to account for the regular lat/lon grid
-          // The texture coordinates remain as-is since our data is in regular lat/lon grid
-          v_texCoord = a_texCoord;
-      }
-    `
-		);
-
-		const fragmentShader = this.createShader(
-			gl,
-			gl.FRAGMENT_SHADER,
-			`
-					precision mediump float;
-					uniform sampler2D u_data_texture;
-					uniform sampler2D u_color_ramp;
-					uniform vec2 u_value_range; // [minValue, maxValue] from color scale
-					varying vec2 v_texCoord;
-
-					void main() {
-  					// Get the absolute value from the texture
-            float absoluteValue = texture2D(u_data_texture, v_texCoord).r;
-            float opacity = 0.75;
-
-            // Normalize the absolute value to 0-1 range for color lookup
-            float normalized = clamp((absoluteValue - u_value_range.x) / (u_value_range.y - u_value_range.x), 0.0, 1.0);
-
-						// Lookup color from ramp
-						vec4 color = texture2D(u_color_ramp, vec2(normalized, 0.5));
-						color.a *= opacity;
-						gl_FragColor = color;
-					}
-				`
-		);
-
-		this.program = gl.createProgram()!;
-		gl.attachShader(this.program, vertexShader);
-		gl.attachShader(this.program, fragmentShader);
-		gl.linkProgram(this.program);
-
-		if (!gl.getProgramParameter(this.program, gl.LINK_STATUS)) {
-			console.error('Program link error:', gl.getProgramInfoLog(this.program));
-		}
-
-		// Create mesh buffers
-		this.buffer = gl.createBuffer()!;
-		this.indexBuffer = gl.createBuffer()!;
-
-		// Generate mesh data
-		const vertices = this.createMeshVertices(this.meshResolution);
-		const indices = this.createMeshIndices(this.meshResolution);
-
-		// Upload vertex data
-		gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
-		gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
-
-		// Upload index data
-		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
-		gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
-
-		// Create color ramp texture
-		this.colorRampTexture = this.createColorRampTexture(gl);
-
-		// Load data asynchronously
-		await this.omFileReader.setToOmFile(this.omUrl);
-		await this.loadData(map);
+		map.on('webglcontextlost', this.handleContextLost);
+		map.on('webglcontextrestored', this.handleContextRestored);
+		this.statusValue = 'loading';
+		this.abortController = new AbortController();
+		this.initialize(context, this.abortController.signal).catch((error: unknown) => {
+			if (
+				this.statusValue === 'removed' ||
+				(error instanceof DOMException && error.name === 'AbortError')
+			) {
+				return;
+			}
+			this.reportError(error);
+		});
 	}
 
-	private async loadData(map: Map): Promise<void> {
-		console.log('Loading data...');
-		const data = await this.omFileReader.readVariable(this.variable, [
-			{ start: 0, end: this.domain.grid.ny },
-			{ start: 0, end: this.domain.grid.nx }
-		]);
-		if (!this.gl || !data.values) return;
-		const { nx, ny } = this.domain.grid;
-		console.log('Data loaded:', { nx, ny, dataLength: data.values.length });
-		console.log('Data range: ', data.values.slice(0, 10));
-
-		const gl = this.gl;
-
-		// Create data texture
-		this.dataTexture = gl.createTexture()!;
-		gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-
-		gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, nx, ny, 0, gl.RED, gl.FLOAT, data.values);
-
-		// Check for GL errors
-		const error = gl.getError();
-		if (error !== gl.NO_ERROR) {
-			console.error('WebGL error after texture upload:', error);
-		}
-
-		this.dataLoaded = true;
-		console.log('Texture uploaded, triggering repaint');
-		map.triggerRepaint();
-	}
-
-	render(gl: WebGLRenderingContext, options: CustomRenderMethodInput): void {
-		if (!this.program || !this.dataLoaded || !this.buffer || !this.indexBuffer) {
+	render(
+		gl: WebGLRenderingContext | WebGL2RenderingContext,
+		options: CustomRenderMethodInput
+	): void {
+		if (
+			this.statusValue !== 'ready' ||
+			!this.program ||
+			!this.buffer ||
+			!this.dataTexture ||
+			!this.rampTexture ||
+			!this.map
+		) {
 			return;
 		}
-
-		const grid = GridFactory.create(this.domain.grid);
-
-		const [minLon, minLat, maxLon, maxLat] = grid.getBounds();
-
-		// Handle world wrapping
-		const map = this.map!;
-		const bounds = map.getBounds();
-		const viewportWest = bounds.getWest();
-		const viewportEast = bounds.getEast();
-
-		// Determine how many world copies we need to render
-		const worldCopies = [];
-
-		// Add main world
-		worldCopies.push({ lonOffset: 0, minLon, maxLon });
-
-		// Add wrapped worlds if needed
-		if (viewportWest < minLon) {
-			worldCopies.push({ lonOffset: -360, minLon: minLon - 360, maxLon: maxLon - 360 });
+		if ((this.map.getProjection()?.type ?? 'mercator') !== 'mercator') {
+			if (!this.projectionErrorReported) {
+				this.projectionErrorReported = true;
+				const error = new Error(
+					'WebGL weather layers currently support MapLibre Mercator projection only.'
+				);
+				if (this.options.onError) this.options.onError(error);
+				else console.error(`[WebGLRasterLayer:${this.id}]`, error);
+			}
+			return;
 		}
-		if (viewportEast > maxLon) {
-			worldCopies.push({ lonOffset: 360, minLon: minLon + 360, maxLon: maxLon + 360 });
-		}
+		this.projectionErrorReported = false;
 
 		gl.useProgram(this.program);
+		(gl as WebGL2RenderingContext).bindVertexArray(this.vertexArray!);
+		gl.uniformMatrix4fv(this.matrixLocation!, false, options.defaultProjectionData.mainMatrix);
 
-		// Set up buffers
-		gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
-		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
+		const [minimum, maximum] = colorScaleRange(this.colorScale);
+		gl.uniform2f(this.rangeLocation!, minimum, maximum);
+		gl.uniform1f(this.opacityLocation!, this.options.opacity);
 
-		// Set up attributes
-		const positionLoc = gl.getAttribLocation(this.program, 'a_position');
-		gl.enableVertexAttribArray(positionLoc);
-		gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 16, 0);
-
-		const texCoordLoc = gl.getAttribLocation(this.program, 'a_texCoord');
-		gl.enableVertexAttribArray(texCoordLoc);
-		gl.vertexAttribPointer(texCoordLoc, 2, gl.FLOAT, false, 16, 8);
-
-		// Set matrix uniform
-		const matrixLoc = gl.getUniformLocation(this.program, 'u_matrix');
-		gl.uniformMatrix4fv(
-			matrixLoc,
-			false,
-			new Float32Array(options.defaultProjectionData.mainMatrix)
-		);
-
-		const valueRangeLoc = gl.getUniformLocation(this.program, 'u_value_range');
-		const minVal = this.colorScale[0].value;
-		const maxVal = this.colorScale[this.colorScale.length - 1].value;
-		gl.uniform2f(valueRangeLoc, minVal, maxVal);
-
-		// Bind textures
 		gl.activeTexture(gl.TEXTURE0);
-		gl.bindTexture(gl.TEXTURE_2D, this.dataTexture!);
+		gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
 		gl.uniform1i(gl.getUniformLocation(this.program, 'u_data_texture'), 0);
-
 		gl.activeTexture(gl.TEXTURE1);
-		gl.bindTexture(gl.TEXTURE_2D, this.colorRampTexture!);
+		gl.bindTexture(gl.TEXTURE_2D, this.rampTexture);
 		gl.uniform1i(gl.getUniformLocation(this.program, 'u_color_ramp'), 1);
 
-		// Enable blending
 		gl.enable(gl.BLEND);
-		gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+		gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 
-		// Render each world copy
-		const boundsLoc = gl.getUniformLocation(this.program, 'u_bounds');
+		const descriptor = this.source.grid;
+		const bounds = this.map.getBounds();
+		for (const offset of visibleWorldOffsets(
+			descriptor.bounds,
+			bounds.getWest(),
+			bounds.getEast()
+		)) {
+			gl.uniform4f(
+				this.boundsLocation!,
+				longitudeToMercatorX(descriptor.bounds[0] + offset),
+				latitudeToMercatorY(descriptor.bounds[3]),
+				longitudeToMercatorX(descriptor.bounds[2] + offset),
+				latitudeToMercatorY(descriptor.bounds[1])
+			);
+			gl.drawArrays(gl.TRIANGLES, 0, 6);
+		}
+		(gl as WebGL2RenderingContext).bindVertexArray(null);
+	}
 
-		for (const world of worldCopies) {
-			// Set bounds for this world copy
-			gl.uniform4f(boundsLoc, world.minLon, minLat, world.maxLon, maxLat);
+	onRemove(_map: MapLibreMap, context: WebGLRenderingContext | WebGL2RenderingContext): void {
+		this.statusValue = 'removed';
+		this.abortController?.abort();
+		this.map?.off('webglcontextlost', this.handleContextLost);
+		this.map?.off('webglcontextrestored', this.handleContextRestored);
+		if (this.program) context.deleteProgram(this.program);
+		if (this.buffer) context.deleteBuffer(this.buffer);
+		if (this.vertexArray) (context as WebGL2RenderingContext).deleteVertexArray(this.vertexArray);
+		if (this.dataTexture) context.deleteTexture(this.dataTexture);
+		if (this.rampTexture) context.deleteTexture(this.rampTexture);
+		if (this.ownsSource) this.source.dispose();
+		this.map = undefined;
+		this.gl = undefined;
+	}
 
-			// Draw the mesh
-			gl.drawElements(gl.TRIANGLES, this.vertexCount, gl.UNSIGNED_SHORT, 0);
+	private resolveOptions(options: WebGLRasterLayerOptions = {}) {
+		return {
+			...options,
+			opacity: Math.max(0, Math.min(1, options.opacity ?? 0.75)),
+			colorBlend: options.colorBlend ?? true,
+			darkMode: options.darkMode ?? false
+		};
+	}
+
+	private async initialize(
+		context: WebGLRenderingContext | WebGL2RenderingContext,
+		signal: AbortSignal
+	): Promise<void> {
+		const gl = requireWebGL2(context);
+		this.gl = gl;
+		const descriptor = this.source.grid;
+		if (!textureSizeSupported(gl, descriptor.nx, descriptor.ny)) {
+			throw new Error(
+				`Weather texture ${descriptor.nx}×${descriptor.ny} exceeds this device's MAX_TEXTURE_SIZE (${gl.getParameter(
+					gl.MAX_TEXTURE_SIZE
+				)}).`
+			);
 		}
 
-		// Clean up
-		gl.disableVertexAttribArray(positionLoc);
-		gl.disableVertexAttribArray(texCoordLoc);
-	}
-
-	onRemove(_map: Map, gl: WebGLRenderingContext): void {
-		if (this.program) gl.deleteProgram(this.program);
-		if (this.buffer) gl.deleteBuffer(this.buffer);
-		if (this.indexBuffer) gl.deleteBuffer(this.indexBuffer);
-		if (this.dataTexture) gl.deleteTexture(this.dataTexture);
-		if (this.colorRampTexture) gl.deleteTexture(this.colorRampTexture);
-	}
-
-	private createShader(gl: WebGLRenderingContext, type: number, source: string): WebGLShader {
-		const shader = gl.createShader(type)!;
-		gl.shaderSource(shader, source);
-		gl.compileShader(shader);
-		if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-			console.error('Shader compile error:', gl.getShaderInfoLog(shader));
-		}
-		return shader;
-	}
-
-	private createColorRampTexture(gl: WebGLRenderingContext): WebGLTexture {
-		const texture = gl.createTexture()!;
-		gl.bindTexture(gl.TEXTURE_2D, texture);
-
-		const width = 256;
-		const rampData = new Uint8Array(width * 4);
-		const scale = this.colorScale;
-		const minVal = scale[0].value;
-		const maxVal = scale[scale.length - 1].value;
-
-		for (let i = 0; i < width; i++) {
-			const currentValue = minVal + (i / (width - 1)) * (maxVal - minVal);
-
-			let startStop = scale[0];
-			let endStop = scale[scale.length - 1];
-			for (let j = 0; j < scale.length - 1; j++) {
-				if (currentValue >= scale[j].value && currentValue <= scale[j + 1].value) {
-					startStop = scale[j];
-					endStop = scale[j + 1];
-					break;
-				}
+		const floatLinear = Boolean(gl.getExtension('OES_texture_float_linear'));
+		const vertexSource = `
+			attribute vec2 a_position;
+			uniform mat4 u_matrix;
+			uniform vec4 u_mercator_bounds;
+			varying vec2 v_mercator;
+			void main() {
+				v_mercator = mix(u_mercator_bounds.xy, u_mercator_bounds.zw, a_position);
+				gl_Position = u_matrix * vec4(v_mercator, 0.0, 1.0);
 			}
-
-			const range = endStop.value - startStop.value;
-			const t = range === 0 ? 0 : (currentValue - startStop.value) / range;
-
-			const idx = i * 4;
-			for (let c = 0; c < 4; c++) {
-				rampData[idx + c] = startStop.color[c] + t * (endStop.color[c] - startStop.color[c]);
+		`;
+		const fragmentSource = `
+			precision highp float;
+			uniform sampler2D u_data_texture;
+			uniform sampler2D u_color_ramp;
+			uniform vec2 u_value_range;
+			uniform float u_opacity;
+			varying vec2 v_mercator;
+			${gridTransformShader(descriptor)}
+			${fieldSamplingShader(descriptor.nx, descriptor.ny, descriptor.longitudeWrap, !floatLinear)}
+			float mercatorYToLatitude(float y) {
+				return degrees(2.0 * atan(exp((0.5 - y) * 2.0 * 3.141592653589793)) - 1.5707963267948966);
 			}
-		}
+			void main() {
+				vec2 lonLat = vec2((v_mercator.x - 0.5) * 360.0, mercatorYToLatitude(v_mercator.y));
+				vec2 grid = geographicToGrid(lonLat);
+				if (grid.x < -0.5 || grid.x > ${descriptor.nx - 0.5} ||
+					grid.y < -0.5 || grid.y > ${descriptor.ny - 0.5}) discard;
+				float value = sampleField(grid);
+				if (value != value || abs(value) >= 3.402823e38) discard;
+				float normalized = clamp(
+					(value - u_value_range.x) / max(0.000001, u_value_range.y - u_value_range.x),
+					0.0,
+					1.0
+				);
+				vec4 color = texture2D(u_color_ramp, vec2(normalized, 0.5));
+				color.a *= u_opacity;
+				color.rgb *= color.a;
+				gl_FragColor = color;
+			}
+		`;
+		this.program = createProgram(gl, vertexSource, fragmentSource);
+		this.matrixLocation = gl.getUniformLocation(this.program, 'u_matrix')!;
+		this.boundsLocation = gl.getUniformLocation(this.program, 'u_mercator_bounds')!;
+		this.rangeLocation = gl.getUniformLocation(this.program, 'u_value_range')!;
+		this.opacityLocation = gl.getUniformLocation(this.program, 'u_opacity')!;
 
-		gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, rampData);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+		this.buffer = gl.createBuffer()!;
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+		gl.bufferData(gl.ARRAY_BUFFER, QUAD, gl.STATIC_DRAW);
+		this.vertexArray = gl.createVertexArray()!;
+		gl.bindVertexArray(this.vertexArray);
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+		const position = gl.getAttribLocation(this.program, 'a_position');
+		gl.enableVertexAttribArray(position);
+		gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
+		gl.bindVertexArray(null);
+
+		const data = await this.source.loadVariable(this.variable, signal);
+		if (signal.aborted || this.statusValue === 'removed') return;
+		this.dataTexture = gl.createTexture()!;
+		gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
+		gl.texParameteri(
+			gl.TEXTURE_2D,
+			gl.TEXTURE_WRAP_S,
+			descriptor.longitudeWrap ? gl.REPEAT : gl.CLAMP_TO_EDGE
+		);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, floatLinear ? gl.LINEAR : gl.NEAREST);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, floatLinear ? gl.LINEAR : gl.NEAREST);
+		gl.texImage2D(
+			gl.TEXTURE_2D,
+			0,
+			gl.R32F,
+			descriptor.nx,
+			descriptor.ny,
+			0,
+			gl.RED,
+			gl.FLOAT,
+			data.values!
+		);
+		if (gl.getError() !== gl.NO_ERROR)
+			throw new Error('Failed to upload the weather data texture.');
 
-		return texture;
+		this.rampTexture = createRampTexture(
+			gl,
+			createColorRampBytes(this.colorScale, this.options.colorBlend)
+		);
+		this.statusValue = 'ready';
+		this.options.onLoad?.();
+		this.map?.triggerRepaint();
+	}
+
+	private reportError(error: unknown): void {
+		const resolved = error instanceof Error ? error : new Error(String(error));
+		this.statusValue = 'error';
+		if (this.options.onError) this.options.onError(resolved);
+		else console.error(`[WebGLRasterLayer:${this.id}]`, resolved);
 	}
 }
+
+export type { LegacyWebGLColorStop, RenderableColorScale, WebGLColorScale };

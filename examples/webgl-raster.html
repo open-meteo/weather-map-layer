@@ -39,18 +39,21 @@
 			});
 
 			// s3 storage structure: /data_spatial/{domain}/{modelRun /year/month/day/time}Z/{selectedTime year-month-day-time.om}?variable={variable}
-			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2026/06/06/1200Z/2026-06-06T1400.om`;
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2026/07/30/1200Z/2026-07-30T1400.om`;
 			const variableName = 'temperature_2m';
 
 			const domain = OMWeatherMapLayer.domainOptions.find((d) => d.value === 'dwd_icon');
 			console.log(domain);
 
 			map.on('load', () => {
+				const source = new OMWeatherMapLayer.WebGLWeatherDataSource(omUrl, domain);
 				const webglLayer = new OMWeatherMapLayer.WebGLRasterLayer(
 					'omFileLayer',
-					omUrl,
-					domain,
-					variableName
+					source,
+					variableName,
+					{
+						onError: (error) => console.error('WebGL raster layer:', error)
+					}
 				);
 				map.addLayer(webglLayer);
 			});
