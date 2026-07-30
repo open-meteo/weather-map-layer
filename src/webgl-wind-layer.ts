@@ -437,16 +437,32 @@ export class WebGLWindLayer implements CustomLayerInterface {
 				return vec2(lonLat.x + dLon, clamp(lonLat.y + dLat, -85.05112878, 85.05112878));
 			}
 			vec4 respawn(vec2 seed) {
-				vec2 randomPosition = vec2(
-					random(seed + vec2(u_time, 17.0)),
-					random(seed * 1.37 + vec2(31.0, u_time))
-				);
-				vec2 position = mix(u_spawn_bounds.xy, u_spawn_bounds.zw, randomPosition);
-				return vec4(position, 0.0, 4.0 + 4.0 * random(seed + 71.0));
+				vec2 position = u_spawn_bounds.xy;
+				for (int attempt = 0; attempt < 8; attempt++) {
+					vec2 attemptSeed = seed + float(attempt) * vec2(19.19, 73.73);
+					vec2 randomPosition = vec2(
+						random(attemptSeed + vec2(u_time, 17.0)),
+						random(attemptSeed * 1.37 + vec2(31.0, u_time))
+					);
+					vec2 candidate = mix(u_spawn_bounds.xy, u_spawn_bounds.zw, randomPosition);
+					bool candidateValid;
+					windAt(candidate, candidateValid);
+					position = candidate;
+					if (candidateValid) break;
+				}
+				// Negative age explicitly marks a discontinuous respawn. The render
+				// pass must never connect the previous position to this one.
+				return vec4(position, -1.0, 4.0 + 4.0 * random(seed + 71.0));
 			}
 			void main() {
 				vec4 particle = texture(u_particles, v_uv);
 				vec2 position = particle.xy;
+				if (particle.z < 0.0) {
+					// Keep a newly spawned particle stationary for one update while
+					// clearing its marker. Its first rendered segment begins next frame.
+					fragmentColor = vec4(position, 0.0, particle.w);
+					return;
+				}
 				float age = particle.z + u_real_delta;
 				float life = particle.w;
 				bool validStart;
@@ -493,6 +509,7 @@ export class WebGLWindLayer implements CustomLayerInterface {
 			uniform vec2 u_viewport;
 			uniform float u_particle_texture_size;
 			uniform float u_line_width;
+			uniform float u_max_segment_pixels;
 			out float v_edge;
 			out float v_speed;
 			flat out float v_valid;
@@ -510,12 +527,39 @@ export class WebGLWindLayer implements CustomLayerInterface {
 				ivec2 particleCoordinate = ivec2(gl_InstanceID % textureSize, gl_InstanceID / textureSize);
 				vec4 oldParticle = texelFetch(u_old_particles, particleCoordinate, 0);
 				vec4 newParticle = texelFetch(u_new_particles, particleCoordinate, 0);
-				v_valid = newParticle.z >= oldParticle.z ? 1.0 : 0.0;
+				bool finiteState =
+					all(equal(oldParticle.xy, oldParticle.xy)) &&
+					all(equal(newParticle.xy, newParticle.xy)) &&
+					all(lessThan(abs(oldParticle.xy), vec2(3.402823e38))) &&
+					all(lessThan(abs(newParticle.xy), vec2(3.402823e38)));
+				bool continuous = oldParticle.z >= 0.0 && newParticle.z > oldParticle.z;
 				vec4 oldClip = u_matrix * vec4(toMercator(oldParticle.xy), 0.0, 1.0);
 				vec4 newClip = u_matrix * vec4(toMercator(newParticle.xy), 0.0, 1.0);
+				bool finiteClip =
+					all(equal(oldClip, oldClip)) &&
+					all(equal(newClip, newClip)) &&
+					all(lessThan(abs(oldClip), vec4(3.402823e38))) &&
+					all(lessThan(abs(newClip), vec4(3.402823e38))) &&
+					oldClip.w > 0.000001 && newClip.w > 0.000001;
+				if (!finiteState || !continuous || !finiteClip) {
+					gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
+					v_edge = 0.0;
+					v_speed = 0.0;
+					v_valid = 0.0;
+					return;
+				}
 				vec2 oldNdc = oldClip.xy / oldClip.w;
 				vec2 newNdc = newClip.xy / newClip.w;
 				vec2 pixelDirection = (newNdc - oldNdc) * u_viewport * 0.5;
+				float segmentLength = length(pixelDirection);
+				if (segmentLength != segmentLength || segmentLength > u_max_segment_pixels) {
+					gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
+					v_edge = 0.0;
+					v_speed = 0.0;
+					v_valid = 0.0;
+					return;
+				}
+				v_valid = 1.0;
 				vec2 normal = length(pixelDirection) > 0.001
 					? normalize(vec2(-pixelDirection.y, pixelDirection.x))
 					: vec2(0.0, 1.0);
@@ -772,6 +816,7 @@ export class WebGLWindLayer implements CustomLayerInterface {
 			gl.getUniformLocation(program, 'u_line_width'),
 			this.options.lineWidth * pixelRatio * 0.5
 		);
+		gl.uniform1f(gl.getUniformLocation(program, 'u_max_segment_pixels'), 100 * pixelRatio);
 		const range = colorScaleRange(this.colorScale);
 		gl.uniform2f(gl.getUniformLocation(program, 'u_value_range'), range[0], range[1]);
 		gl.uniform1f(gl.getUniformLocation(program, 'u_opacity'), this.options.opacity);
