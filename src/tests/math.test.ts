@@ -1,5 +1,19 @@
-import { fastAtan2, tile2lat, tile2lon } from '../utils/math';
+import { fastAtan2, halfQuantum, tile2lat, tile2lon } from '../utils/math';
 import { describe, expect, test } from 'vitest';
+
+describe('halfQuantum', () => {
+	test('is half the quantization step derived from the scale factor', () => {
+		// temperature scalefactor 20 -> step 0.05 -> half 0.025
+		expect(halfQuantum(20)).toBeCloseTo(0.025, 6);
+	});
+
+	test('returns 0 when the scale factor is missing or invalid', () => {
+		expect(halfQuantum(undefined)).toBe(0);
+		expect(halfQuantum(0)).toBe(0);
+		expect(halfQuantum(-1)).toBe(0);
+		expect(halfQuantum(NaN)).toBe(0);
+	});
+});
 
 describe('tile2lon', () => {
 	test('returns -180 for x=0 at any zoom level', () => {

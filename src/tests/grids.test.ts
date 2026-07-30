@@ -7,6 +7,7 @@ import { describe, expect, test } from 'vitest';
 import type {
 	AnyProjectionGridData,
 	DimensionRange,
+	InterpolationMethod,
 	LCCProjectionData,
 	ProjectionGridFromGeographicOrigin,
 	RegularGridData,
@@ -55,6 +56,18 @@ const gridData: RegularGridData = {
 	dy: 2
 };
 
+// Same geographic area as gridData, but with negative dy (north-to-south row order)
+// Row 0 is at lat 56 (top), row 1 at lat 54, row 2 at lat 52 (bottom)
+const gridDataNegDy: RegularGridData = {
+	type: 'regular',
+	nx: 10,
+	ny: 3,
+	lonMin: 10,
+	latMin: 56,
+	dx: 1,
+	dy: -2
+};
+
 const projectedGridData: ProjectionGridFromGeographicOrigin = {
 	type: 'projectedFromGeographicOrigin',
 	nx: 10,
@@ -77,6 +90,23 @@ describe('RegularGrid', () => {
 	test('constructs and computes bounds', () => {
 		const grid = new RegularGrid(gridData);
 		expect(grid.getBounds()).toEqual([10, 50, 20, 56]);
+	});
+
+	test('constructs from inclusive lat/lon bounds', () => {
+		// last node lands on the upper bound: dx = (19-10)/(10-1) = 1, dy = (54-50)/(3-1) = 2,
+		// giving identical geometry to `gridData`
+		const grid = new RegularGrid({
+			type: 'regular',
+			nx: 10,
+			ny: 3,
+			longitude: [10, 19],
+			latitude: [50, 54]
+		});
+		expect(grid.getBounds()).toEqual([10, 50, 20, 56]);
+
+		const values = new Float32Array(Array.from({ length: 30 }, (_, index) => index));
+		// node (x=1, y=1) is at lon 11, lat 52 => index 11
+		expect(grid.getLinearInterpolatedValue(values, 52, 11)).toBe(11);
 	});
 
 	test('construct a new partial grid', () => {
@@ -127,6 +157,148 @@ describe('RegularGrid', () => {
 		expect(grid.getLinearInterpolatedValue(values, 100, 100)).toBeNaN();
 	});
 
+	describe('RegularGrid with negative dy', () => {
+		test('constructs and computes bounds (normalized min <= max)', () => {
+			const grid = new RegularGrid(gridDataNegDy);
+			// Bounds should be normalized: [minLon, minLat, maxLon, maxLat]
+			expect(grid.getBounds()).toEqual([10, 50, 20, 56]);
+		});
+
+		test('construct a new partial grid with negative dy', () => {
+			const ranges: DimensionRange[] = [
+				{ start: 0, end: 3 },
+				{ start: 0, end: 4 }
+			];
+			const grid = new RegularGrid(gridDataNegDy, ranges);
+			expect(grid.getBounds()).toEqual([10, 50, 14, 56]);
+		});
+
+		test('computes center with negative dy', () => {
+			const grid = new RegularGrid(gridDataNegDy);
+			const center = grid.getCenter();
+			expect(center.lng).toBe(15);
+			expect(center.lat).toBe(53);
+		});
+
+		test('computes center on partial grid with negative dy', () => {
+			const ranges: DimensionRange[] = [
+				{ start: 0, end: 3 },
+				{ start: 0, end: 4 }
+			];
+			const grid = new RegularGrid(gridDataNegDy, ranges);
+			const center = grid.getCenter();
+			expect(center.lng).toBe(12);
+			expect(center.lat).toBe(53);
+		});
+
+		test('linear interpolation at grid point with negative dy', () => {
+			const grid = new RegularGrid(gridDataNegDy);
+			const values = new Float32Array(Array.from({ length: 30 }, (_, index) => index));
+			// With negative dy: row 0 at lat=56, row 1 at lat=54, row 2 at lat=52
+			// At (lat=54, lon=11): row 1, col 1 => index 11, value 11
+			expect(grid.getLinearInterpolatedValue(values, 54, 11)).toBe(11);
+		});
+
+		test('linear interpolation between grid points with negative dy', () => {
+			const grid = new RegularGrid(gridDataNegDy);
+			const values = new Float32Array(Array.from({ length: 30 }, (_, index) => index));
+			// Between lat=54 (row 1) and lat=52 (row 2), at lon=11.5 (between col 1 and 2)
+			// yRaw = (53 - 56) / (-2) = 1.5, xRaw = (11.5 - 10) / 1 = 1.5
+			// Bilinear interpolation of values 11, 12, 21, 22 with both fractions 0.5
+			const interpolated = grid.getLinearInterpolatedValue(values, 53, 11.5);
+			expect(interpolated).toBeCloseTo(16.5);
+		});
+
+		test('linear interpolation in x only with negative dy', () => {
+			const grid = new RegularGrid(gridDataNegDy);
+			const values = new Float32Array(Array.from({ length: 30 }, (_, index) => index));
+			// At lat=54 (exactly row 1), between lon=11 and lon=12
+			const interpolated = grid.getLinearInterpolatedValue(values, 54, 11.5);
+			expect(interpolated).toBeCloseTo(11.5);
+		});
+
+		test('returns NaN for out-of-bounds with negative dy', () => {
+			const grid = new RegularGrid(gridDataNegDy);
+			const values = new Float32Array(Array.from({ length: 30 }, (_, index) => index));
+			// Above the grid (lat > 56)
+			expect(grid.getLinearInterpolatedValue(values, 57, 15)).toBeNaN();
+			// Below the grid (lat < 50)
+			expect(grid.getLinearInterpolatedValue(values, 49, 15)).toBeNaN();
+			// Left of the grid (lon < 10)
+			expect(grid.getLinearInterpolatedValue(values, 54, 9)).toBeNaN();
+			// Right of the grid (lon > 20)
+			expect(grid.getLinearInterpolatedValue(values, 54, 21)).toBeNaN();
+		});
+
+		test('getCoveringRanges with negative dy returns correct ranges', () => {
+			const grid = new RegularGrid(gridDataNegDy);
+			const ranges = grid.getCoveringRanges(52, 12, 55, 12.5);
+			// south=52, north=55 → yFromSouth = (52-56)/(-2) = 2, yFromNorth = (55-56)/(-2) = 0.5
+			// minY = max(floor(0.5) - 1, 0) = 0, maxY = min(ceil(2) + 1, 3) = 3
+			expect(ranges[0].start).toBe(0);
+			expect(ranges[0].end).toBe(gridDataNegDy.ny);
+			// west=12, east=12.5 → same x calculation as positive dy
+			expect(ranges[1].start).toBe(1);
+			expect(ranges[1].end).toBe(4);
+		});
+
+		test('forEachPoint emits coordinates from the row-zero origin with negative dy', () => {
+			const grid = new RegularGrid(gridDataNegDy);
+			const points: Array<{ index: number; lat: number; lon: number }> = [];
+			grid.forEachPoint((point) => {
+				points.push(point);
+			});
+
+			expect(points).toHaveLength(30);
+			expect(points[0]).toEqual({ index: 0, lat: 56, lon: 10 });
+			expect(points[9]).toEqual({ index: 9, lat: 56, lon: 19 });
+			expect(points[10]).toEqual({ index: 10, lat: 54, lon: 10 });
+			expect(points[29]).toEqual({ index: 29, lat: 52, lon: 19 });
+		});
+
+		test('forEachPoint uses direction-normalized bounds with negative dy', () => {
+			const grid = new RegularGrid(gridDataNegDy);
+			const points: Array<{ index: number; lat: number; lon: number }> = [];
+			grid.forEachPoint(
+				(point) => {
+					points.push(point);
+				},
+				[11, 52, 13, 54]
+			);
+
+			expect(points).toEqual([
+				{ index: 11, lat: 54, lon: 11 },
+				{ index: 12, lat: 54, lon: 12 },
+				{ index: 13, lat: 54, lon: 13 },
+				{ index: 21, lat: 52, lon: 11 },
+				{ index: 22, lat: 52, lon: 12 },
+				{ index: 23, lat: 52, lon: 13 }
+			]);
+		});
+
+		test('negative dy grid produces same interpolated values as positive dy for matching coordinates', () => {
+			const gridPos = new RegularGrid(gridData);
+			const gridNeg = new RegularGrid(gridDataNegDy);
+			// Positive dy: row 0=lat50, row 1=lat52, row 2=lat54
+			const valuesPos = new Float32Array(Array.from({ length: 30 }, (_, index) => index));
+			// Negative dy: row 0=lat56, row 1=lat54, row 2=lat52
+			// Geographic lat=54 is pos row 2, neg row 1
+			// Geographic lat=52 is pos row 1, neg row 2
+			// So neg row 1 should have pos row 2 values, neg row 2 should have pos row 1 values
+			const valuesNeg = new Float32Array([
+				...Array.from({ length: 10 }, (_, i) => 100 + i), // row 0 (lat=56) — no pos equivalent
+				...Array.from({ length: 10 }, (_, i) => 20 + i), // row 1 (lat=54) = pos row 2
+				...Array.from({ length: 10 }, (_, i) => 10 + i) // row 2 (lat=52) = pos row 1
+			]);
+			// Test at lat=52.5, lon=11.5 (interpolates between neg rows 1&2 / pos rows 1&2)
+			const lat = 52.5;
+			const lon = 11.5;
+			const resultPos = gridPos.getLinearInterpolatedValue(valuesPos, lat, lon);
+			const resultNeg = gridNeg.getLinearInterpolatedValue(valuesNeg, lat, lon);
+			expect(resultPos).toBeCloseTo(resultNeg);
+		});
+	});
+
 	test('getCoveringRanges returns correct ranges', () => {
 		const grid = new RegularGrid(gridData);
 		// TODO: The behavior of getCoveringRanges can surely be improved
@@ -135,6 +307,137 @@ describe('RegularGrid', () => {
 		expect(ranges[0].end).toBe(gridData.ny);
 		expect(ranges[1].start).toBe(1);
 		expect(ranges[1].end).toBe(4);
+	});
+});
+
+describe('interpolation methods', () => {
+	const methodGridData: RegularGridData = {
+		type: 'regular',
+		nx: 8,
+		ny: 8,
+		lonMin: 10,
+		latMin: 50,
+		dx: 1,
+		dy: 1
+	};
+
+	test('unknown interpolation method throws', () => {
+		const grid = new RegularGrid(methodGridData);
+		const values = new Float32Array(64).fill(7);
+		expect(() =>
+			grid.getInterpolatedValue(values, 53.5, 13.5, undefined as unknown as InterpolationMethod)
+		).toThrow(/Unknown interpolation method/);
+	});
+
+	test('all methods preserve a uniform field', () => {
+		const grid = new RegularGrid(methodGridData);
+		const values = new Float32Array(64).fill(7);
+		for (const method of ['nearest', 'linear', 'cubic'] as const) {
+			expect(grid.getInterpolatedValue(values, 53.5, 13.5, method)).toBeCloseTo(7);
+		}
+	});
+
+	test("'nearest' returns the closest grid node, centred (round, not floor)", () => {
+		const grid = new RegularGrid(methodGridData);
+		const values = new Float32Array(Array.from({ length: 64 }, (_, i) => i));
+		// lat 53.4 -> row 3, lon 12.6 -> rounds to col 3  =>  index 3*8 + 3 = 27
+		// (flooring would give col 2 => 26, i.e. the old half-cell offset)
+		expect(grid.getInterpolatedValue(values, 53.4, 12.6, 'nearest')).toBe(27);
+	});
+
+	// A gentle ramp quantised to 0.05 (temperature scalefactor 20). When a colour
+	// breakpoint coincides with the plateau value, float noise in the sampler
+	// used to dither the bucket and speckle the band edge.
+	const quantizedRamp = () => {
+		const nx = 80;
+		const ny = 6;
+		const grid = new RegularGrid({
+			type: 'regular',
+			nx,
+			ny,
+			lonMin: 0,
+			latMin: 0,
+			dx: 0.02,
+			dy: 0.02
+		});
+		const values = new Float32Array(nx * ny);
+		for (let j = 0; j < ny; j++)
+			for (let i = 0; i < nx; i++) values[j * nx + i] = Math.round((14 + 0.002 * i) / 0.05) * 0.05;
+		return { grid, values, nx };
+	};
+
+	test("'cubic' does not overshoot the local data range", () => {
+		const { grid, values, nx } = quantizedRamp();
+		for (let s = 0; s < 400; s++) {
+			const lon = (s / 400) * (nx - 1) * 0.02;
+			const v = grid.getInterpolatedValue(values, 0.05, lon, 'cubic');
+			// data is in [14.0, 14.15]; Catmull-Rom overshoot must be clamped away
+			expect(v).toBeGreaterThanOrEqual(14.0);
+			expect(v).toBeLessThanOrEqual(14.15);
+		}
+	});
+
+	test("'monotone' is shape-preserving: no overshoot and stays monotonic", () => {
+		const { grid, values, nx } = quantizedRamp();
+		let prev = -Infinity;
+		for (let s = 0; s < 400; s++) {
+			const lon = (s / 400) * (nx - 1) * 0.02;
+			const v = grid.getInterpolatedValue(values, 0.05, lon, 'monotone');
+			// PCHIP cannot overshoot the surrounding samples (no clamp needed)
+			expect(v).toBeGreaterThanOrEqual(14.0);
+			expect(v).toBeLessThanOrEqual(14.15);
+			// the field never decreases in lon, so neither may the interpolant
+			expect(v).toBeGreaterThanOrEqual(prev - 1e-9);
+			prev = v;
+		}
+	});
+
+	test('one-grid-point-short global grid wraps (no NaN column at the antimeridian)', () => {
+		// dwd_icon_eps shape: 0.25° grid stored one point short (nx=1439, span 359.75°).
+		// The old hardcoded 359.875 threshold left this un-wrapped, producing a
+		// missing column at the antimeridian.
+		const nx = 1439;
+		const ny = 721;
+		const grid = new RegularGrid({
+			type: 'regular',
+			nx,
+			ny,
+			lonMin: -180,
+			latMin: -90,
+			dx: 0.25,
+			dy: 0.25
+		});
+		const values = new Float32Array(nx * ny).fill(7);
+		// Longitudes inside the wrapped final cell (179.5°..180°) must resolve, not NaN.
+		for (const lon of [179.5, 179.6, 179.75, 179.9, 179.99]) {
+			expect(isFinite(grid.getInterpolatedValue(values, 0, lon, 'linear'))).toBe(true);
+		}
+	});
+
+	test('complete global grid keeps a full-width final cell at the antimeridian', () => {
+		// ncep_gefs025/ncep_gfs025 shape: complete 0.25° grid (nx=1440, span 360°).
+		// Its final cell must not be widened to 2*dx — doing so shifts the last
+		// column and smears the data near the seam. A linear ramp in longitude
+		// must stay linear right up to the seam.
+		const nx = 1440;
+		const ny = 4;
+		const grid = new RegularGrid({
+			type: 'regular',
+			nx,
+			ny,
+			lonMin: -180,
+			latMin: -1,
+			dx: 0.25,
+			dy: 0.25
+		});
+		// value == longitude index, so the seam wraps 1439 -> 0.
+		const values = new Float32Array(nx * ny);
+		for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) values[j * nx + i] = i;
+		// At the last node (179.75° == column 1439) we should read ~1439 exactly,
+		// not a value pulled halfway toward column 0 by a doubled cell.
+		expect(grid.getInterpolatedValue(values, -0.5, 179.75, 'linear')).toBeCloseTo(1439, 5);
+		// Halfway across the final cell wraps toward column 0: mean of 1439 and 0.
+		expect(grid.getInterpolatedValue(values, -0.5, 179.875, 'linear')).toBeCloseTo(1439 / 2, 5);
 	});
 });
 

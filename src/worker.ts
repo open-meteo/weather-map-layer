@@ -1,18 +1,18 @@
-import Pbf from 'pbf';
+import { PbfWriter } from 'pbf';
 
 import { generateArrows } from './utils/arrows';
 import { checkAgainstBounds } from './utils/bounds';
 import { clipRasterToPolygons } from './utils/clipping';
 import { generateContours } from './utils/contours';
 import { generateGridPoints } from './utils/grid-points';
-import { tile2lat, tile2lon } from './utils/math';
-import { getColor } from './utils/styling';
+import { halfQuantum as computeHalfQuantum, tile2lat, tile2lon } from './utils/math';
+import { makeColorSampler } from './utils/styling';
 
 import { GridFactory } from './grids/index';
 
-import { TileRequest } from './types';
+import { WorkerRequest } from './types';
 
-self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
+self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => {
 	const key = message.data.key;
 
 	// Handle cancellation messages
@@ -26,6 +26,8 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 	const ranges = message.data.ranges;
 	const domain = message.data.dataOptions.domain;
 	const tileSize = message.data.renderOptions.tileSize;
+	const interpolation = message.data.renderOptions.interpolation;
+	const colorBlend = message.data.renderOptions.colorBlend;
 	const colorScale = message.data.renderOptions.colorScale;
 	const clippingOptions = message.data.clippingOptions;
 
@@ -40,24 +42,47 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 
 		const grid = GridFactory.create(domain.grid, ranges);
 
+		// Offset the colour threshold by half the data's quantization step so
+		// band edges fall inside grid cells (smooth) instead of snapping to the
+		// cell corners when a breakpoint coincides with a quantization level.
+		const halfQuantum = computeHalfQuantum(message.data.data.scaleFactor);
+
+		// Reused per-pixel so colour blending doesn't allocate an array per pixel.
+		const colorOut: [number, number, number, number] = [0, 0, 0, 0];
+
+		// Specialise the colour lookup to this tile's scale once, hoisting the
+		// per-pixel `switch` and the rgba index division out of the inner loop.
+		const sampleColor = makeColorSampler(colorScale, colorBlend);
+
+		// Longitude depends only on the column (j), so resolve all tileSize values
+		// once up front instead of re-deriving them for every row — turns tileSize²
+		// tile2lon() calls (each with its own Math.pow) into tileSize.
+		const lons = new Float64Array(tileSize);
+		for (let j = 0; j < tileSize; j++) {
+			lons[j] = tile2lon(x + (j + 0.5) / tileSize, z);
+		}
+
 		for (let i = 0; i < tileSize; i++) {
-			const lat = tile2lat(y + i / tileSize, z);
+			// sample at the pixel centre ((i+0.5)/tileSize), not the top-left
+			// corner, so the value is registered where the pixel is displayed
+			// (fixes the half-pixel up-left shift visible when zooming)
+			const lat = tile2lat(y + (i + 0.5) / tileSize, z);
 
 			if (clippingOptions?.bounds)
 				if (checkAgainstBounds(lat, clippingOptions.bounds[1], clippingOptions.bounds[3])) continue;
 
 			for (let j = 0; j < tileSize; j++) {
 				const ind = j + i * tileSize;
-				const lon = tile2lon(x + j / tileSize, z);
+				const lon = lons[j];
 
 				if (clippingOptions?.bounds)
 					if (checkAgainstBounds(lon, clippingOptions.bounds[0], clippingOptions.bounds[2]))
 						continue;
 
-				const px = grid.getLinearInterpolatedValue(values, lat, lon);
+				const px = grid.getInterpolatedValue(values, lat, lon, interpolation);
 
 				if (isFinite(px)) {
-					const color = getColor(colorScale, px);
+					const color = sampleColor(px + halfQuantum, colorOut);
 					rgba[4 * ind] = color[0];
 					rgba[4 * ind + 1] = color[1];
 					rgba[4 * ind + 2] = color[2];
@@ -88,18 +113,30 @@ self.onmessage = async (message: MessageEvent<TileRequest>): Promise<void> => {
 	} else if (message.data.type == 'getArrayBuffer') {
 		const directions = message.data.data.directions;
 
-		const pbf = new Pbf();
+		const pbf = new PbfWriter();
 
 		const grid = GridFactory.create(domain.grid, ranges);
 		if (message.data.renderOptions.drawGrid) {
 			generateGridPoints(pbf, grid, values, directions, x, y, z, clippingOptions);
 		}
 		if (message.data.renderOptions.drawArrows && directions) {
-			generateArrows(pbf, values, directions, grid, x, y, z, clippingOptions);
+			generateArrows(pbf, values, directions, grid, x, y, z, clippingOptions, interpolation);
 		}
 		if (message.data.renderOptions.drawContours) {
 			const intervals = message.data.renderOptions.intervals;
-			generateContours(pbf, values, grid, x, y, z, tileSize, intervals, clippingOptions);
+			generateContours(
+				pbf,
+				values,
+				grid,
+				x,
+				y,
+				z,
+				tileSize,
+				intervals,
+				clippingOptions,
+				interpolation,
+				computeHalfQuantum(message.data.data.scaleFactor)
+			);
 		}
 
 		const arrayBuffer = pbf.finish();

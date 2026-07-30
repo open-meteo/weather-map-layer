@@ -4,6 +4,23 @@ export const roundWithPrecision = (value: number, precision: number = 1_000_000)
 	return Math.round((value + Number.EPSILON) * precision) / precision;
 };
 
+/**
+ * Half the data's quantization step, used to offset colour/contour thresholds so
+ * band edges fall inside grid cells instead of snapping to cell corners when a
+ * breakpoint coincides with a quantization level.
+ *
+ * The .om storage scale factor gives the step exactly: stored ints are
+ * `round(value * scaleFactor)`, so the step is 1 / scaleFactor. Every field
+ * carries a scale factor (simple variables from the file, derived variables from
+ * their derivation rule); when it is missing or invalid the offset is 0.
+ */
+export const halfQuantum = (scaleFactor?: number): number => {
+	if (scaleFactor && isFinite(scaleFactor) && scaleFactor > 0) {
+		return 0.5 / scaleFactor;
+	}
+	return 0;
+};
+
 export const degreesToRadians = (degree: number) => {
 	return degree * (PI / 180);
 };

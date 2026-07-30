@@ -1,9 +1,12 @@
 import { currentBounds, setClippingBounds } from './bounds';
 import { type ResolvedClippingOptions, resolveClippingOptions } from './clipping';
 import {
+	DEFAULT_COLOR_BLEND,
+	DEFAULT_INTERPOLATION,
 	DEFAULT_INTERVAL,
 	DEFAULT_TILE_SIZE,
 	RESOLVE_DOMAIN_REGEX,
+	VALID_INTERPOLATIONS,
 	VALID_TILE_SIZES
 } from './constants';
 import { parseUrlComponents } from './parse-url';
@@ -14,11 +17,13 @@ import type {
 	ColorScales,
 	DataIdentityOptions,
 	Domain,
+	InterpolationMethod,
 	OmProtocolSettings,
 	ParsedRequest,
 	ParsedUrlComponents,
 	RenderOptions,
-	RenderableColorScale
+	RenderableColorScale,
+	TileSize
 } from '../types';
 
 let cachedClippingInput: ClippingOptions = undefined;
@@ -76,8 +81,7 @@ const defaultResolveDataIdentity = (
 ): DataIdentityOptions => {
 	const { baseUrl, params } = urlComponents;
 
-	const match = baseUrl.match(RESOLVE_DOMAIN_REGEX);
-	const domainValue = match?.groups?.domain;
+	const domainValue = baseUrl.match(RESOLVE_DOMAIN_REGEX)?.groups?.domain;
 
 	if (!domainValue) {
 		throw new Error(`Could not parse domain from URL: ${baseUrl}`);
@@ -113,6 +117,9 @@ const defaultResolveRenderOptions = (
 	}
 
 	const tileSize = parseTileSize(params.get('tile_size'));
+	const interpolation = parseInterpolation(params.get('interpolation'));
+	const colorBlend =
+		params.get('color_blend') === null ? DEFAULT_COLOR_BLEND : params.get('color_blend') === 'true';
 
 	let intervals = [DEFAULT_INTERVAL];
 	if (params.get('intervals')) {
@@ -130,6 +137,8 @@ const defaultResolveRenderOptions = (
 
 	return {
 		tileSize,
+		interpolation,
+		colorBlend,
 		drawGrid,
 		drawArrows,
 		drawContours,
@@ -138,10 +147,18 @@ const defaultResolveRenderOptions = (
 	};
 };
 
-const parseTileSize = (value: string | null): 64 | 128 | 256 | 512 | 1024 => {
+const parseTileSize = (value: string | null): TileSize => {
 	const tileSize = value ? Number(value) : DEFAULT_TILE_SIZE;
 	if (!VALID_TILE_SIZES.includes(tileSize)) {
 		throw new Error(`Invalid tile size, please use one of: ${VALID_TILE_SIZES.join(', ')}`);
 	}
-	return tileSize as 64 | 128 | 256 | 512 | 1024;
+	return tileSize as TileSize;
+};
+
+const parseInterpolation = (value: string | null): InterpolationMethod => {
+	const interpolation = value ?? DEFAULT_INTERPOLATION;
+	if (!VALID_INTERPOLATIONS.includes(interpolation as InterpolationMethod)) {
+		throw new Error(`Invalid interpolation, please use one of: ${VALID_INTERPOLATIONS.join(', ')}`);
+	}
+	return interpolation as InterpolationMethod;
 };

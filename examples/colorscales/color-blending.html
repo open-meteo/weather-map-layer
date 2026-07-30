@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 	<head>
-		<title>Open-Meteo Weather Map Layer - Contouring on Colorscale Example</title>
+		<title>Open-Meteo Weather Map Layer - Color Blending Example</title>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
@@ -12,7 +12,7 @@
 		<!-- Local development -->
 		<script>
 			if (location.hostname === 'localhost' || location.href.startsWith('file://')) {
-				document.write('<script src="../../../dist/index.js"><\/script>');
+				document.write('<script src="../../dist/index.js"><\/script>');
 			}
 		</script>
 		<style>
@@ -36,62 +36,24 @@
 				hash: true
 			});
 
-			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=precipitation&contours=true`;
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m&color_blend=true`;
 
 			map.on('load', () => {
-				map.addSource('omFileRasterSource', {
+				map.addSource('omFileSource', {
 					url: 'om://' + omUrl,
 					type: 'raster',
 					maxzoom: 12
 				});
-
 				map.addLayer(
 					{
-						id: 'omFileRasterLayer',
+						id: 'omFileLayer',
 						type: 'raster',
-						source: 'omFileRasterSource',
+						source: 'omFileSource',
 						paint: {
 							'raster-opacity': 0.75
 						}
 					},
 					'waterway-tunnel'
-				);
-
-				map.addSource('omFileVectorSource', {
-					url: 'om://' + omUrl,
-					type: 'vector'
-				});
-
-				map.addLayer(
-					{
-						id: 'omFileVectorLayer',
-						type: 'line',
-						source: 'omFileVectorSource',
-						'source-layer': 'contours',
-						paint: {
-							'line-color': 'rgba(0,0,0,0.85)',
-							'line-width': 1
-						}
-					},
-					'place_label_other'
-				);
-
-				map.addLayer(
-					{
-						id: 'omFileVectorLayerLabels',
-						type: 'symbol',
-						source: 'omFileVectorSource',
-						'source-layer': 'contours',
-						layout: {
-							'symbol-placement': 'line-center',
-							'symbol-spacing': 1,
-							'text-font': ['Noto Sans Regular'],
-							'text-field': ['to-string', ['get', 'value']],
-							'text-padding': 1,
-							'text-offset': [0, -0.6]
-						}
-					},
-					'place_label_other'
 				);
 			});
 		</script>

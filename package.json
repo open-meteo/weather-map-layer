@@ -4,7 +4,7 @@
 	"main": "dist/index.cjs",
 	"types": "dist/index.d.ts",
 	"author": "Open-Meteo <info@open-meteo.com>",
-	"version": "0.0.19",
+	"version": "0.0.20",
 	"module": "dist/index.mjs",
 	"exports": {
 		".": {
@@ -28,13 +28,27 @@
 	"files": [
 		"dist/**/*"
 	],
+	"watch": {
+		"generate:colorscales": {
+			"patterns": [
+				"scripts/generate-colorscales.ts"
+			],
+			"extensions": "ts",
+			"ignore": [
+				"**/node_modules/**",
+				"**/dist/**"
+			]
+		}
+	},
 	"scripts": {
 		"dev": "vite build --watch",
 		"dev:umd": "vite build --config vite.config.umd.ts --watch",
 		"test": "vitest",
+		"bench": "vitest bench --run",
 		"coverage": "vitest run --coverage",
 		"lint": "prettier --check . && eslint .",
 		"generate:colorscales": "tsx scripts/generate-colorscales.ts && prettier --write src/utils/color-scales.ts",
+		"watch:colorscales": "npm-watch generate:colorscales",
 		"build:esm": "vite build",
 		"build:cjs": "vite build --config vite.config.cjs.ts",
 		"build:umd": "vite build --config vite.config.umd.ts",
@@ -46,11 +60,11 @@
 		"@trivago/prettier-plugin-sort-imports": "^6.0.0",
 		"@types/d3-interpolate": "^3.0.4",
 		"@types/geojson": "^7946.0.16",
-		"@types/node": "^25.0.2",
+		"@types/node": "^26.0.0",
 		"@typescript-eslint/eslint-plugin": "^8.46.2",
 		"@typescript-eslint/parser": "^8.46.2",
 		"@vitest/coverage-v8": "^4.0.15",
-		"concurrently": "^9.2.1",
+		"concurrently": "^10.0.1",
 		"d3-color": "^3.1.0",
 		"d3-interpolate": "^3.0.1",
 		"eslint": "^10.0.1",
@@ -58,6 +72,7 @@
 		"globals": "^17.0.0",
 		"jiti": "^2.6.1",
 		"live-server": "^1.2.2",
+		"npm-watch": "^0.13.0",
 		"prettier": "^3.6.2",
 		"tsx": "^4.20.6",
 		"typescript": "^6.0.3",
@@ -68,10 +83,10 @@
 	},
 	"dependencies": {
 		"@mapbox/tilebelt": "^2.0.3",
-		"@mapbox/vector-tile": "^2.0.4",
-		"@openmeteo/file-reader": "^0.0.15",
+		"@mapbox/vector-tile": "^3.0.0",
+		"@openmeteo/file-reader": "^0.0.16",
 		"maplibre-gl": "^5.20.1",
-		"pbf": "^4.0.1",
+		"pbf": "^5.1.0",
 		"point-in-polygon-hao": "^1.2.4"
 	}
 }

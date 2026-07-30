@@ -8,7 +8,7 @@ import type {
 	Domain,
 	GridData,
 	OmUrlState,
-	RegularGridData
+	RegularGridFromOrigin
 } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -275,7 +275,7 @@ describe('ensureData – data already cached', () => {
 // ---------------------------------------------------------------------------
 
 describe('getRanges', () => {
-	const makeGrid = (overrides: Partial<RegularGridData> = {}): GridData => ({
+	const makeGrid = (overrides: Partial<RegularGridFromOrigin> = {}): GridData => ({
 		type: 'regular',
 		nx: 360,
 		ny: 180,

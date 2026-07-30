@@ -62,7 +62,7 @@ For a standalone example, see `examples/temperature.html`.
 
 ```html
 ...
-<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.0.19/dist/index.js"></script>
+<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.0.20/dist/index.js"></script>
 ...
 ```
 
@@ -117,6 +117,7 @@ The repository contains an `examples` directory with ready-to-run demos:
 - `examples/wind.html` – displays wind values, for arrows overlay see [Vector sources](#vector-sources).
 - `examples/combined-variables.html` – shows multiple data sources on the same map.
 - `examples/partial-requests.html` – demonstrates partial / incremental data requests.
+- `examples/interpolation.html` – switch the interpolation method live via the `interpolation` URL parameter.
 
 Run the examples by opening the corresponding `.html` file in a browser.
 

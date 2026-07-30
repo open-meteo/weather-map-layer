@@ -2,6 +2,12 @@ export const DEFAULT_INTERVAL = 2;
 
 export const VALID_TILE_SIZES = [64, 128, 256, 512, 1024, 2048];
 export const DEFAULT_TILE_SIZE = 512;
+
+export const VALID_INTERPOLATIONS = ['nearest', 'linear', 'cubic', 'monotone'] as const;
+export const DEFAULT_INTERPOLATION = 'linear';
+
+// Interpolate colours between colour-scale breakpoints instead of hard bands.
+export const DEFAULT_COLOR_BLEND = false;
 export const VECTOR_TILE_EXTENT = 4096;
 
 // Parameters affecting data identity
@@ -15,7 +21,13 @@ export const TILE_SUFFIX_REGEX = /(?:\/)(\d+)(?:\/)(\d+)(?:\/)(\d+)$/i;
 export const TIME_SELECTED_REGEX = /([0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}00)/;
 
 /* Variables */
-export const RESOLVE_DOMAIN_REGEX = /data_spatial\/(?<domain>[^/]+)/;
+// The domain is the path segment before the ".om" file, independent of any
+// "data_spatial/" prefix (CDN pull zones drop it). An optional model-run path
+// "YYYY/MM/DD/HHMMZ/" may sit between the domain and the file, so it is skipped:
+//   <domain>/file.om                         -> <domain>
+//   <domain>/YYYY/MM/DD/HHMMZ/<time>.om      -> <domain>
+export const RESOLVE_DOMAIN_REGEX =
+	/(?<domain>[^/]+)\/(?:\d{4}\/\d{2}\/\d{2}\/\d{4}Z\/)?[^/]+\.om$/;
 
 export const DOMAIN_META_REGEX =
 	/(http|https):\/\/(?<uri>[\s\S]+)\/(?<domain>[\s\S]+)\/(?<meta>[\s\S]+).json/;
