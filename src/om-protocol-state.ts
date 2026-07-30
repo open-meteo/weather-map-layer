@@ -27,12 +27,11 @@ interface InflightRequest {
 
 const inflightRequests = new WeakMap<OmUrlState, InflightRequest>();
 
-// Configuration constants - could be made configurable via OmProtocolSettings
-/** Max states that keep data loaded.
+/** Default max states that keep data loaded (see `OmProtocolSettings.maxStatesWithData`).
  *
  * This should be as low as possible, but needs to be at least the number of
  * variables that you want to display simultaneously. */
-const MAX_STATES_WITH_DATA = 2;
+export const DEFAULT_MAX_STATES_WITH_DATA = 2;
 /** 1 minute for hard eviction on new data fetches */
 const STALE_THRESHOLD_MS = 1 * 60 * 1000;
 
@@ -87,7 +86,8 @@ export const getOrCreateState = (
 	stateByKey: Map<string, OmUrlState>,
 	stateKey: string,
 	dataOptions: DataIdentityOptions,
-	omFileUrl: string
+	omFileUrl: string,
+	maxStatesWithData: number = DEFAULT_MAX_STATES_WITH_DATA
 ): OmUrlState => {
 	const existingState = stateByKey.get(stateKey);
 	if (existingState) {
@@ -103,7 +103,7 @@ export const getOrCreateState = (
 		// else we need to create a new state
 	}
 
-	evictStaleStates(stateByKey, stateKey);
+	evictStaleStates(stateByKey, stateKey, maxStatesWithData);
 
 	const ranges = getRanges(dataOptions.domain.grid, dataOptions.bounds);
 	const state: OmUrlState = {
@@ -171,9 +171,10 @@ export const ensureData = async (
 
 		state.dataPromise = (async () => {
 			try {
-				await omFileReader.setToOmFile(state.omFileUrl);
-
-				const data = await omFileReader.readVariable(
+				// URL-explicit read: concurrent loads of different files/variables
+				// must not repoint each other's readers.
+				const data = await omFileReader.readVariableFromFile(
+					state.omFileUrl,
 					state.dataOptions.variable,
 					state.ranges,
 					controller.signal
@@ -246,13 +247,17 @@ const resolveInterpolation = (value: string | null): InterpolationMethod => {
  * Since Map maintains insertion order and we re-insert on access,
  * the oldest entries are always at the front - no sorting needed.
  */
-const evictStaleStates = (stateByKey: Map<string, OmUrlState>, currentKey?: string): void => {
+const evictStaleStates = (
+	stateByKey: Map<string, OmUrlState>,
+	currentKey: string | undefined,
+	maxStatesWithData: number
+): void => {
 	const now = Date.now();
 
 	// Iterate from oldest to newest (Map iteration order)
 	for (const [key, state] of stateByKey) {
 		// Stop if we're under the limit and remaining entries aren't stale
-		if (stateByKey.size <= MAX_STATES_WITH_DATA) {
+		if (stateByKey.size <= maxStatesWithData) {
 			const age = now - state.lastAccess;
 			if (age <= STALE_THRESHOLD_MS) break; // Remaining entries are newer
 		}
@@ -261,7 +266,7 @@ const evictStaleStates = (stateByKey: Map<string, OmUrlState>, currentKey?: stri
 
 		const age = now - state.lastAccess;
 		const isStale = age > STALE_THRESHOLD_MS;
-		const exceedsMax = stateByKey.size > MAX_STATES_WITH_DATA;
+		const exceedsMax = stateByKey.size > maxStatesWithData;
 
 		if (isStale || exceedsMax) {
 			stateByKey.delete(key);

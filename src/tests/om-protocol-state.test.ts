@@ -16,6 +16,7 @@ import type {
 // ---------------------------------------------------------------------------
 
 type ReadCall = {
+	omUrl: unknown;
 	variable: unknown;
 	ranges: unknown;
 	signal: AbortSignal | undefined;
@@ -58,20 +59,21 @@ const makeMockData = (size = 100): Data => ({
 /**
  * Controllable test double for WeatherMapLayerFileReader.
  *
- * Each call to readVariable is recorded in `calls` and returns a Promise
- * that the test controls via resolveCall / rejectCall.
+ * Each call to readVariableFromFile is recorded in `calls` and returns a
+ * Promise that the test controls via resolveCall / rejectCall.
  */
 class FakeReader {
 	calls: ReadCall[] = [];
 
 	// Must match the WeatherMapLayerFileReader interface used by ensureData
-	async setToOmFile(_url?: string): Promise<void> {
-		// intentional no-op
-	}
-
-	readVariable(variable: unknown, ranges: unknown, signal?: AbortSignal): Promise<Data> {
+	readVariableFromFile(
+		omUrl: unknown,
+		variable: unknown,
+		ranges: unknown,
+		signal?: AbortSignal
+	): Promise<Data> {
 		return new Promise<Data>((resolve, reject) => {
-			const call: ReadCall = { variable, ranges, signal, resolve, reject, aborted: false };
+			const call: ReadCall = { omUrl, variable, ranges, signal, resolve, reject, aborted: false };
 			this.calls.push(call);
 
 			if (signal?.aborted) {
@@ -341,6 +343,25 @@ describe('getOrCreateState – eviction', () => {
 
 		expect(stateByKey.has('k1')).toBe(false);
 		expect(stateByKey.has('k4')).toBe(true);
+	});
+
+	it('respects a custom maxStatesWithData', () => {
+		const stateByKey = new Map<string, OmUrlState>();
+
+		// With maxStatesWithData = 4 the first five creations never exceed the
+		// limit at eviction time (eviction runs before insertion), so k1..k5 all
+		// survive. Creating k6 sees size 5 > 4 and evicts only the oldest.
+		for (const key of ['k1', 'k2', 'k3', 'k4', 'k5']) {
+			getOrCreateState(stateByKey, key, makeDataOptions(), 'https://example.com/file.om', 4);
+		}
+		expect(stateByKey.size).toBe(5);
+
+		getOrCreateState(stateByKey, 'k6', makeDataOptions(), 'https://example.com/file.om', 4);
+
+		expect(stateByKey.has('k1')).toBe(false);
+		expect(stateByKey.has('k2')).toBe(true);
+		expect(stateByKey.has('k6')).toBe(true);
+		expect(stateByKey.size).toBe(5);
 	});
 
 	it('reuses existing state when bounds are included', () => {

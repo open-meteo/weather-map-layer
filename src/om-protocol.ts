@@ -61,7 +61,8 @@ export const omProtocol = async (
 		instance.stateByKey,
 		request.fileAndVariableKey,
 		request.dataOptions,
-		request.baseUrl
+		request.baseUrl,
+		settings.maxStatesWithData
 	);
 
 	// Check abort status before proceeding

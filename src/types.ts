@@ -78,6 +78,13 @@ export interface OmProtocolSettings {
 	clippingOptions: ClippingOptions;
 
 	/**
+	 * Max states that keep data loaded. Should be as low as possible, but at
+	 * least the number of variables displayed simultaneously (times two while
+	 * cross-fading between timesteps). @default 2
+	 */
+	maxStatesWithData?: number;
+
+	/**
 	 * Optional custom resolver for URL settings.
 	 * Receives parsed URL components and returns resolved settings.
 	 * Default implementation uses standard query param parsing.
