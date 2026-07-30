@@ -1,9 +1,31 @@
 import { pad } from '../utils';
 import { parseMetaJson, parseUrlComponents } from '../utils/parse-url';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('URL Parsing', () => {
 	describe('parseMetaJson', () => {
+		// parseMetaJson fetches the meta json itself; stub the network so the
+		// tests are deterministic and run offline
+		beforeEach(() => {
+			vi.stubGlobal(
+				'fetch',
+				vi.fn(async () => ({
+					ok: true,
+					json: async () => ({
+						completed: true,
+						last_modified_time: new Date().toISOString(),
+						reference_time: new Date().toISOString(),
+						valid_times: [new Date().toISOString()],
+						variables: ['temperature_2m']
+					})
+				}))
+			);
+		});
+
+		afterEach(() => {
+			vi.unstubAllGlobals();
+		});
+
 		it('resolves latest.json to current model run URL', async () => {
 			const url =
 				'https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m';

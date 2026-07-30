@@ -1,10 +1,12 @@
 export { omProtocol } from './om-protocol';
+export type { OmDataState } from './om-protocol-state';
 
 // Functions
 
 export {
 	getValueFromLatLong,
 	clearBlockCache,
+	getDataState,
 	getRanges,
 	getProtocolInstance
 } from './om-protocol-state';

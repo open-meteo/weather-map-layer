@@ -201,6 +201,29 @@ export const ensureData = async (
 	}
 };
 
+export type OmDataState = 'loaded' | 'loading' | 'error' | 'missing';
+
+/**
+ * Synchronous data-availability check for an om url (with or without the
+ * om:// prefix). Lets renderers await actual data instead of inferring it
+ * from tile events: failed tiles count as complete in MapLibre, so a purely
+ * tile-based check can show an empty frame.
+ */
+export const getDataState = (omUrl: string): OmDataState => {
+	if (!omProtocolInstance) return 'missing';
+	try {
+		const url = omUrl.startsWith('om://') ? omUrl : 'om://' + omUrl;
+		const { fileAndVariableKey } = parseUrlComponents(url);
+		const state = omProtocolInstance.stateByKey.get(fileAndVariableKey);
+		if (!state) return 'missing';
+		if (state.data) return 'loaded';
+		if (state.dataPromise) return 'loading';
+		return state.lastError !== undefined ? 'error' : 'missing';
+	} catch {
+		return 'missing';
+	}
+};
+
 export const getValueFromLatLong = async (
 	lat: number,
 	lon: number,
