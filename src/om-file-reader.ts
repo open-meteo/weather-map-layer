@@ -122,7 +122,9 @@ export class WeatherMapLayerFileReader {
 			if (this.readers.get(omUrl) === entry) this.readers.delete(omUrl);
 		});
 
-		while (this.readers.size > this.config.maxOpenFiles) {
+		// Clamp: below 1 the pool would evict the entry it just created,
+		// scheduling disposal of a reader the caller is about to use
+		while (this.readers.size > Math.max(1, this.config.maxOpenFiles)) {
 			const oldest = this.readers.entries().next().value;
 			if (!oldest) break;
 			this.readers.delete(oldest[0]);
@@ -188,43 +190,53 @@ export class WeatherMapLayerFileReader {
 	): Promise<Data> {
 		const [primaryVar, secondaryVar] = rule.getSourceVars(variable);
 
-		// Get readers for source variables
-		const primaryReader = await reader.getChildByName(primaryVar);
-		if (!primaryReader) {
-			throw new Error(`Primary variable ${primaryVar} not found`);
+		// Get readers for source variables (each can hit the network for its
+		// metadata block, so resolve them concurrently)
+		const [primaryReader, secondaryReader] = await Promise.all([
+			reader.getChildByName(primaryVar),
+			reader.getChildByName(secondaryVar)
+		]);
+
+		try {
+			if (!primaryReader) {
+				throw new Error(`Primary variable ${primaryVar} not found`);
+			}
+			if (!secondaryReader) {
+				throw new Error(`Secondary variable ${secondaryVar} not found`);
+			}
+
+			// Read data
+			const dimensions = primaryReader.getDimensions();
+			const readRanges = this.getRanges(ranges, dimensions);
+			const readOptions: OmFileReadOptions<OmDataType.FloatArray> = {
+				type: OmDataType.FloatArray,
+				ranges: readRanges,
+				intoSAB: this.config.useSAB,
+				signal
+			};
+
+			const primaryPromise = primaryReader.read(readOptions);
+			const secondaryPromise = secondaryReader.read(readOptions);
+			const [primaryData, secondaryData] = await Promise.all([primaryPromise, secondaryPromise]);
+
+			// Process using the rule
+			const data = rule.process(primaryData, secondaryData);
+
+			// Every derivation rule defines its quantization scale factor so the
+			// half-quantum threshold offset is always available. `'primary'` inherits
+			// the primary source variable's stored scale factor — exact when `values`
+			// is the primary passed through unchanged (speed/direction, wave), and a
+			// good proxy for derived magnitudes (wind speed from u/v).
+			data.scaleFactor =
+				rule.scaleFactor === 'primary' ? primaryReader.scaleFactor() : rule.scaleFactor;
+
+			return data;
+		} finally {
+			// Child readers hold their own wasm allocations; the pool's dispose
+			// only frees the root reader, so unreleased children accumulate.
+			primaryReader?.dispose();
+			secondaryReader?.dispose();
 		}
-
-		const secondaryReader = await reader.getChildByName(secondaryVar);
-		if (!secondaryReader) {
-			throw new Error(`Secondary variable ${secondaryVar} not found`);
-		}
-
-		// Read data
-		const dimensions = primaryReader.getDimensions();
-		const readRanges = this.getRanges(ranges, dimensions);
-		const readOptions: OmFileReadOptions<OmDataType.FloatArray> = {
-			type: OmDataType.FloatArray,
-			ranges: readRanges,
-			intoSAB: this.config.useSAB,
-			signal
-		};
-
-		const primaryPromise = primaryReader.read(readOptions);
-		const secondaryPromise = secondaryReader.read(readOptions);
-		const [primaryData, secondaryData] = await Promise.all([primaryPromise, secondaryPromise]);
-
-		// Process using the rule
-		const data = rule.process(primaryData, secondaryData);
-
-		// Every derivation rule defines its quantization scale factor so the
-		// half-quantum threshold offset is always available. `'primary'` inherits
-		// the primary source variable's stored scale factor — exact when `values`
-		// is the primary passed through unchanged (speed/direction, wave), and a
-		// good proxy for derived magnitudes (wind speed from u/v).
-		data.scaleFactor =
-			rule.scaleFactor === 'primary' ? primaryReader.scaleFactor() : rule.scaleFactor;
-
-		return data;
 	}
 
 	/**
@@ -241,17 +253,22 @@ export class WeatherMapLayerFileReader {
 			throw new Error(`Variable: ${variable} not found`);
 		}
 
-		const dimensions = variableReader.getDimensions();
-		const readRanges = this.getRanges(ranges, dimensions);
+		try {
+			const dimensions = variableReader.getDimensions();
+			const readRanges = this.getRanges(ranges, dimensions);
 
-		const values = (await variableReader.read({
-			type: OmDataType.FloatArray,
-			ranges: readRanges,
-			intoSAB: this.config.useSAB,
-			signal
-		})) as Float32Array;
+			const values = (await variableReader.read({
+				type: OmDataType.FloatArray,
+				ranges: readRanges,
+				intoSAB: this.config.useSAB,
+				signal
+			})) as Float32Array;
 
-		return { values, directions: undefined, scaleFactor: variableReader.scaleFactor() };
+			return { values, directions: undefined, scaleFactor: variableReader.scaleFactor() };
+		} finally {
+			// Free the child's wasm allocation; the root reader outlives it
+			variableReader.dispose();
+		}
 	}
 
 	/**
@@ -317,16 +334,20 @@ export class WeatherMapLayerFileReader {
 					const variableReader = await reader.getChildByName(v);
 					if (!variableReader) return;
 
-					const dimensions = variableReader.getDimensions();
-					const readRanges = this.getRanges(ranges, dimensions);
+					try {
+						const dimensions = variableReader.getDimensions();
+						const readRanges = this.getRanges(ranges, dimensions);
 
-					// readPrefetch warms up the backend cache by requesting the necessary
-					// data blocks without decoding them or copying them to a TypedArray.
-					await variableReader.readPrefetch({
-						prefetchConcurrency: 1000, // concurrency limiting on requests is executed via the BlockCache
-						ranges: readRanges,
-						signal
-					});
+						// readPrefetch warms up the backend cache by requesting the necessary
+						// data blocks without decoding them or copying them to a TypedArray.
+						await variableReader.readPrefetch({
+							prefetchConcurrency: 1000, // concurrency limiting on requests is executed via the BlockCache
+							ranges: readRanges,
+							signal
+						});
+					} finally {
+						variableReader.dispose();
+					}
 				})
 			);
 		});

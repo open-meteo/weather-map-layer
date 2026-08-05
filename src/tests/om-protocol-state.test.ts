@@ -333,35 +333,36 @@ describe('getOrCreateState – eviction', () => {
 	it('evicts oldest states when exceeding MAX_STATES_WITH_DATA', () => {
 		const stateByKey = new Map<string, OmUrlState>();
 
-		// MAX_STATES_WITH_DATA = 2. When creating the 4th, the map has 3 entries
-		// which exceeds the limit, so eviction removes the oldest.
+		// MAX_STATES_WITH_DATA = 2. Eviction runs after insertion, so the cap
+		// holds exactly: creating k3 evicts k1, creating k4 evicts k2.
 		makeState(stateByKey, 'k1');
 		makeState(stateByKey, 'k2');
 		makeState(stateByKey, 'k3');
-		// Now map has k1, k2, k3 (size=3). Creating k4 triggers eviction with size>2.
 		makeState(stateByKey, 'k4');
 
 		expect(stateByKey.has('k1')).toBe(false);
+		expect(stateByKey.has('k2')).toBe(false);
 		expect(stateByKey.has('k4')).toBe(true);
+		expect(stateByKey.size).toBe(2);
 	});
 
 	it('respects a custom maxStatesWithData', () => {
 		const stateByKey = new Map<string, OmUrlState>();
 
-		// With maxStatesWithData = 4 the first five creations never exceed the
-		// limit at eviction time (eviction runs before insertion), so k1..k5 all
-		// survive. Creating k6 sees size 5 > 4 and evicts only the oldest.
+		// With maxStatesWithData = 4 the cap holds exactly: creating k5 evicts
+		// the oldest (k1), creating k6 evicts k2.
 		for (const key of ['k1', 'k2', 'k3', 'k4', 'k5']) {
 			getOrCreateState(stateByKey, key, makeDataOptions(), 'https://example.com/file.om', 4);
 		}
-		expect(stateByKey.size).toBe(5);
+		expect(stateByKey.size).toBe(4);
+		expect(stateByKey.has('k1')).toBe(false);
 
 		getOrCreateState(stateByKey, 'k6', makeDataOptions(), 'https://example.com/file.om', 4);
 
-		expect(stateByKey.has('k1')).toBe(false);
-		expect(stateByKey.has('k2')).toBe(true);
+		expect(stateByKey.has('k2')).toBe(false);
+		expect(stateByKey.has('k3')).toBe(true);
 		expect(stateByKey.has('k6')).toBe(true);
-		expect(stateByKey.size).toBe(5);
+		expect(stateByKey.size).toBe(4);
 	});
 
 	it('reuses existing state when bounds are included', () => {
@@ -386,5 +387,29 @@ describe('getOrCreateState – eviction', () => {
 		const state2 = getOrCreateState(stateByKey, 'k1', dataOptions2, 'https://example.com/file.om');
 
 		expect(state2).not.toBe(state1);
+	});
+});
+
+describe('ensureData – error state', () => {
+	it('records lastError on failure and clears it when a new load starts', async () => {
+		const state = makeState(new Map(), 'err');
+		const reader = new FakeReader();
+
+		const p = ensureData(state, asReader(reader), undefined);
+		const failure = new Error('fetch failed');
+		reader.rejectCall(0, failure);
+		await expect(p).rejects.toThrow('fetch failed');
+
+		// getDataState reports 'error' from exactly this field
+		expect(state.lastError).toBe(failure);
+		expect(state.data).toBeNull();
+		expect(state.dataPromise).toBeNull();
+
+		// A retry clears the recorded error while the new load is in flight
+		const retry = ensureData(state, asReader(reader), undefined);
+		expect(state.lastError).toBeUndefined();
+		reader.resolveCall(1, { values: new Float32Array(1), directions: undefined });
+		await retry;
+		expect(state.data).not.toBeNull();
 	});
 });

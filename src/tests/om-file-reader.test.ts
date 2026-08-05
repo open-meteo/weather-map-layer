@@ -33,6 +33,7 @@ const mocks = vi.hoisted(() => {
 		async readPrefetch(): Promise<void> {
 			await this.owner.gate;
 		}
+		dispose(): void {}
 	}
 
 	class MockReader {

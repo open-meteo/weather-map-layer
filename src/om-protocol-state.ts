@@ -103,8 +103,6 @@ export const getOrCreateState = (
 		// else we need to create a new state
 	}
 
-	evictStaleStates(stateByKey, stateKey, maxStatesWithData);
-
 	const ranges = getRanges(dataOptions.domain.grid, dataOptions.bounds);
 	const state: OmUrlState = {
 		dataOptions,
@@ -116,6 +114,9 @@ export const getOrCreateState = (
 	};
 
 	stateByKey.set(stateKey, state);
+	// Evict after inserting so the cap actually holds `maxStatesWithData`
+	// data-bearing states (the new key itself is never evicted).
+	evictStaleStates(stateByKey, stateKey, maxStatesWithData);
 	return state;
 };
 
@@ -169,6 +170,7 @@ export const ensureData = async (
 		const controller = new AbortController();
 		inflightRequests.set(state, { controller, subscriberCount });
 
+		state.lastError = undefined;
 		state.dataPromise = (async () => {
 			try {
 				// URL-explicit read: concurrent loads of different files/variables
@@ -186,6 +188,11 @@ export const ensureData = async (
 
 				state.data = data;
 				return data;
+			} catch (error) {
+				// Recorded so getDataState can report 'error' — MapLibre counts
+				// failed tiles as complete, so renderers cannot see this otherwise
+				state.lastError = error;
+				throw error;
 			} finally {
 				state.dataPromise = null;
 				inflightRequests.delete(state);
@@ -208,6 +215,10 @@ export type OmDataState = 'loaded' | 'loading' | 'error' | 'missing';
  * om:// prefix). Lets renderers await actual data instead of inferring it
  * from tile events: failed tiles count as complete in MapLibre, so a purely
  * tile-based check can show an empty frame.
+ *
+ * States are keyed by the normalized URL: meta-JSON URLs (`latest.json`,
+ * `in-progress.json`) must be resolved to their dated `.om` form first (see
+ * `normalizeUrl`), otherwise this always returns 'missing'.
  */
 export const getDataState = (omUrl: string): OmDataState => {
 	if (!omProtocolInstance) return 'missing';
