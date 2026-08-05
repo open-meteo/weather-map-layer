@@ -33,7 +33,7 @@
 			// Register the 'om' protocol handler (same as MapLibre's addProtocol).
 			olAdapter.addProtocol('om', OMWeatherMapLayer.omProtocol);
 
-			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=precipitation&contours=true`;
+			const omUrl = `https://openmeteo-data-spatial.b-cdn.net/dwd_icon/latest.json?time_step=current_time_1H&variable=precipitation&contours=true`;
 
 			// Create sources — synchronous; TileJSON resolves on first tile load.
 			const rasterSource = olAdapter.createRasterSource('om://' + omUrl);

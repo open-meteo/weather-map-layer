@@ -37,9 +37,9 @@
 			});
 
 			// below url is used to request 'latest.json' and get the nearest timestep to "current local time" + 1 hour
-			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m`;
+			const omUrl = `https://openmeteo-data-spatial.b-cdn.net/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m`;
 			// example of an actual omUrl:
-			// const omUrl = `om://https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/06/06/1200Z/2025-06-06T1200.om?variable=temperature_2m`;
+			// const omUrl = `om://https://openmeteo-data-spatial.b-cdn.net/dwd_icon/2025/06/06/1200Z/2025-06-06T1200.om?variable=temperature_2m`;
 
 			map.on('load', () => {
 				map.addSource('omFileSource', {

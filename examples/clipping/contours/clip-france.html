@@ -57,7 +57,7 @@
 					});
 
 					// setting tile_size=128 reduces each tile to 1/4 the width and height of the default 512px. Without it, each tile would contain 4x4 = 16 times as many pixels to compute.
-					const omUrl = `https://map-tiles.open-meteo.com/data_spatial/meteofrance_arome_france_hd/latest.json?time_step=current_time_1H&variable=temperature_2m&contours=true&tile_size=128`;
+					const omUrl = `https://openmeteo-data-spatial.b-cdn.net/meteofrance_arome_france_hd/latest.json?time_step=current_time_1H&variable=temperature_2m&contours=true&tile_size=128`;
 
 					map.on('load', () => {
 						map.addSource('omFileSource', {
