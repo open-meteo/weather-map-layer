@@ -38,6 +38,9 @@ vi.mock('../om-file-reader', async () => {
 vi.mock('../worker-pool', () => ({
 	WorkerPool: class {
 		requestTile = vi.fn(() => Promise.resolve(mockReturnBuffer.value));
+	},
+	workerPool: {
+		requestTile: vi.fn(() => Promise.resolve(mockReturnBuffer.value))
 	}
 }));
 

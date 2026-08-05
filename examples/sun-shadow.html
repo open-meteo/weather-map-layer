@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Weather Map Layer - Sun Shadow Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
+		<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+		<!-- x-release-please-start-version -->
+		<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.0.20/dist/index.js"></script>
+		<!-- x-release-please-end -->
+		<!-- Local development -->
+		<script>
+			if (location.hostname === 'localhost' || location.href.startsWith('file://')) {
+				document.write('<script src="../dist/index.js"><\/script>');
+			}
+		</script>
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+			#panel {
+				position: absolute;
+				top: 10px;
+				left: 10px;
+				z-index: 1;
+				background: rgba(255, 255, 255, 0.9);
+				border-radius: 6px;
+				padding: 10px 14px;
+				font-family: sans-serif;
+				font-size: 13px;
+				min-width: 230px;
+			}
+			#panel .row {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+				margin-top: 6px;
+			}
+			#time {
+				font-variant-numeric: tabular-nums;
+				font-weight: bold;
+			}
+			#play {
+				width: 60px;
+			}
+			#minute {
+				flex: 1;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<div id="panel">
+			<div class="row">
+				<button id="play">Pause</button>
+				<span id="time">–</span>
+			</div>
+			<div class="row">
+				<input id="minute" type="range" min="0" max="1439" value="0" />
+			</div>
+			<div class="row">
+				<label for="gradient">Twilight</label>
+				<input id="gradient" type="range" min="0" max="18" value="6" />
+				<span id="gradient_value">6°</span>
+			</div>
+			<div class="row">
+				<label for="opacity">Opacity</label>
+				<input id="opacity" type="range" min="0" max="100" value="50" />
+				<span id="opacity_value">50%</span>
+			</div>
+			<div class="row">
+				<input id="radiation" type="checkbox" checked />
+				<label for="radiation">Direct radiation (hourly)</label>
+			</div>
+			<div class="row">
+				<input id="globe" type="checkbox" checked />
+				<label for="globe">Globe projection</label>
+			</div>
+		</div>
+		<script>
+			maplibregl.addProtocol('om', OMWeatherMapLayer.omProtocol);
+			maplibregl.addProtocol('sun', OMWeatherMapLayer.sunProtocol);
+
+			const map = new maplibregl.Map({
+				container: 'map',
+				style: 'https://map-assets.open-meteo.com/styles/minimal-planet-maps.json', // replace with your own style sheet
+				center: [0, 25],
+				zoom: 1.4,
+				hash: true
+			});
+
+			// Animation: a single day in a loop, advancing 15 minutes per tick. The
+			// slider scrubs the same day at minute resolution (and pauses playback).
+			// The direct radiation layer follows along on whole hours, showing
+			// daylight and the clouds carving into it while the terminator sweeps
+			// around the planet. Sources are retargeted with setUrl(), which reloads
+			// the tiles while keeping the old ones visible until replacements render.
+			const TICK_MINUTES = 15;
+			const MINUTES_PER_DAY = 24 * 60;
+			const TICK_MS = 250;
+
+			const domainUrl = 'https://map-tiles.open-meteo.com/data_spatial/dwd_icon';
+			let dayStartMs = Date.now() - (Date.now() % 86400000); // today 00:00 UTC fallback
+			let radiationRunPath = null; // e.g. "2026/08/05/0600Z", null disables radiation
+			let minute = 0;
+			let playing = true;
+			let currentRadiationHour = null;
+
+			const slider = document.getElementById('minute');
+			const playButton = document.getElementById('play');
+
+			const pad = (value) => String(value).padStart(2, '0');
+
+			const currentTime = () => new Date(dayStartMs + minute * 60000);
+
+			const sunUrl = () => {
+				const gradient = document.getElementById('gradient').value;
+				const opacity = document.getElementById('opacity').value / 100;
+				return `sun://shadow?time=${currentTime().toISOString()}&gradient=${gradient}&opacity=${opacity}`;
+			};
+
+			const radiationUrl = (date) => {
+				const file = `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}T${pad(date.getUTCHours())}00`;
+				return `om://${domainUrl}/${radiationRunPath}/${file}.om?variable=direct_radiation`;
+			};
+
+			// Pick the first midnight that the latest model run fully covers (usually
+			// tomorrow), so every hour of the animated day has a radiation file.
+			const findAnimationDay = async () => {
+				try {
+					const meta = await fetch(`${domainUrl}/latest.json`).then((r) => r.json());
+					const midnight = meta.valid_times.findIndex((t) => t.endsWith('T00:00Z'));
+					if (midnight === -1 || midnight + 24 > meta.valid_times.length) return;
+					dayStartMs = Date.parse(meta.valid_times[midnight]);
+					const run = new Date(meta.reference_time);
+					radiationRunPath = `${run.getUTCFullYear()}/${pad(run.getUTCMonth() + 1)}/${pad(run.getUTCDate())}/${pad(run.getUTCHours())}00Z`;
+				} catch {
+					// keep today as the animation day, radiation stays disabled
+				}
+			};
+
+			const updateSun = () => {
+				map.getSource('sunSource')?.setUrl(sunUrl());
+				const time = currentTime();
+				document.getElementById('time').textContent =
+					`${time.toISOString().slice(0, 10)} ${pad(time.getUTCHours())}:${pad(time.getUTCMinutes())} UTC`;
+			};
+
+			const updateRadiation = () => {
+				if (!map.getLayer('radiationLayer')) return;
+				const enabled = document.getElementById('radiation').checked && radiationRunPath;
+				if (!enabled) {
+					map.setLayoutProperty('radiationLayer', 'visibility', 'none');
+					currentRadiationHour = null;
+					return;
+				}
+				map.setLayoutProperty('radiationLayer', 'visibility', 'visible');
+				const hour = currentTime().setUTCMinutes(0, 0, 0);
+				if (hour !== currentRadiationHour) {
+					currentRadiationHour = hour;
+					map.getSource('radiationSource')?.setUrl(radiationUrl(new Date(hour)));
+				}
+			};
+
+			const tick = () => {
+				if (!playing) return;
+				minute = (minute + TICK_MINUTES) % MINUTES_PER_DAY;
+				slider.value = minute;
+				updateSun();
+				updateRadiation();
+			};
+
+			map.on('load', async () => {
+				await findAnimationDay();
+
+				map.addSource('radiationSource', {
+					url: radiationUrl(new Date(dayStartMs)),
+					type: 'raster',
+					maxzoom: 12
+				});
+				map.addLayer(
+					{
+						id: 'radiationLayer',
+						type: 'raster',
+						source: 'radiationSource',
+						paint: { 'raster-opacity': 0.7 }
+					},
+					'waterway-tunnel'
+				);
+
+				map.addSource('sunSource', { url: sunUrl(), type: 'raster' });
+				// No beforeLayer: the shadow darkens everything, labels included
+				map.addLayer({
+					id: 'sunLayer',
+					type: 'raster',
+					source: 'sunSource',
+					paint: { 'raster-opacity': 1, 'raster-fade-duration': 0 }
+				});
+
+				updateSun();
+				updateRadiation();
+				setInterval(tick, TICK_MS);
+			});
+
+			const applyProjection = () => {
+				const globe = document.getElementById('globe').checked;
+				map.setProjection({ type: globe ? 'globe' : 'mercator' });
+			};
+			map.on('style.load', applyProjection);
+			document.getElementById('globe').addEventListener('change', applyProjection);
+
+			playButton.addEventListener('click', () => {
+				playing = !playing;
+				playButton.textContent = playing ? 'Pause' : 'Play';
+			});
+			// Scrubbing pauses the animation and jumps to the picked minute
+			slider.addEventListener('input', (e) => {
+				playing = false;
+				playButton.textContent = 'Play';
+				minute = Number(e.target.value);
+				updateSun();
+				updateRadiation();
+			});
+			document.getElementById('gradient').addEventListener('input', (e) => {
+				document.getElementById('gradient_value').textContent = `${e.target.value}°`;
+				updateSun();
+			});
+			document.getElementById('opacity').addEventListener('input', (e) => {
+				document.getElementById('opacity_value').textContent = `${e.target.value}%`;
+				updateSun();
+			});
+			document.getElementById('radiation').addEventListener('change', updateRadiation);
+		</script>
+	</body>
+</html>

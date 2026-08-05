@@ -118,6 +118,7 @@ The repository contains an `examples` directory with ready-to-run demos:
 - `examples/combined-variables.html` – shows multiple data sources on the same map.
 - `examples/partial-requests.html` – demonstrates partial / incremental data requests.
 - `examples/interpolation.html` – switch the interpolation method live via the `interpolation` URL parameter.
+- `examples/sun-shadow.html` – animates the analytical day/night terminator (`sun://` protocol) through a full day, optionally synced with hourly direct radiation.
 
 Run the examples by opening the corresponding `.html` file in a browser.
 

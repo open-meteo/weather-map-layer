@@ -1,4 +1,10 @@
 export { omProtocol } from './om-protocol';
+export {
+	sunProtocol,
+	DEFAULT_SUN_SHADOW_OPACITY,
+	DEFAULT_SUN_SHADOW_GRADIENT,
+	DEFAULT_SUN_SHADOW_COLOR
+} from './sun-protocol';
 
 // Functions
 
@@ -13,6 +19,7 @@ export { createClippingTester } from './utils/clipping';
 export { domainStep, closestModelRun } from './utils/model-runs';
 export { getCachedResolvedClipping } from './utils/parse-request';
 export { getColor, getColorScale } from './utils/styling';
+export { solarPosition, sunElevationSine } from './utils/sun';
 
 // Classes
 
@@ -46,7 +53,8 @@ export type {
 	InterpolationMethod,
 	OmProtocolSettings,
 	OmUrlState,
-	RenderableColorScale
+	RenderableColorScale,
+	SunShadowOptions
 } from './types';
 
 export type { WeatherMapLayerFileReader } from './om-file-reader';
