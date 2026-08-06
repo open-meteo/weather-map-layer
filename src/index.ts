@@ -32,7 +32,12 @@ export {
 	LEVEL_REGEX,
 	LEVEL_UNIT_REGEX,
 	VALID_ARROW_STYLES,
-	DEFAULT_ARROW_STYLE
+	DEFAULT_ARROW_STYLE,
+	VALID_ARROW_RENDERS,
+	DEFAULT_ARROW_RENDER,
+	TILE_PX,
+	ARROW_LATTICE,
+	BARB_LATTICE
 } from './utils/constants';
 
 // Adapters
@@ -44,6 +49,7 @@ export { addOpenLayersProtocolSupport } from './adapters/openlayers';
 // Types
 
 export type {
+	ArrowRender,
 	ArrowStyle,
 	ClippingOptions,
 	Data,
