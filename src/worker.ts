@@ -7,6 +7,7 @@ import { generateContours } from './utils/contours';
 import { generateGridPoints } from './utils/grid-points';
 import { halfQuantum as computeHalfQuantum, tile2lat, tile2lon } from './utils/math';
 import { makeColorSampler } from './utils/styling';
+import { generateWindBarbs } from './utils/wind-barbs';
 
 import { GridFactory } from './grids/index';
 
@@ -120,7 +121,9 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 			generateGridPoints(pbf, grid, values, directions, x, y, z, clippingOptions);
 		}
 		if (message.data.renderOptions.drawArrows && directions) {
-			generateArrows(pbf, values, directions, grid, x, y, z, clippingOptions, interpolation);
+			const draw =
+				message.data.renderOptions.arrowStyle === 'barb' ? generateWindBarbs : generateArrows;
+			draw(pbf, values, directions, grid, x, y, z, clippingOptions, interpolation);
 		}
 		if (message.data.renderOptions.drawContours) {
 			const intervals = message.data.renderOptions.intervals;
