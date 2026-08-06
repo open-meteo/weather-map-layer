@@ -3,11 +3,13 @@ import { PbfWriter } from 'pbf';
 import { generateArrows } from './utils/arrows';
 import { checkAgainstBounds } from './utils/bounds';
 import { clipRasterToPolygons } from './utils/clipping';
+import { VECTOR_TILE_EXTENT } from './utils/constants';
 import { generateContours } from './utils/contours';
 import { generateGridPoints } from './utils/grid-points';
 import { halfQuantum as computeHalfQuantum, tile2lat, tile2lon } from './utils/math';
 import { makeColorSampler } from './utils/styling';
 import { generateWindBarbs } from './utils/wind-barbs';
+import { generateWindPoints } from './utils/wind-points';
 
 import { GridFactory } from './grids/index';
 
@@ -121,9 +123,27 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 			generateGridPoints(pbf, grid, values, directions, x, y, z, clippingOptions);
 		}
 		if (message.data.renderOptions.drawArrows && directions) {
-			const draw =
-				message.data.renderOptions.arrowStyle === 'barb' ? generateWindBarbs : generateArrows;
-			draw(pbf, values, directions, grid, x, y, z, clippingOptions, interpolation);
+			const arrowStyle = message.data.renderOptions.arrowStyle;
+			if (message.data.renderOptions.arrowRender === 'icon') {
+				// As icons the shape comes from the renderer's sprite, so the tile
+				// only carries the sampled points
+				generateWindPoints(
+					pbf,
+					values,
+					directions,
+					grid,
+					x,
+					y,
+					z,
+					clippingOptions,
+					interpolation,
+					VECTOR_TILE_EXTENT,
+					message.data.renderOptions.arrowPoints
+				);
+			} else {
+				const draw = arrowStyle === 'barb' ? generateWindBarbs : generateArrows;
+				draw(pbf, values, directions, grid, x, y, z, clippingOptions, interpolation);
+			}
 		}
 		if (message.data.renderOptions.drawContours) {
 			const intervals = message.data.renderOptions.intervals;

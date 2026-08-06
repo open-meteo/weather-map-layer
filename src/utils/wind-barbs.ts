@@ -15,7 +15,7 @@ import { GridInterface } from '../grids';
 import { PbfWriter } from 'pbf';
 
 import { type ResolvedClippingOptions, createClippingTester } from './clipping';
-import { VECTOR_TILE_EXTENT } from './constants';
+import { BARB_LATTICE, VECTOR_TILE_EXTENT } from './constants';
 import { degreesToRadians, rotatePoint, tile2lat, tile2lon } from './math';
 import { command, writeLayer, zigzag } from './pbf';
 
@@ -104,7 +104,7 @@ export const generateWindBarbs = (
 	clippingOptions: ResolvedClippingOptions | undefined,
 	interpolation: InterpolationMethod = 'linear',
 	extent: number = VECTOR_TILE_EXTENT,
-	barbs: number = 18
+	barbs: number = BARB_LATTICE
 ) => {
 	// The world tiles stay denser, for the same reason `generateArrows` does
 	if (z === 0) {
@@ -121,9 +121,14 @@ export const generateWindBarbs = (
 	const size = extent / barbs;
 	const isInsideClip = createClippingTester(clippingOptions);
 
-	for (let tileY = 0; tileY < extent + 1; tileY += size) {
+	// Stepped by index rather than by accumulating `size`, which drifts. The
+	// far edge is included: a shape there is clipped to its own tile, and the
+	// neighbouring tile draws the other half of it.
+	for (let row = 0; row <= barbs; row++) {
+		const tileY = (row * extent) / barbs;
 		const lat = tile2lat(y + tileY / extent, z);
-		for (let tileX = 0; tileX < extent + 1; tileX += size) {
+		for (let column = 0; column <= barbs; column++) {
+			const tileX = (column * extent) / barbs;
 			const lon = tile2lon(x + tileX / extent, z);
 
 			if (isInsideClip && !isInsideClip(lon, lat)) {
