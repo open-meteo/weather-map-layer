@@ -6,6 +6,11 @@ export const DEFAULT_TILE_SIZE = 512;
 export const VALID_INTERPOLATIONS = ['nearest', 'linear', 'cubic', 'monotone'] as const;
 export const DEFAULT_INTERPOLATION = 'linear';
 
+// Shape drawn for wind/wave directions: a plain arrow, or station-model wind
+// barbs reading the speed off pennants and barbs.
+export const VALID_ARROW_STYLES = ['arrow', 'barb'] as const;
+export const DEFAULT_ARROW_STYLE = 'arrow';
+
 // Interpolate colours between colour-scale breakpoints instead of hard bands.
 export const DEFAULT_COLOR_BLEND = false;
 export const VECTOR_TILE_EXTENT = 4096;
