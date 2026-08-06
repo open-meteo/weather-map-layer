@@ -212,13 +212,16 @@ const colorScaleDefinitions: Record<string, ColorScaleDefinition> = {
 	},
 	// Cloud levels are tinted blue/green/red by height, so a chart stacking all
 	// three stays readable. Same breakpoints and opacity ramp as cloud_cover:
-	// only the hue differs, and each still darkens with coverage.
+	// only the hue differs. In light mode coverage darkens the tint; in dark
+	// mode it brightens it, but stops at a saturated mid tone rather than
+	// running up into white, where the three levels would be hard to tell
+	// apart and dense cloud would read as a grey veil.
 	cloud_cover_high: {
 		unit: '%',
 		breakpoints: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
 		colorSegments: {
 			light: [{ range: [0, 100], colors: ['#ffffff', '#dbeafe', '#93c5fd', '#3b82f6', '#1e3a8a'] }],
-			dark: [{ range: [0, 100], colors: ['#0b1220', '#1e40af', '#3b82f6', '#93c5fd', '#dbeafe'] }]
+			dark: [{ range: [0, 100], colors: ['#0b1220', '#1e3a8a', '#2563eb', '#3b82f6', '#60a5fa'] }]
 		},
 		opacitySegments: [
 			{ range: [0, 20], opacity: [0, 0.4], easing: 'power', exponent: 1.5 },
@@ -230,7 +233,7 @@ const colorScaleDefinitions: Record<string, ColorScaleDefinition> = {
 		breakpoints: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
 		colorSegments: {
 			light: [{ range: [0, 100], colors: ['#ffffff', '#dcfce7', '#86efac', '#22c55e', '#166534'] }],
-			dark: [{ range: [0, 100], colors: ['#0b1a12', '#166534', '#22c55e', '#86efac', '#dcfce7'] }]
+			dark: [{ range: [0, 100], colors: ['#0b1a12', '#14532d', '#16a34a', '#22c55e', '#4ade80'] }]
 		},
 		opacitySegments: [
 			{ range: [0, 20], opacity: [0, 0.4], easing: 'power', exponent: 1.5 },
@@ -242,7 +245,7 @@ const colorScaleDefinitions: Record<string, ColorScaleDefinition> = {
 		breakpoints: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
 		colorSegments: {
 			light: [{ range: [0, 100], colors: ['#ffffff', '#fee2e2', '#fca5a5', '#ef4444', '#991b1b'] }],
-			dark: [{ range: [0, 100], colors: ['#1a0b0b', '#991b1b', '#ef4444', '#fca5a5', '#fee2e2'] }]
+			dark: [{ range: [0, 100], colors: ['#1a0b0b', '#7f1d1d', '#dc2626', '#ef4444', '#f87171'] }]
 		},
 		opacitySegments: [
 			{ range: [0, 20], opacity: [0, 0.4], easing: 'power', exponent: 1.5 },
