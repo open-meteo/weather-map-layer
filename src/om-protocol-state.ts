@@ -27,12 +27,11 @@ interface InflightRequest {
 
 const inflightRequests = new WeakMap<OmUrlState, InflightRequest>();
 
-// Configuration constants - could be made configurable via OmProtocolSettings
-/** Max states that keep data loaded.
+/** Default max states that keep data loaded (see `OmProtocolSettings.maxStatesWithData`).
  *
  * This should be as low as possible, but needs to be at least the number of
  * variables that you want to display simultaneously. */
-const MAX_STATES_WITH_DATA = 2;
+export const DEFAULT_MAX_STATES_WITH_DATA = 2;
 /** 1 minute for hard eviction on new data fetches */
 const STALE_THRESHOLD_MS = 1 * 60 * 1000;
 
@@ -87,7 +86,8 @@ export const getOrCreateState = (
 	stateByKey: Map<string, OmUrlState>,
 	stateKey: string,
 	dataOptions: DataIdentityOptions,
-	omFileUrl: string
+	omFileUrl: string,
+	maxStatesWithData: number = DEFAULT_MAX_STATES_WITH_DATA
 ): OmUrlState => {
 	const existingState = stateByKey.get(stateKey);
 	if (existingState) {
@@ -103,8 +103,6 @@ export const getOrCreateState = (
 		// else we need to create a new state
 	}
 
-	evictStaleStates(stateByKey, stateKey);
-
 	const ranges = getRanges(dataOptions.domain.grid, dataOptions.bounds);
 	const state: OmUrlState = {
 		dataOptions,
@@ -116,6 +114,9 @@ export const getOrCreateState = (
 	};
 
 	stateByKey.set(stateKey, state);
+	// Evict after inserting so the cap actually holds `maxStatesWithData`
+	// data-bearing states (the new key itself is never evicted).
+	evictStaleStates(stateByKey, stateKey, maxStatesWithData);
 	return state;
 };
 
@@ -169,11 +170,13 @@ export const ensureData = async (
 		const controller = new AbortController();
 		inflightRequests.set(state, { controller, subscriberCount });
 
+		state.lastError = undefined;
 		state.dataPromise = (async () => {
 			try {
-				await omFileReader.setToOmFile(state.omFileUrl);
-
-				const data = await omFileReader.readVariable(
+				// URL-explicit read: concurrent loads of different files/variables
+				// must not repoint each other's readers.
+				const data = await omFileReader.readVariableFromFile(
+					state.omFileUrl,
 					state.dataOptions.variable,
 					state.ranges,
 					controller.signal
@@ -185,6 +188,15 @@ export const ensureData = async (
 
 				state.data = data;
 				return data;
+			} catch (error) {
+				// Recorded so getDataState can report 'error' — MapLibre counts
+				// failed tiles as complete, so renderers cannot see this otherwise.
+				// An abort is every subscriber cancelling (normal map navigation),
+				// not a failed load, so it leaves no error behind.
+				if (!(error instanceof Error && error.name === 'AbortError')) {
+					state.lastError = error;
+				}
+				throw error;
 			} finally {
 				state.dataPromise = null;
 				inflightRequests.delete(state);
@@ -197,6 +209,33 @@ export const ensureData = async (
 			signal.removeEventListener('abort', cleanup);
 		}
 		cleanup();
+	}
+};
+
+export type OmDataState = 'loaded' | 'loading' | 'error' | 'missing';
+
+/**
+ * Synchronous data-availability check for an om url (with or without the
+ * om:// prefix). Lets renderers await actual data instead of inferring it
+ * from tile events: failed tiles count as complete in MapLibre, so a purely
+ * tile-based check can show an empty frame.
+ *
+ * States are keyed by the normalized URL: meta-JSON URLs (`latest.json`,
+ * `in-progress.json`) must be resolved to their dated `.om` form first (see
+ * `normalizeUrl`), otherwise this always returns 'missing'.
+ */
+export const getDataState = (omUrl: string): OmDataState => {
+	if (!omProtocolInstance) return 'missing';
+	try {
+		const url = omUrl.startsWith('om://') ? omUrl : 'om://' + omUrl;
+		const { fileAndVariableKey } = parseUrlComponents(url);
+		const state = omProtocolInstance.stateByKey.get(fileAndVariableKey);
+		if (!state) return 'missing';
+		if (state.data) return 'loaded';
+		if (state.dataPromise) return 'loading';
+		return state.lastError !== undefined ? 'error' : 'missing';
+	} catch {
+		return 'missing';
 	}
 };
 
@@ -230,7 +269,16 @@ export const getValueFromLatLong = async (
 	const interpolation = resolveInterpolation(params.get('interpolation'));
 	const value = grid.getInterpolatedValue(state.data.values, lat, lonNormalized, interpolation);
 
-	return { value };
+	// Derived variables (u/v components, speed+direction, wave height+direction)
+	// carry a direction field. Sampled the same way the arrows are (circular on
+	// the degrees), so a popup arrow points exactly like the arrow under it.
+	const directions = state.data.directions;
+	if (!directions) return { value };
+
+	return {
+		value,
+		direction: grid.getLinearInterpolatedDirection(directions, lat, lonNormalized)
+	};
 };
 
 /** Parse the `interpolation` URL param, falling back to the default on absent or invalid values. */
@@ -246,13 +294,17 @@ const resolveInterpolation = (value: string | null): InterpolationMethod => {
  * Since Map maintains insertion order and we re-insert on access,
  * the oldest entries are always at the front - no sorting needed.
  */
-const evictStaleStates = (stateByKey: Map<string, OmUrlState>, currentKey?: string): void => {
+const evictStaleStates = (
+	stateByKey: Map<string, OmUrlState>,
+	currentKey: string | undefined,
+	maxStatesWithData: number
+): void => {
 	const now = Date.now();
 
 	// Iterate from oldest to newest (Map iteration order)
 	for (const [key, state] of stateByKey) {
 		// Stop if we're under the limit and remaining entries aren't stale
-		if (stateByKey.size <= MAX_STATES_WITH_DATA) {
+		if (stateByKey.size <= maxStatesWithData) {
 			const age = now - state.lastAccess;
 			if (age <= STALE_THRESHOLD_MS) break; // Remaining entries are newer
 		}
@@ -261,7 +313,7 @@ const evictStaleStates = (stateByKey: Map<string, OmUrlState>, currentKey?: stri
 
 		const age = now - state.lastAccess;
 		const isStale = age > STALE_THRESHOLD_MS;
-		const exceedsMax = stateByKey.size > MAX_STATES_WITH_DATA;
+		const exceedsMax = stateByKey.size > maxStatesWithData;
 
 		if (isStale || exceedsMax) {
 			stateByKey.delete(key);

@@ -1,10 +1,12 @@
 export { omProtocol } from './om-protocol';
+export type { OmDataState } from './om-protocol-state';
 
 // Functions
 
 export {
 	getValueFromLatLong,
 	clearBlockCache,
+	getDataState,
 	getRanges,
 	getProtocolInstance
 } from './om-protocol-state';
@@ -24,7 +26,19 @@ export { currentBounds } from './utils/bounds';
 export { defaultOmProtocolSettings } from './om-protocol';
 export { domainOptions, domainGroups } from './domains';
 export { variableOptions, levelGroupVariables } from './utils/variables';
-export { VARIABLE_PREFIX, LEVEL_PREFIX, LEVEL_REGEX, LEVEL_UNIT_REGEX } from './utils/constants';
+export {
+	VARIABLE_PREFIX,
+	LEVEL_PREFIX,
+	LEVEL_REGEX,
+	LEVEL_UNIT_REGEX,
+	VALID_ARROW_STYLES,
+	DEFAULT_ARROW_STYLE,
+	VALID_ARROW_RENDERS,
+	DEFAULT_ARROW_RENDER,
+	TILE_PX,
+	ARROW_LATTICE,
+	BARB_LATTICE
+} from './utils/constants';
 
 // Adapters
 
@@ -35,6 +49,8 @@ export { addOpenLayersProtocolSupport } from './adapters/openlayers';
 // Types
 
 export type {
+	ArrowRender,
+	ArrowStyle,
 	ClippingOptions,
 	Data,
 	Domain,

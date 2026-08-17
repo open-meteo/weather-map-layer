@@ -31,6 +31,9 @@ vi.mock('../om-file-reader', async () => {
 					ranges?.reduce((acc, range) => acc * (range.end - range.start + 1), 1) || 0;
 				return { values: new Float32Array(totalValues), directions: undefined };
 			}
+			async readVariableFromFile(_omUrl: string, variable: string, ranges: DimensionRange[]) {
+				return this.readVariable(variable, ranges);
+			}
 		}
 	};
 });

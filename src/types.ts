@@ -17,6 +17,12 @@ export interface DataIdentityOptions {
 
 export type InterpolationMethod = 'nearest' | 'linear' | 'cubic' | 'monotone';
 
+/** Shape drawn for directions: a plain arrow, or station-model wind barbs. */
+export type ArrowStyle = 'arrow' | 'barb';
+
+/** Tile geometry that scales with the zoom, or points drawn as symbols. */
+export type ArrowRender = 'line' | 'icon';
+
 export type TileSize = 64 | 128 | 256 | 512 | 1024 | 2048;
 
 export interface RenderOptions {
@@ -26,6 +32,10 @@ export interface RenderOptions {
 	colorBlend: boolean;
 	drawGrid: boolean;
 	drawArrows: boolean;
+	arrowStyle: ArrowStyle;
+	arrowRender: ArrowRender;
+	/** Points across a tile, for the icon renderer's lattice. */
+	arrowPoints: number;
 	drawContours: boolean;
 	intervals: number[];
 	colorScale: RenderableColorScale;
@@ -53,6 +63,8 @@ export interface OmUrlState {
 	omFileUrl: string;
 	data: Data | null;
 	dataPromise: Promise<Data> | null;
+	/** Set when the last data load failed; cleared when a new load starts. */
+	lastError?: unknown;
 	lastAccess: number;
 }
 
@@ -76,6 +88,13 @@ export interface OmProtocolSettings {
 	colorScales: ColorScales;
 	domainOptions: Domain[];
 	clippingOptions: ClippingOptions;
+
+	/**
+	 * Max states that keep data loaded. Should be as low as possible, but at
+	 * least the number of variables displayed simultaneously (times two while
+	 * cross-fading between timesteps). @default 2
+	 */
+	maxStatesWithData?: number;
 
 	/**
 	 * Optional custom resolver for URL settings.
