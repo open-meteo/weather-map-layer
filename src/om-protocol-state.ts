@@ -190,8 +190,12 @@ export const ensureData = async (
 				return data;
 			} catch (error) {
 				// Recorded so getDataState can report 'error' — MapLibre counts
-				// failed tiles as complete, so renderers cannot see this otherwise
-				state.lastError = error;
+				// failed tiles as complete, so renderers cannot see this otherwise.
+				// An abort is every subscriber cancelling (normal map navigation),
+				// not a failed load, so it leaves no error behind.
+				if (!(error instanceof Error && error.name === 'AbortError')) {
+					state.lastError = error;
+				}
 				throw error;
 			} finally {
 				state.dataPromise = null;
@@ -266,14 +270,14 @@ export const getValueFromLatLong = async (
 	const value = grid.getInterpolatedValue(state.data.values, lat, lonNormalized, interpolation);
 
 	// Derived variables (u/v components, speed+direction, wave height+direction)
-	// carry a direction field. Sampled the same way the arrows are (linear on the
-	// raw degrees), so a popup arrow points exactly like the arrow under it.
+	// carry a direction field. Sampled the same way the arrows are (circular on
+	// the degrees), so a popup arrow points exactly like the arrow under it.
 	const directions = state.data.directions;
 	if (!directions) return { value };
 
 	return {
 		value,
-		direction: grid.getLinearInterpolatedValue(directions, lat, lonNormalized)
+		direction: grid.getLinearInterpolatedDirection(directions, lat, lonNormalized)
 	};
 };
 
