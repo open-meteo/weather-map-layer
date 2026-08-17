@@ -320,7 +320,8 @@ const colorScaleDefinitions: Record<string, ColorScaleDefinition> = {
 	pressure: {
 		unit: 'hPa',
 		breakpoints: [
-			940, 950, 960, 970, 980, 990, 995, 1000, 1005, 1010, 1015, 1020, 1025, 1030, 1040, 1050, 1060
+			940, 950, 960, 970, 980, 986, 990, 996, 1000, 1006, 1010, 1016, 1020, 1026, 1030, 1040, 1050,
+			1060
 		],
 		colorSegments: [
 			{ range: [940, 1010], colors: ['#4444ff', '#ffffff'] },
