@@ -46,8 +46,8 @@ const BARB_LENGTH = 0.26;
 /** How far a barb tip leans past its root, toward the end of the staff. */
 const BARB_LEAN = 0.13;
 /** Radius of the calm circle, and of the ring drawn inside it. */
-const CALM_RADIUS = 0.21;
-const CALM_INNER_RADIUS = 0.14;
+const CALM_RADIUS = 0.17;
+const CALM_INNER_RADIUS = 0.11;
 
 /**
  * The whole plot is shrunk to fit within this radius of its lattice point, so
@@ -141,9 +141,13 @@ export const generateWindBarbs = (
 				continue;
 			}
 
-			// The staff points at where the wind comes from, so `direction` is
-			// used as is (an arrow adds 180° to point the other way)
-			const rotation = degreesToRadians(grid.getLinearInterpolatedValue(directions, lat, lon));
+			// The staff points at where the wind comes from, so the rotation is the
+			// direction as is (an arrow adds 180° to point the other way)
+			const rotation = degreesToRadians(grid.getLinearInterpolatedDirection(directions, lat, lon));
+			// The `direction` property keeps the arrow convention (downwind, i.e.
+			// direction + 180°) so consumers see the same value whatever the
+			// `arrow_style`; only the geometry uses the upwind rotation.
+			const direction = rotation + Math.PI;
 			const centre = [tileX, tileY];
 			// Barbs sit on the left of the staff, mirrored south of the equator
 			const side = lat >= 0 ? 1 : -1;
@@ -216,7 +220,7 @@ export const generateWindBarbs = (
 				pennantFeatures.push({
 					id: tileX + tileY + i,
 					type: 3, // 3 = Polygon
-					properties: { value: speed, direction: rotation },
+					properties: { value: speed, direction },
 					geom: ringGeometry(ring)
 				});
 				along += 2 * step;
@@ -234,7 +238,7 @@ export const generateWindBarbs = (
 			features.push({
 				id: tileX + tileY,
 				type: 2, // 2 = LineString
-				properties: { value: speed, direction: rotation },
+				properties: { value: speed, direction },
 				geom: geom
 			});
 		}

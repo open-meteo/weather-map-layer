@@ -53,6 +53,8 @@ export const generateWindPoints = (
 	if (z === 1) {
 		points = Math.round(points * 1.55);
 	}
+	// The zoom multipliers must not defeat the cap on the quadratic cost
+	points = Math.min(MAX_WIND_POINTS, points);
 
 	const features = [];
 	const isInsideClip = createClippingTester(clippingOptions);
@@ -79,7 +81,7 @@ export const generateWindPoints = (
 			}
 			// Degrees, the direction the flow comes from, as the renderer's
 			// rotation expressions expect
-			const direction = grid.getLinearInterpolatedValue(directions, lat, lon);
+			const direction = grid.getLinearInterpolatedDirection(directions, lat, lon);
 
 			features.push({
 				id: tileX + tileY,
