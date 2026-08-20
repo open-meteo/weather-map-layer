@@ -22,8 +22,7 @@ vi.mock('../om-file-reader', async () => {
 		...actual,
 		WeatherMapLayerFileReader: class {
 			config = {};
-			async setToOmFile() {}
-			async readVariable(_variable: string, ranges: DimensionRange[]) {
+			async readVariable(_url: string, _variable: string, ranges: DimensionRange[]) {
 				if (mockReadVariableResult.value) {
 					return mockReadVariableResult.value;
 				}

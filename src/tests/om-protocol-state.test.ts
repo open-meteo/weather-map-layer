@@ -65,11 +65,12 @@ class FakeReader {
 	calls: ReadCall[] = [];
 
 	// Must match the WeatherMapLayerFileReader interface used by ensureData
-	async setToOmFile(_url?: string): Promise<void> {
-		// intentional no-op
-	}
-
-	readVariable(variable: unknown, ranges: unknown, signal?: AbortSignal): Promise<Data> {
+	readVariable(
+		_url: unknown,
+		variable: unknown,
+		ranges: unknown,
+		signal?: AbortSignal
+	): Promise<Data> {
 		return new Promise<Data>((resolve, reject) => {
 			const call: ReadCall = { variable, ranges, signal, resolve, reject, aborted: false };
 			this.calls.push(call);

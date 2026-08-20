@@ -171,9 +171,8 @@ export const ensureData = async (
 
 		state.dataPromise = (async () => {
 			try {
-				await omFileReader.setToOmFile(state.omFileUrl);
-
 				const data = await omFileReader.readVariable(
+					state.omFileUrl,
 					state.dataOptions.variable,
 					state.ranges,
 					controller.signal
