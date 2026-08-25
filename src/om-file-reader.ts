@@ -4,7 +4,7 @@ import {
 	OmDataType,
 	OmFileReadOptions,
 	type OmFileReader,
-	OmHttpBackend
+	OmHttpBackendPool
 } from '@openmeteo/file-reader';
 
 import { fastAtan2, radiansToDegrees } from './utils/math';
@@ -49,6 +49,8 @@ export class WeatherMapLayerFileReader {
 	readonly cache: BlockCache;
 	readonly config: Required<Omit<FileReaderConfig, 'cache'>>;
 	private readonly allDerivationRules: VariableDerivationRule[];
+	/** Memoizes one backend per URL, so repeat reads skip the HEAD request. */
+	private readonly backendPool: OmHttpBackendPool;
 
 	constructor(config: FileReaderConfig = {}) {
 		this.config = {
@@ -61,20 +63,24 @@ export class WeatherMapLayerFileReader {
 
 		// Use the injected cache, or fall back to an in-memory LRU cache
 		this.cache = config.cache ?? new LruBlockCache(64 * 1024, 128);
+
+		this.backendPool = new OmHttpBackendPool({
+			backendOptions: {
+				eTagValidation: this.config.eTagValidation,
+				retries: this.config.retries
+			}
+		});
 	}
 
 	/**
 	 * Run `fn` with a reader scoped to `omUrl`. The reader is opened for this
 	 * call and disposed afterwards, so the class holds no file state: reads for
-	 * different files can never interleave on a shared reader.
+	 * different files can never interleave on a shared reader. The backend pool
+	 * only memoizes per-URL HTTP metadata (no wasm resources), keeping repeat
+	 * opens cheap without reintroducing shared reader state.
 	 */
 	private withReader<T>(omUrl: string, fn: (reader: OmFileReader) => Promise<T>): Promise<T> {
-		const backend = new OmHttpBackend({
-			url: omUrl,
-			eTagValidation: this.config.eTagValidation,
-			retries: this.config.retries
-		});
-		return backend.withReader(this.cache, fn);
+		return this.backendPool.withReader(omUrl, this.cache, fn);
 	}
 
 	private getRanges(ranges: DimensionRange[] | null, dimensions: number[]): DimensionRange[] {
@@ -263,6 +269,11 @@ export class WeatherMapLayerFileReader {
 	 */
 	async warmFile(omUrl: string): Promise<void> {
 		await this.withReader(omUrl, async () => {});
+	}
+
+	/** Drop all memoized backends, forcing fresh HEAD metadata requests. */
+	clearBackends(): void {
+		this.backendPool.clear();
 	}
 }
 
