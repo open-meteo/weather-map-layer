@@ -234,7 +234,16 @@ export const getValueFromLatLong = async (
 	const interpolation = resolveInterpolation(params.get('interpolation'));
 	const value = grid.getInterpolatedValue(state.data.values, lat, lonNormalized, interpolation);
 
-	return { value };
+	// Derived variables (u/v components, speed+direction, wave height+direction)
+	// carry a direction field. Sampled the same way the arrows are (circular on
+	// the degrees), so a popup arrow points exactly like the arrow under it.
+	const directions = state.data.directions;
+	if (!directions) return { value };
+
+	return {
+		value,
+		direction: grid.getLinearInterpolatedDirection(directions, lat, lonNormalized)
+	};
 };
 
 /** Parse the `interpolation` URL param, falling back to the default on absent or invalid values. */
