@@ -230,6 +230,8 @@ The clipping examples require `npm run serve`, as they load GeoJSON files over H
 
 Because the use of OM files on the S3 storage is often quite ambiguous, a Capture API is added, that will automatically produce the correct file paths for you.
 
+> **Note on endpoints:** `https://openmeteo-data-spatial.b-cdn.net` is the public endpoint used throughout this README and the examples. The official maps app uses `https://data-spatial.open-meteo.com/data_spatial`, which only accepts requests with a `localhost` or `*.open-meteo.com` referer.
+
 For each Weather Model, there will be a `latest.json` and `in-progress.json` metadata file, containing data like valid time steps, valid variables and reference times.
 
 An example can be found [here](https://openmeteo-data-spatial.b-cdn.net/dwd_icon/latest.json), for `DWD Icon Global`:

@@ -10,7 +10,7 @@ export class WorkerPool {
 	private pendingRequests = new Map<
 		string,
 		{
-			resolvers: Array<(tile: TileResult) => void>;
+			subscribers: Array<{ resolve: (tile: TileResult) => void; reject: (error: Error) => void }>;
 			worker: Worker;
 		}
 	>();
@@ -20,7 +20,9 @@ export class WorkerPool {
 			// Not in browser, don't create workers
 			return;
 		}
-		const workerCount = navigator.hardwareConcurrency || 4;
+		// Cap the pool: beyond ~8 workers tile rendering is bandwidth-bound, and
+		// every inline worker duplicates the bundled module graph in memory.
+		const workerCount = Math.min(8, navigator.hardwareConcurrency || 4);
 		for (let i = 0; i < workerCount; i++) {
 			const worker = new TileWorker();
 			worker.onmessage = (message: MessageEvent) => this.handleMessage(message);
@@ -37,22 +39,22 @@ export class WorkerPool {
 		if (!pending) return;
 
 		if (data.type === 'cancelled') {
-			pending.resolvers.forEach((resolve) => resolve({ cancelled: true }));
+			pending.subscribers.forEach(({ resolve }) => resolve({ cancelled: true }));
 			this.pendingRequests.delete(data.key);
 			return;
 		}
 
 		if (data.type.startsWith('return')) {
 			const originalTile = data.tile;
-			const resolvers = pending.resolvers;
+			const subscribers = pending.subscribers;
 
-			if (resolvers.length > 0) {
+			if (subscribers.length > 0) {
 				// The first subscriber can receive the original (transferred) buffer.
-				const firstResolver = resolvers.shift()!;
-				firstResolver({ data: originalTile, cancelled: false });
+				const firstSubscriber = subscribers.shift()!;
+				firstSubscriber.resolve({ data: originalTile, cancelled: false });
 
 				// All other subscribers must receive a clone.
-				resolvers.forEach((resolve) => {
+				subscribers.forEach(({ resolve }) => {
 					// Create a copy for each subsequent subscriber.
 					// ImageBitmaps are safe to share without cloning.
 					// FIXES: DOMException: Worker.postMessage: attempting to access detached ArrayBuffer
@@ -65,8 +67,18 @@ export class WorkerPool {
 	}
 
 	private handleError(error: ErrorEvent): void {
-		// Simplified error handler: just log for now
 		console.error('Error in worker:', error.message, error);
+		// An uncaught worker exception carries no request key and the worker will
+		// never post a response for it. Reject everything pending on that worker
+		// so tiles fail visibly instead of leaving MapLibre waiting forever.
+		const worker = error.target instanceof Worker ? error.target : undefined;
+		for (const [key, pending] of this.pendingRequests) {
+			if (worker && pending.worker !== worker) continue;
+			pending.subscribers.forEach(({ reject }) =>
+				reject(new Error(`Worker error while rendering tile ${key}: ${error.message}`))
+			);
+			this.pendingRequests.delete(key);
+		}
 	}
 
 	public getNextWorker(): Worker | undefined {
@@ -92,7 +104,7 @@ export class WorkerPool {
 			}
 
 			pending = {
-				resolvers: [],
+				subscribers: [],
 				worker
 			};
 			this.pendingRequests.set(key, pending);
@@ -102,35 +114,45 @@ export class WorkerPool {
 			worker.postMessage(requestWithoutSignal);
 		}
 
-		return new Promise<TileResult>((resolve) => {
+		return new Promise<TileResult>((resolve, reject) => {
 			const abortHandler = () => {
 				const p = this.pendingRequests.get(key);
 				if (!p) return;
 
-				// Remove this resolver
-				const idx = p.resolvers.indexOf(resolver);
+				// Remove this subscriber
+				const idx = p.subscribers.indexOf(subscriber);
 				if (idx !== -1) {
-					p.resolvers.splice(idx, 1);
+					p.subscribers.splice(idx, 1);
 				}
 
 				// Resolve this specific promise as cancelled
 				resolve({ cancelled: true });
 
 				// If no more subscribers, cancel the worker task
-				if (p.resolvers.length === 0) {
+				if (p.subscribers.length === 0) {
 					p.worker.postMessage({ type: 'cancel', key });
 					this.pendingRequests.delete(key);
 				}
 			};
 
-			const resolver = (result: TileResult) => {
+			const removeAbortHandler = () => {
 				if (request.signal) {
 					request.signal.removeEventListener('abort', abortHandler);
 				}
-				resolve(result);
 			};
 
-			pending.resolvers.push(resolver);
+			const subscriber = {
+				resolve: (result: TileResult) => {
+					removeAbortHandler();
+					resolve(result);
+				},
+				reject: (error: Error) => {
+					removeAbortHandler();
+					reject(error);
+				}
+			};
+
+			pending.subscribers.push(subscriber);
 
 			if (request.signal) {
 				request.signal.addEventListener('abort', abortHandler, { once: true });
