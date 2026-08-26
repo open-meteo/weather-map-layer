@@ -412,4 +412,22 @@ describe('ensureData – error state', () => {
 		await retry;
 		expect(state.data).not.toBeNull();
 	});
+
+	it('does not record an abort as lastError', async () => {
+		const state = makeState(new Map(), 'abort-no-err');
+		const reader = new FakeReader();
+		const ac = new AbortController();
+
+		const p = ensureData(state, asReader(reader), undefined, ac.signal);
+		ac.abort();
+		expect(reader.calls[0].signal!.aborted).toBe(true);
+
+		// The underlying read rejects the way a cancelled fetch does
+		reader.rejectCall(0, new DOMException('Aborted', 'AbortError'));
+		await expect(p).rejects.toMatchObject({ name: 'AbortError' });
+
+		// All subscribers cancelling is normal navigation, not a failed load,
+		// so getDataState must not report 'error' afterwards
+		expect(state.lastError).toBeUndefined();
+	});
 });

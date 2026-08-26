@@ -190,8 +190,12 @@ export const ensureData = async (
 				return data;
 			} catch (error) {
 				// Recorded so getDataState can report 'error' — MapLibre counts
-				// failed tiles as complete, so renderers cannot see this otherwise
-				state.lastError = error;
+				// failed tiles as complete, so renderers cannot see this otherwise.
+				// An abort is every subscriber cancelling (normal map navigation),
+				// not a failed load, so it leaves no error behind.
+				if (!(error instanceof Error && error.name === 'AbortError')) {
+					state.lastError = error;
+				}
 				throw error;
 			} finally {
 				state.dataPromise = null;

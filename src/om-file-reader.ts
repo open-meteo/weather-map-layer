@@ -191,13 +191,24 @@ export class WeatherMapLayerFileReader {
 		const [primaryVar, secondaryVar] = rule.getSourceVars(variable);
 
 		// Get readers for source variables (each can hit the network for its
-		// metadata block, so resolve them concurrently)
-		const [primaryReader, secondaryReader] = await Promise.all([
+		// metadata block, so resolve them concurrently). allSettled rather than
+		// all, so a child created by one lookup still reaches the cleanup below
+		// when its sibling lookup rejects.
+		const [primaryResult, secondaryResult] = await Promise.allSettled([
 			reader.getChildByName(primaryVar),
 			reader.getChildByName(secondaryVar)
 		]);
+		const primaryReader = primaryResult.status === 'fulfilled' ? primaryResult.value : undefined;
+		const secondaryReader =
+			secondaryResult.status === 'fulfilled' ? secondaryResult.value : undefined;
 
 		try {
+			if (primaryResult.status === 'rejected') {
+				throw primaryResult.reason;
+			}
+			if (secondaryResult.status === 'rejected') {
+				throw secondaryResult.reason;
+			}
 			if (!primaryReader) {
 				throw new Error(`Primary variable ${primaryVar} not found`);
 			}
