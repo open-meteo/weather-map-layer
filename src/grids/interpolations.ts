@@ -1,4 +1,4 @@
-import { modPositive, roundWithPrecision } from '../utils/math';
+import { degreesToRadians, modPositive, radiansToDegrees, roundWithPrecision } from '../utils/math';
 
 export const interpolateNearest = (
 	values: Float32Array,
@@ -87,15 +87,22 @@ export const bilinearNaNAware = (
 	return NaN;
 };
 
-/** Moves `degrees` onto the continuous scale around `reference` (shortest arc). */
-const unwrapAngle = (reference: number, degrees: number): number =>
-	reference + (((degrees - reference + 540) % 360) - 180);
-
 /**
  * The NaN-aware bilinear for an angular field in degrees. Angles cannot be
- * blended as scalars — halfway between 359° and 1° is 0°, not 180° — so the
- * corners are unwrapped onto a continuous scale around a finite reference
- * corner first, and the blend is wrapped back to [0, 360).
+ * blended as scalars — halfway between 359° and 1° is 0°, not 180° — so each
+ * corner becomes a unit vector, the two components are blended by the same
+ * NaN-aware bilinear as any scalar field, and the resultant is turned back into
+ * an angle. That is the circular mean, i.e. exactly what interpolating the u/v
+ * components of a unit-speed wind would give.
+ *
+ * `Math.sin`/`Math.cos` map NaN to NaN, so both component blends see the same
+ * missing corners and take the same triangle branch. The blend only has to be
+ * proportional to the resultant vector — `atan2` is scale invariant — so the
+ * triangle branch's weight renormalization is harmless here.
+ *
+ * The resultant is degenerate (zero length) only when the contributing corners
+ * cancel exactly, e.g. two equally weighted corners 180° apart; there is no
+ * meaningful mean direction in that case and `atan2(0, 0)` returns 0°.
  */
 export const bilinearAngleNaNAware = (
 	p0: number,
@@ -106,17 +113,32 @@ export const bilinearAngleNaNAware = (
 	xfUpper: number,
 	yFraction: number
 ): number => {
-	const reference = isFinite(p0) ? p0 : isFinite(p1) ? p1 : isFinite(p2) ? p2 : p3;
-	const blended = bilinearNaNAware(
-		unwrapAngle(reference, p0),
-		unwrapAngle(reference, p1),
-		unwrapAngle(reference, p2),
-		unwrapAngle(reference, p3),
+	const r0 = degreesToRadians(p0);
+	const r1 = degreesToRadians(p1);
+	const r2 = degreesToRadians(p2);
+	const r3 = degreesToRadians(p3);
+
+	const y = bilinearNaNAware(
+		Math.sin(r0),
+		Math.sin(r1),
+		Math.sin(r2),
+		Math.sin(r3),
 		xfLower,
 		xfUpper,
 		yFraction
 	);
-	return modPositive(blended, 360);
+	const x = bilinearNaNAware(
+		Math.cos(r0),
+		Math.cos(r1),
+		Math.cos(r2),
+		Math.cos(r3),
+		xfLower,
+		xfUpper,
+		yFraction
+	);
+	if (!isFinite(y) || !isFinite(x)) return NaN;
+
+	return modPositive(radiansToDegrees(Math.atan2(y, x)), 360);
 };
 
 export const interpolateLinear = (
