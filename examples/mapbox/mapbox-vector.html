@@ -7,7 +7,7 @@
 		<link rel="stylesheet" href="https://unpkg.com/mapbox-gl@3.20.0/dist/mapbox-gl.css" />
 		<script src="https://unpkg.com/mapbox-gl@3.20.0/dist/mapbox-gl.js"></script>
 		<!-- x-release-please-start-version -->
-		<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.0.20/dist/index.js"></script>
+		<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.1.0/dist/index.js"></script>
 		<!-- x-release-please-end -->
 		<!-- Local development -->
 		<script>
@@ -63,7 +63,7 @@
 			});
 
 			// Both layers share the same model file and time step. The vector layer appends `&arrows=true` to request PBF arrow tiles.
-			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=wind_u_component_10m`;
+			const omUrl = `https://openmeteo-data-spatial.b-cdn.net/dwd_icon/latest.json?time_step=current_time_1H&variable=wind_u_component_10m`;
 
 			map.on('load', () => {
 				map.addSource('omRasterSource', {

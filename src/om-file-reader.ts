@@ -4,7 +4,7 @@ import {
 	OmDataType,
 	OmFileReadOptions,
 	type OmFileReader,
-	OmHttpBackend
+	OmHttpBackendPool
 } from '@openmeteo/file-reader';
 
 import { fastAtan2, radiansToDegrees } from './utils/math';
@@ -34,44 +34,23 @@ export interface FileReaderConfig {
 	 * If omitted, falls back to an in-memory LruBlockCache.
 	 */
 	cache?: BlockCache<string | bigint>;
-
-	/**
-	 * Maximum number of simultaneously open per-URL file readers. Least
-	 * recently used readers beyond this cap are disposed (deferred until
-	 * their in-flight reads finish). Needs to cover every file that can be
-	 * read concurrently: displayed variables plus prefetched neighbour
-	 * timesteps. @default 12
-	 */
-	maxOpenFiles?: number;
 }
 
 export const defaultFileReaderConfig: Required<Omit<FileReaderConfig, 'cache'>> = {
 	useSAB: typeof SharedArrayBuffer !== 'undefined',
 	retries: 2,
-	eTagValidation: false,
-	maxOpenFiles: 12
+	eTagValidation: false
 };
-
-/** One memoized reader per .om file URL. */
-interface ReaderEntry {
-	promise: Promise<OmFileReader>;
-	/** Number of in-flight read/prefetch operations using this reader. */
-	activeOps: number;
-	/** Evicted from the LRU; dispose once the last active operation finishes. */
-	evicted: boolean;
-}
 
 /**
  * Convenience class for reading from OM-files implementing some utility conversions during reading.
  */
 export class WeatherMapLayerFileReader {
-	/** Memoized per-URL readers in LRU order (oldest first). */
-	private readers = new Map<string, ReaderEntry>();
-	/** URL targeted by the legacy `setToOmFile`/`readVariable` API. */
-	private currentUrl?: string;
 	readonly cache: BlockCache;
 	readonly config: Required<Omit<FileReaderConfig, 'cache'>>;
 	private readonly allDerivationRules: VariableDerivationRule[];
+	/** Memoizes one backend per URL, so repeat reads skip the HEAD request. */
+	private readonly backendPool: OmHttpBackendPool;
 
 	constructor(config: FileReaderConfig = {}) {
 		this.config = {
@@ -84,78 +63,24 @@ export class WeatherMapLayerFileReader {
 
 		// Use the injected cache, or fall back to an in-memory LRU cache
 		this.cache = config.cache ?? new LruBlockCache(64 * 1024, 128);
+
+		this.backendPool = new OmHttpBackendPool({
+			backendOptions: {
+				eTagValidation: this.config.eTagValidation,
+				retries: this.config.retries
+			}
+		});
 	}
 
 	/**
-	 * Point the legacy single-file API at `omUrl`. Readers for other URLs stay
-	 * open (bounded by `maxOpenFiles`), so concurrent reads of multiple files
-	 * are safe.
+	 * Run `fn` with a reader scoped to `omUrl`. The reader is opened for this
+	 * call and disposed afterwards, so the class holds no file state: reads for
+	 * different files can never interleave on a shared reader. The backend pool
+	 * only memoizes per-URL HTTP metadata (no wasm resources), keeping repeat
+	 * opens cheap without reintroducing shared reader state.
 	 */
-	async setToOmFile(omUrl: string): Promise<void> {
-		this.currentUrl = omUrl;
-		await this.acquireReader(omUrl);
-	}
-
-	/** Get (or create) the memoized reader for a URL and mark it recently used. */
-	private acquireReader(omUrl: string): Promise<OmFileReader> {
-		const existing = this.readers.get(omUrl);
-		if (existing) {
-			// Re-insert to move to the most recently used position
-			this.readers.delete(omUrl);
-			this.readers.set(omUrl, existing);
-			return existing.promise;
-		}
-
-		const s3Backend = new OmHttpBackend({
-			url: omUrl,
-			eTagValidation: this.config.eTagValidation,
-			retries: this.config.retries
-		});
-		const entry: ReaderEntry = {
-			promise: s3Backend.asCachedReader(this.cache),
-			activeOps: 0,
-			evicted: false
-		};
-		this.readers.set(omUrl, entry);
-		// Failed opens must not stay memoized, otherwise retries are impossible
-		entry.promise.catch(() => {
-			if (this.readers.get(omUrl) === entry) this.readers.delete(omUrl);
-		});
-
-		// Clamp: below 1 the pool would evict the entry it just created,
-		// scheduling disposal of a reader the caller is about to use
-		while (this.readers.size > Math.max(1, this.config.maxOpenFiles)) {
-			const oldest = this.readers.entries().next().value;
-			if (!oldest) break;
-			this.readers.delete(oldest[0]);
-			this.markEvicted(oldest[1]);
-		}
-
-		return entry.promise;
-	}
-
-	private markEvicted(entry: ReaderEntry): void {
-		entry.evicted = true;
-		if (entry.activeOps === 0) {
-			entry.promise.then((reader) => reader.dispose()).catch(() => {});
-		}
-	}
-
-	/** Run `fn` with the reader for `omUrl`, deferring disposal while it runs. */
-	private async withReader<T>(omUrl: string, fn: (reader: OmFileReader) => Promise<T>): Promise<T> {
-		const promise = this.acquireReader(omUrl);
-		const entry = this.readers.get(omUrl);
-		if (entry) entry.activeOps++;
-		try {
-			return await fn(await promise);
-		} finally {
-			if (entry) {
-				entry.activeOps--;
-				if (entry.evicted && entry.activeOps === 0) {
-					entry.promise.then((reader) => reader.dispose()).catch(() => {});
-				}
-			}
-		}
+	private withReader<T>(omUrl: string, fn: (reader: OmFileReader) => Promise<T>): Promise<T> {
+		return this.backendPool.withReader(omUrl, this.cache, fn);
 	}
 
 	private getRanges(ranges: DimensionRange[] | null, dimensions: number[]): DimensionRange[] {
@@ -243,8 +168,8 @@ export class WeatherMapLayerFileReader {
 
 			return data;
 		} finally {
-			// Child readers hold their own wasm allocations; the pool's dispose
-			// only frees the root reader, so unreleased children accumulate.
+			// Child readers hold their own wasm allocations; disposing the scoped
+			// root reader does not free them.
 			primaryReader?.dispose();
 			secondaryReader?.dispose();
 		}
@@ -277,7 +202,6 @@ export class WeatherMapLayerFileReader {
 
 			return { values, directions: undefined, scaleFactor: variableReader.scaleFactor() };
 		} finally {
-			// Free the child's wasm allocation; the root reader outlives it
 			variableReader.dispose();
 		}
 	}
@@ -285,7 +209,8 @@ export class WeatherMapLayerFileReader {
 	/**
 	 * Read a specific variable from the given .om file. Implements on the fly
 	 * conversion for some variables, e.g. uv components are converted to speed
-	 * and direction. Safe to call concurrently for different files.
+	 * and direction. Selecting the file and reading from it is a single atomic
+	 * step, so concurrent reads of different files cannot interleave.
 	 *
 	 * @param omUrl The .om file URL to read from.
 	 * @param variable The variable to read.
@@ -293,7 +218,7 @@ export class WeatherMapLayerFileReader {
 	 * @param signal Optional AbortSignal
 	 * @returns Promise resolving to data object containing values and optional directions
 	 */
-	async readVariableFromFile(
+	async readVariable(
 		omUrl: string,
 		variable: string,
 		ranges: DimensionRange[] | null = null,
@@ -311,26 +236,11 @@ export class WeatherMapLayerFileReader {
 	}
 
 	/**
-	 * Read a specific variable from the current file (see `setToOmFile`).
-	 * Prefer `readVariableFromFile` when multiple files are read concurrently.
+	 * Prefetch data for a specific variable and range of the given .om file into
+	 * the local cache. This is useful for warming up the cache for anticipated
+	 * map movements or timestep changes.
 	 */
-	async readVariable(
-		variable: string,
-		ranges: DimensionRange[] | null = null,
-		signal?: AbortSignal
-	): Promise<Data> {
-		if (!this.currentUrl) {
-			throw new Error('Reader not initialized. Call setToOmFile() first.');
-		}
-		return this.readVariableFromFile(this.currentUrl, variable, ranges, signal);
-	}
-
-	/**
-	 * Prefetch data for a specific variable and range of the given .om file
-	 * into the local cache. This is useful for warming up the cache for
-	 * anticipated map movements or timestep changes.
-	 */
-	async prefetchVariableFromFile(
+	async prefetchVariable(
 		omUrl: string,
 		variable: string,
 		ranges: DimensionRange[] | null = null,
@@ -365,24 +275,17 @@ export class WeatherMapLayerFileReader {
 	}
 
 	/**
-	 * Prefetch a variable from the current file (see `setToOmFile`).
-	 * Prefer `prefetchVariableFromFile` when multiple files are involved.
+	 * Warm the cache for the given .om file: opening the scoped reader fetches
+	 * the file header/trailer and root metadata into the block cache, so a later
+	 * read only pays for its data blocks. No variable data is requested.
 	 */
-	async prefetchVariable(
-		variable: string,
-		ranges: DimensionRange[] | null = null,
-		signal?: AbortSignal
-	): Promise<void> {
-		if (!this.currentUrl) return;
-		return this.prefetchVariableFromFile(this.currentUrl, variable, ranges, signal);
+	async warmFile(omUrl: string): Promise<void> {
+		await this.withReader(omUrl, async () => {});
 	}
 
-	dispose() {
-		for (const entry of this.readers.values()) {
-			this.markEvicted(entry);
-		}
-		this.readers.clear();
-		this.currentUrl = undefined;
+	/** Drop all memoized backends, forcing fresh HEAD metadata requests. */
+	clearBackends(): void {
+		this.backendPool.clear();
 	}
 }
 

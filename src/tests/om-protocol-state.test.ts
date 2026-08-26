@@ -59,14 +59,14 @@ const makeMockData = (size = 100): Data => ({
 /**
  * Controllable test double for WeatherMapLayerFileReader.
  *
- * Each call to readVariableFromFile is recorded in `calls` and returns a
+ * Each call to readVariable is recorded in `calls` and returns a
  * Promise that the test controls via resolveCall / rejectCall.
  */
 class FakeReader {
 	calls: ReadCall[] = [];
 
 	// Must match the WeatherMapLayerFileReader interface used by ensureData
-	readVariableFromFile(
+	readVariable(
 		omUrl: unknown,
 		variable: unknown,
 		ranges: unknown,

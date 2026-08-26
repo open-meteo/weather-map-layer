@@ -7,7 +7,7 @@
 		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
 		<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
 		<!-- x-release-please-start-version -->
-		<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.0.20/dist/index.js"></script>
+		<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.1.0/dist/index.js"></script>
 		<!-- x-release-please-end -->
 		<!-- Local development -->
 		<script>
@@ -36,7 +36,7 @@
 				hash: true
 			});
 
-			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=precipitation&contours=true`;
+			const omUrl = `https://openmeteo-data-spatial.b-cdn.net/dwd_icon/latest.json?time_step=current_time_1H&variable=precipitation&contours=true`;
 
 			map.on('load', () => {
 				map.addSource('omFileRasterSource', {

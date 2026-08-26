@@ -63,6 +63,11 @@ export const clearBlockCache = async (): Promise<void> => {
 	omProtocolInstance?.stateByKey.clear();
 };
 
+/** Drop all memoized HTTP backends, so the next read re-fetches file metadata. */
+export const clearBackends = (): void => {
+	omProtocolInstance?.omFileReader.clearBackends();
+};
+
 export const getRanges = (gridData: GridData, bounds: Bounds | undefined): DimensionRange[] => {
 	if (bounds) {
 		const gridGetter = GridFactory.create(gridData, null);
@@ -173,9 +178,7 @@ export const ensureData = async (
 		state.lastError = undefined;
 		state.dataPromise = (async () => {
 			try {
-				// URL-explicit read: concurrent loads of different files/variables
-				// must not repoint each other's readers.
-				const data = await omFileReader.readVariableFromFile(
+				const data = await omFileReader.readVariable(
 					state.omFileUrl,
 					state.dataOptions.variable,
 					state.ranges,

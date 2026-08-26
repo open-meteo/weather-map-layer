@@ -22,17 +22,13 @@ vi.mock('../om-file-reader', async () => {
 		...actual,
 		WeatherMapLayerFileReader: class {
 			config = {};
-			async setToOmFile() {}
-			async readVariable(_variable: string, ranges: DimensionRange[]) {
+			async readVariable(_url: string, _variable: string, ranges: DimensionRange[]) {
 				if (mockReadVariableResult.value) {
 					return mockReadVariableResult.value;
 				}
 				const totalValues =
 					ranges?.reduce((acc, range) => acc * (range.end - range.start + 1), 1) || 0;
 				return { values: new Float32Array(totalValues), directions: undefined };
-			}
-			async readVariableFromFile(_omUrl: string, variable: string, ranges: DimensionRange[]) {
-				return this.readVariable(variable, ranges);
 			}
 		}
 	};

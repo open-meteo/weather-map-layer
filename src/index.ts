@@ -7,6 +7,7 @@ export {
 	getValueFromLatLong,
 	clearBlockCache,
 	getDataState,
+	clearBackends,
 	getRanges,
 	getProtocolInstance
 } from './om-protocol-state';
