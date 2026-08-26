@@ -1,4 +1,4 @@
-import { roundWithPrecision } from '../utils/math';
+import { modPositive, roundWithPrecision } from '../utils/math';
 
 export const interpolateNearest = (
 	values: Float32Array,
@@ -87,6 +87,38 @@ export const bilinearNaNAware = (
 	return NaN;
 };
 
+/** Moves `degrees` onto the continuous scale around `reference` (shortest arc). */
+const unwrapAngle = (reference: number, degrees: number): number =>
+	reference + (((degrees - reference + 540) % 360) - 180);
+
+/**
+ * The NaN-aware bilinear for an angular field in degrees. Angles cannot be
+ * blended as scalars — halfway between 359° and 1° is 0°, not 180° — so the
+ * corners are unwrapped onto a continuous scale around a finite reference
+ * corner first, and the blend is wrapped back to [0, 360).
+ */
+export const bilinearAngleNaNAware = (
+	p0: number,
+	p1: number,
+	p2: number,
+	p3: number,
+	xfLower: number,
+	xfUpper: number,
+	yFraction: number
+): number => {
+	const reference = isFinite(p0) ? p0 : isFinite(p1) ? p1 : isFinite(p2) ? p2 : p3;
+	const blended = bilinearNaNAware(
+		unwrapAngle(reference, p0),
+		unwrapAngle(reference, p1),
+		unwrapAngle(reference, p2),
+		unwrapAngle(reference, p3),
+		xfLower,
+		xfUpper,
+		yFraction
+	);
+	return modPositive(blended, 360);
+};
+
 export const interpolateLinear = (
 	values: Float32Array,
 	x: number,
@@ -117,6 +149,46 @@ export const interpolateLinear = (
 
 	// Rectangular cell: both edges share the same horizontal fraction.
 	return bilinearNaNAware(
+		values[index],
+		values[nextIndex],
+		values[index + nx],
+		values[nextIndex + nx],
+		xFraction,
+		xFraction,
+		yFraction
+	);
+};
+
+/** `interpolateLinear` for an angular field in degrees (see `bilinearAngleNaNAware`). */
+export const interpolateLinearAngle = (
+	values: Float32Array,
+	x: number,
+	y: number,
+	xFraction: number,
+	yFraction: number,
+	nx: number,
+	longitudeWrap: boolean = false
+): number => {
+	const index = y * nx + x;
+
+	let nextIndex: number;
+	if (longitudeWrap) {
+		// For global grids, data can wrap to the other side
+		nextIndex = y * nx + ((x + 1) % nx);
+	} else {
+		nextIndex = index + 1;
+		// Right border
+		if (nextIndex % nx === 0) {
+			return NaN;
+		}
+	}
+
+	// Bottom border
+	if (index + nx > values.length) {
+		return NaN;
+	}
+
+	return bilinearAngleNaNAware(
 		values[index],
 		values[nextIndex],
 		values[index + nx],
