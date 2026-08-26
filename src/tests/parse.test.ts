@@ -28,7 +28,7 @@ describe('URL Parsing', () => {
 
 		it('resolves latest.json to current model run URL', async () => {
 			const url =
-				'https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m';
+				'https://openmeteo-data-spatial.b-cdn.net/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m';
 			const parsedUrl = await parseMetaJson(url);
 			const now = new Date();
 
@@ -41,7 +41,7 @@ describe('URL Parsing', () => {
 
 		it('resolves in-progress.json to current model run URL', async () => {
 			const url =
-				'https://map-tiles.open-meteo.com/data_spatial/dwd_icon/in-progress.json?time_step=current_time_1H&variable=temperature_2m';
+				'https://openmeteo-data-spatial.b-cdn.net/dwd_icon/in-progress.json?time_step=current_time_1H&variable=temperature_2m';
 			const parsedUrl = await parseMetaJson(url);
 
 			expect(parsedUrl).not.toContain('in-progress');

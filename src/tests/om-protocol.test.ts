@@ -264,7 +264,7 @@ describe('omProtocol', () => {
 		it('returns tilejson with correct tiles URL', async () => {
 			const { omProtocol } = await import('../om-protocol');
 			const params: RequestParameters = {
-				url: 'om://https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m',
+				url: 'om://https://data-spatial.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m',
 				type: 'json'
 			};
 			const result = await omProtocol(params, new AbortController(), defaultOmProtocolSettings);
@@ -281,7 +281,7 @@ describe('omProtocol', () => {
 		it('returns correct bounds for domain grid', async () => {
 			const { omProtocol } = await import('../om-protocol');
 			const params: RequestParameters = {
-				url: 'om://https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m',
+				url: 'om://https://data-spatial.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m',
 				type: 'json'
 			};
 			const result = await omProtocol(params, new AbortController(), defaultOmProtocolSettings);
@@ -297,7 +297,7 @@ describe('omProtocol', () => {
 			const { omProtocol } = await import('../om-protocol');
 
 			const params: RequestParameters = {
-				url: 'om://https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m/0/0/0',
+				url: 'om://https://data-spatial.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m/0/0/0',
 				type: 'arrayBuffer'
 			};
 			const result = await omProtocol(params, new AbortController(), defaultOmProtocolSettings);
@@ -310,7 +310,7 @@ describe('omProtocol', () => {
 			const { omProtocol } = await import('../om-protocol');
 
 			const params: RequestParameters = {
-				url: 'om://https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m',
+				url: 'om://https://data-spatial.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m',
 				type: 'arrayBuffer'
 			};
 
@@ -326,7 +326,7 @@ describe('omProtocol', () => {
 			const settings = createTestSettings({ postReadCallback });
 
 			const params: RequestParameters = {
-				url: 'om://https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m/0/0/0',
+				url: 'om://https://data-spatial.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m/0/0/0',
 				type: 'arrayBuffer'
 			};
 
@@ -336,7 +336,9 @@ describe('omProtocol', () => {
 			expect(postReadCallback).toHaveBeenCalledWith(
 				expect.anything(), // omFileReader
 				expect.objectContaining({ values: expect.any(Float32Array) }), // data
-				expect.objectContaining({ omFileUrl: expect.stringContaining('map-tiles.open-meteo.com') })
+				expect.objectContaining({
+					omFileUrl: expect.stringContaining('data-spatial.open-meteo.com')
+				})
 			);
 		});
 	});
@@ -349,7 +351,7 @@ describe('getValueFromLatLong', () => {
 
 		// First load data via tile request
 		const url =
-			'om://https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m/0/0/0';
+			'om://https://data-spatial.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m/0/0/0';
 		await omProtocol(
 			{ url, type: 'arrayBuffer' },
 			new AbortController(),
@@ -381,7 +383,7 @@ describe('getValueFromLatLong', () => {
 		// Initialize protocol with one URL
 		await omProtocol(
 			{
-				url: 'om://https://map-tiles.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m/0/0/0',
+				url: 'om://https://data-spatial.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m/0/0/0',
 				type: 'arrayBuffer'
 			},
 			new AbortController(),
