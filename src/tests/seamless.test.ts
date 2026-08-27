@@ -5,12 +5,12 @@
  *  - TileJSON returned immediately (no data load) with correct bounds
  *  - Clipping applied to seamless TileJSON bounds
  *  - Zoom-level layer filtering (minZoom gating)
- *  - Sequential data loading (finest-first order)
+ *  - Parallel data loading (reads start finest-first)
  *  - postReadCallback IS invoked once per real sub-layer load
  *  - Correct URL substitution for each concrete layer
  *  - Failed layers are skipped; surviving layers still render
  *  - All layers failing returns { data: null }
- *  - Abort signal stops sequential loading mid-way
+ *  - Abort signal stops layer loading mid-way
  *  - State cache: second request for same data is instant (no re-read)
  *  - Unsupported request type throws
  *  - Missing tile coordinates throws for image requests
@@ -349,10 +349,10 @@ describe('SeamlessDomain – viewport gating', () => {
 	});
 });
 
-describe('SeamlessDomain – sequential data loading', () => {
-	it('layers load sequentially, finest first', async () => {
-		// Each atomic readVariable call completes before the next starts.
-		// We verify this by checking the order: d2 → eu → global (finest first).
+describe('SeamlessDomain – parallel data loading', () => {
+	it('layer reads start in finest-first order', async () => {
+		// Layers load in parallel, but the reads are issued in layer-definition
+		// order. We verify the start order: d2 → eu → global (finest first).
 		const { omProtocol } = await import('../om-protocol');
 		await omProtocol(tileParams(5), new AbortController(), makeSettings());
 
@@ -463,9 +463,9 @@ describe('SeamlessDomain – abort signal', () => {
 		expect(result.data).toBeNull();
 	});
 
-	it('abort mid-sequential-load stops further layer fetches', async () => {
-		// After the first layer (d2) starts loading, we abort via the mockOnReadVariable
-		// hook. eu and global should not be started.
+	it('abort during the first layer read stops further layer fetches', async () => {
+		// The abort fires synchronously inside the first (d2) read, before the other
+		// layer tasks reach their signal check — eu and global must not be started.
 		const ac = new AbortController();
 		mockOnReadVariable.fn = () => ac.abort();
 

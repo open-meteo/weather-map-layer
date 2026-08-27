@@ -174,103 +174,110 @@ export const handleSeamlessRequest = async (
 		throw new Error(`Tile coordinates required for ${params.type} request`);
 	}
 
-	// Load data for every active layer sequentially. Reads are atomic per call, so
-	// this is not needed for safety anymore — it just avoids bursting parallel
-	// requests for layers the finer ones may make redundant. After the first load
-	// the data is cached in state.data, so subsequent tile requests for the same
-	// time-step return immediately with no serialization cost.
-	const seamlessLayers: SeamlessLayerRenderData[] = [];
-
 	// The global fallback (last layer) covers the whole world and must always be
 	// loaded — it is the only layer guaranteed to produce a value everywhere — so
 	// it is exempt from the viewport gate below.
 	const globalLayer = seamlessDomain.layers[seamlessDomain.layers.length - 1];
 	const viewportBounds = request.dataOptions.bounds;
 
-	for (const layer of activeLayers) {
-		if (signal.aborted) break;
+	// Load data for every active layer in parallel — reads are atomic per call, so
+	// concurrent loads are safe. Promise.all preserves the finest-first layer
+	// order; gated or failed layers resolve to null and are filtered out. After
+	// the first load the data is cached in state.data, so subsequent tile requests
+	// for the same time-step return immediately.
+	const layerResults = await Promise.all(
+		activeLayers.map(async (layer): Promise<SeamlessLayerRenderData | null> => {
+			if (signal.aborted) return null;
 
-		const concreteDomain = resolveConcreteDomain(layer.domainValue, settings.domainOptions);
+			const concreteDomain = resolveConcreteDomain(layer.domainValue, settings.domainOptions);
 
-		if (!concreteDomain) {
-			console.warn(`[seamless] Domain not found: ${layer.domainValue}`);
-			continue;
-		}
-
-		// Full geographic bounds of this domain (not viewport-cropped) — needed both
-		// for the viewport gate here and for the blend math passed to the worker.
-		const fullGrid = GridFactory.create(concreteDomain.grid, null);
-		const domainBounds = fullGrid.getBounds() as Bounds;
-
-		// Viewport gate: a local (non-global) layer that does not even partially
-		// overlap the current map viewport contributes nothing to any visible tile,
-		// so skip loading and blending it entirely. This keeps composite domains that
-		// stack many regional models (e.g. om_global_seamless) cheap: only the models
-		// actually on screen are fetched and blended.
-		if (layer !== globalLayer && viewportBounds && !boundsIntersect(domainBounds, viewportBounds)) {
-			continue;
-		}
-
-		// Derive the concrete URL by substituting the seamless domain name
-		const concreteBaseUrl = request.baseUrl.replace(
-			`/data_spatial/${seamlessDomain.value}/`,
-			`/data_spatial/${concreteDomain.value}/`
-		);
-		const concreteKey = request.fileAndVariableKey.replace(
-			`/data_spatial/${seamlessDomain.value}/`,
-			`/data_spatial/${concreteDomain.value}/`
-		);
-
-		// Guard against 404 network errors: if the domain advertises a maximum forecast
-		// horizon and the requested timestep is beyond it, skip this layer entirely and
-		// fall through to the next coarser layer.  This prevents the browser from issuing
-		// a request that the server will reject with a 404 (which browsers log as a CORS
-		// error when the 404 response omits Access-Control-Allow-Origin).
-		if (layer.maxForecastHours !== undefined) {
-			const leadTime = parseLeadTimeHours(concreteBaseUrl);
-			if (leadTime !== undefined && leadTime > layer.maxForecastHours) {
-				continue;
+			if (!concreteDomain) {
+				console.warn(`[seamless] Domain not found: ${layer.domainValue}`);
+				return null;
 			}
-		}
 
-		const concreteDataOptions: DataIdentityOptions = {
-			domain: concreteDomain,
-			variable: request.dataOptions.variable,
-			bounds: request.dataOptions.bounds
-		};
+			// Full geographic bounds of this domain (not viewport-cropped) — needed both
+			// for the viewport gate here and for the blend math passed to the worker.
+			const fullGrid = GridFactory.create(concreteDomain.grid, null);
+			const domainBounds = fullGrid.getBounds() as Bounds;
 
-		const state = getOrCreateState(
-			instance.stateByKey,
-			concreteKey,
-			concreteDataOptions,
-			concreteBaseUrl
-		);
+			// Viewport gate: a local (non-global) layer that does not even partially
+			// overlap the current map viewport contributes nothing to any visible tile,
+			// so skip loading and blending it entirely. This keeps composite domains that
+			// stack many regional models (e.g. om_global_seamless) cheap: only the models
+			// actually on screen are fetched and blended.
+			if (
+				layer !== globalLayer &&
+				viewportBounds &&
+				!boundsIntersect(domainBounds, viewportBounds)
+			) {
+				return null;
+			}
 
-		let data: Data;
-		try {
-			// Run the same postReadCallback the regular path uses. ensureData
-			// short-circuits on state.data, so it fires once per real sub-layer load
-			// (not per tile), letting consumers warm caches / transform values
-			// (e.g. the pressure_msl unit fix) for seamless composites too.
-			data = await ensureData(state, instance.omFileReader, settings.postReadCallback, signal);
-		} catch {
-			continue;
-		}
+			// Derive the concrete URL by substituting the seamless domain name
+			const concreteBaseUrl = request.baseUrl.replace(
+				`/data_spatial/${seamlessDomain.value}/`,
+				`/data_spatial/${concreteDomain.value}/`
+			);
+			const concreteKey = request.fileAndVariableKey.replace(
+				`/data_spatial/${seamlessDomain.value}/`,
+				`/data_spatial/${concreteDomain.value}/`
+			);
 
-		seamlessLayers.push({
-			domain: concreteDomain,
-			data,
-			ranges: state.ranges,
-			domainBounds,
-			blendWidthDeg: layer.blendWidthDeg,
-			// Only blending layers need a NaN-distance field. Key it by the data's
-			// URL + ranges so the worker computes it once per timestep/viewport.
-			nanFieldKey:
-				layer.blendWidthDeg > 0
-					? `${concreteKey}@${state.ranges.map((r) => `${r.start}-${r.end}`).join(',')}`
-					: undefined
-		});
-	}
+			// Guard against 404 network errors: if the domain advertises a maximum forecast
+			// horizon and the requested timestep is beyond it, skip this layer entirely and
+			// fall through to the next coarser layer.  This prevents the browser from issuing
+			// a request that the server will reject with a 404 (which browsers log as a CORS
+			// error when the 404 response omits Access-Control-Allow-Origin).
+			if (layer.maxForecastHours !== undefined) {
+				const leadTime = parseLeadTimeHours(concreteBaseUrl);
+				if (leadTime !== undefined && leadTime > layer.maxForecastHours) {
+					return null;
+				}
+			}
+
+			const concreteDataOptions: DataIdentityOptions = {
+				domain: concreteDomain,
+				variable: request.dataOptions.variable,
+				bounds: request.dataOptions.bounds
+			};
+
+			const state = getOrCreateState(
+				instance.stateByKey,
+				concreteKey,
+				concreteDataOptions,
+				concreteBaseUrl
+			);
+
+			let data: Data;
+			try {
+				// Run the same postReadCallback the regular path uses. ensureData
+				// short-circuits on state.data, so it fires once per real sub-layer load
+				// (not per tile), letting consumers warm caches / transform values
+				// (e.g. the pressure_msl unit fix) for seamless composites too.
+				data = await ensureData(state, instance.omFileReader, settings.postReadCallback, signal);
+			} catch {
+				return null;
+			}
+
+			return {
+				domain: concreteDomain,
+				data,
+				ranges: state.ranges,
+				domainBounds,
+				blendWidthDeg: layer.blendWidthDeg,
+				// Only blending layers need a NaN-distance field. Key it by the data's
+				// URL + ranges so the worker computes it once per timestep/viewport.
+				nanFieldKey:
+					layer.blendWidthDeg > 0
+						? `${concreteKey}@${state.ranges.map((r) => `${r.start}-${r.end}`).join(',')}`
+						: undefined
+			};
+		})
+	);
+	const seamlessLayers = layerResults.filter(
+		(layer): layer is SeamlessLayerRenderData => layer !== null
+	);
 
 	if (seamlessLayers.length === 0) return { data: null };
 
