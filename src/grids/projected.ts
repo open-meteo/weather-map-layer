@@ -220,6 +220,60 @@ export class ProjectionGrid implements GridInterface {
 		return { x: Math.floor(x), y: Math.floor(y), xFraction, yFraction };
 	}
 
+	/**
+	 * Traces the grid's outer edge through the projection, returning a closed
+	 * `[lon, lat]` ring that follows the true (curved) domain boundary rather than
+	 * the axis-aligned bounding box. Each edge is sampled at up to
+	 * `maxPointsPerEdge` points so the curvature is captured without emitting one
+	 * vertex per grid column/row.
+	 */
+	getBoundaryPolygon(maxPointsPerEdge = 64): Array<[number, number]> {
+		const ring: Array<[number, number]> = [];
+		let prevLon: number | null = null;
+		const add = (projX: number, projY: number): void => {
+			const [lat, lonRaw] = this.projection.reverse(projX, projY);
+			let lon = ((((lonRaw + 180) % 360) + 360) % 360) - 180; // normalize to [-180, 180]
+			// Unwrap relative to the previous vertex so the ring stays continuous
+			// across the antimeridian / around a pole instead of jumping ~360°.
+			if (prevLon !== null) {
+				lon -= 360 * Math.round((lon - prevLon) / 360);
+			}
+			prevLon = lon;
+			ring.push([lon, lat]);
+		};
+
+		const xEnd = this.minX + (this.nx - 1) * this.dx;
+		const yEnd = this.minY + (this.ny - 1) * this.dy;
+		const stepX = Math.max(1, Math.ceil((this.nx - 1) / maxPointsPerEdge));
+		const stepY = Math.max(1, Math.ceil((this.ny - 1) / maxPointsPerEdge));
+
+		// Walk the perimeter counter-clockwise: bottom → right → top → left.
+		for (let i = 0; i < this.nx - 1; i += stepX) add(this.minX + i * this.dx, this.minY);
+		for (let j = 0; j < this.ny - 1; j += stepY) add(xEnd, this.minY + j * this.dy);
+		for (let i = this.nx - 1; i > 0; i -= stepX) add(this.minX + i * this.dx, yEnd);
+		for (let j = this.ny - 1; j > 0; j -= stepY) add(this.minX, this.minY + j * this.dy);
+		add(this.minX, this.minY); // close the ring
+		return ring;
+	}
+
+	edgeDistanceDeg(lat: number, lon: number): number {
+		// In projection space the grid is an axis-aligned rectangle, so distance to
+		// the nearest edge — measured in grid cells — traces the true curved boundary
+		// when mapped back to lon/lat. Convert that cell distance to an approximate
+		// degree distance using the grid's mean cell size so it stays comparable to
+		// `blendWidthDeg`.
+		const [px, py] = this.projection.forward(lat, lon);
+		const x = (px - this.minX) / this.dx; // fractional column, 0..nx-1 inside
+		const y = (py - this.minY) / this.dy; // fractional row, 0..ny-1 inside
+		const colDist = Math.min(x, this.nx - 1 - x);
+		const rowDist = Math.min(y, this.ny - 1 - y);
+
+		const [minLon, minLat, maxLon, maxLat] = this.getBounds();
+		const degPerCol = (maxLon - minLon) / (this.nx - 1);
+		const degPerRow = (maxLat - minLat) / (this.ny - 1);
+		return Math.min(colDist * degPerCol, rowDist * degPerRow);
+	}
+
 	private getProjectedBorderPoints(): number[][] {
 		const points = [];
 		for (let i = 0; i < this.ny; i++) {

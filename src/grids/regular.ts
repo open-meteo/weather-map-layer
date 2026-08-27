@@ -196,6 +196,31 @@ export class RegularGrid implements GridInterface {
 		return this.bounds;
 	}
 
+	getBoundaryPolygon(): Array<[number, number]> {
+		// `bounds` sit one cell beyond the last data point on the side the step walks
+		// towards (origin + d · count), whereas the origin side is the first data
+		// point. Pull that end side in by one cell so the outline hugs the rendered
+		// data instead of leaving a one-cell seam — which side that is depends on the
+		// sign of the step (e.g. cams_europe stores rows north-to-south, dy < 0).
+		const [minLon, minLat, maxLon, maxLat] = this.bounds;
+		const west = this.dx >= 0 ? minLon : minLon + Math.abs(this.dx);
+		const east = this.dx >= 0 ? maxLon - this.dx : maxLon;
+		const south = this.dy >= 0 ? minLat : minLat + Math.abs(this.dy);
+		const north = this.dy >= 0 ? maxLat - this.dy : maxLat;
+		return [
+			[west, south],
+			[east, south],
+			[east, north],
+			[west, north],
+			[west, south]
+		];
+	}
+
+	edgeDistanceDeg(lat: number, lon: number): number {
+		const [minLon, minLat, maxLon, maxLat] = this.bounds;
+		return Math.min(lon - minLon, maxLon - lon, lat - minLat, maxLat - lat);
+	}
+
 	getCenter(): { lng: number; lat: number } {
 		if (!this.center) {
 			this.center = {
