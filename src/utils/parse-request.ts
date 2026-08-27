@@ -81,8 +81,7 @@ const defaultResolveDataIdentity = (
 ): DataIdentityOptions => {
 	const { baseUrl, params } = urlComponents;
 
-	const match = baseUrl.match(RESOLVE_DOMAIN_REGEX);
-	const domainValue = match?.groups?.domain;
+	const domainValue = baseUrl.match(RESOLVE_DOMAIN_REGEX)?.groups?.domain;
 
 	if (!domainValue) {
 		throw new Error(`Could not parse domain from URL: ${baseUrl}`);

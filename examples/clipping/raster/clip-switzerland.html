@@ -8,7 +8,7 @@
 		<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
 		<script src="https://unpkg.com/@turf/turf@7.3.4/turf.min.js"></script>
 		<!-- x-release-please-start-version -->
-		<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.0.19/dist/index.js"></script>
+		<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.1.0/dist/index.js"></script>
 		<!-- x-release-please-end -->
 		<!-- Local development -->
 		<script>
@@ -49,14 +49,15 @@
 
 					const map = new maplibregl.Map({
 						container: 'map',
-						style: 'https://map-assets.open-meteo.com/styles/minimal-planet-maps.json', // replace with your own style sheet
+						style:
+							'https://static-assets.open-meteo.com/map-assets/styles/minimal-planet-maps.json', // replace with your own style sheet
 						hash: true,
 						center: [8.2275, 46.8182],
 						zoom: 7.5
 					});
 
 					// setting tile_size=256 reduces each tile to 1/2 the width and height of the default 512px. Without it, each tile would contain 2x2 = 4 times as many pixels to compute.
-					const omUrl = `https://map-tiles.open-meteo.com/data_spatial/meteoswiss_icon_ch1/latest.json?time_step=current_time_1H&variable=temperature_2m&tile_size=256`;
+					const omUrl = `https://openmeteo-data-spatial.b-cdn.net/meteoswiss_icon_ch1/latest.json?time_step=current_time_1H&variable=temperature_2m&tile_size=256`;
 
 					map.on('load', () => {
 						map.addSource('omFileSource', {

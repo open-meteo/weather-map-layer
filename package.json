@@ -4,7 +4,7 @@
 	"main": "dist/index.cjs",
 	"types": "dist/index.d.ts",
 	"author": "Open-Meteo <info@open-meteo.com>",
-	"version": "0.0.19",
+	"version": "0.1.0",
 	"module": "dist/index.mjs",
 	"exports": {
 		".": {
@@ -84,7 +84,7 @@
 	"dependencies": {
 		"@mapbox/tilebelt": "^2.0.3",
 		"@mapbox/vector-tile": "^3.0.0",
-		"@openmeteo/file-reader": "^0.0.16",
+		"@openmeteo/file-reader": "^0.0.18",
 		"maplibre-gl": "^5.20.1",
 		"pbf": "^5.1.0",
 		"point-in-polygon-hao": "^1.2.4"

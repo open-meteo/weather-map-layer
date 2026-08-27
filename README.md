@@ -34,7 +34,7 @@ import { omProtocol } from '@openmeteo/weather-map-layer';
 
 maplibregl.addProtocol('om', omProtocol);
 
-const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?variable=temperature_2m`;
+const omUrl = `https://openmeteo-data-spatial.b-cdn.net/dwd_icon/latest.json?variable=temperature_2m`;
 
 map.on('load', () => {
 	map.addSource('omFileSource', {
@@ -62,7 +62,7 @@ For a standalone example, see `examples/temperature.html`.
 
 ```html
 ...
-<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.0.19/dist/index.js"></script>
+<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.1.0/dist/index.js"></script>
 ...
 ```
 
@@ -75,7 +75,7 @@ For a standalone example, see `examples/temperature.html`.
 
 	maplibregl.addProtocol('om', OMWeatherMapLayer.omProtocol);
 
-	const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?variable=temperature_2m`;
+	const omUrl = `https://openmeteo-data-spatial.b-cdn.net/dwd_icon/latest.json?variable=temperature_2m`;
 
 	map.on('load', () => {
 		map.addSource('omFileSource', {
@@ -230,12 +230,14 @@ The clipping examples require `npm run serve`, as they load GeoJSON files over H
 
 Because the use of OM files on the S3 storage is often quite ambiguous, a Capture API is added, that will automatically produce the correct file paths for you.
 
+> **Note on endpoints:** `https://openmeteo-data-spatial.b-cdn.net` is the public endpoint used throughout this README and the examples. The official maps app uses `https://data-spatial.open-meteo.com/data_spatial`, which only accepts requests with a `localhost` or `*.open-meteo.com` referer.
+
 For each Weather Model, there will be a `latest.json` and `in-progress.json` metadata file, containing data like valid time steps, valid variables and reference times.
 
-An example can be found [here](https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json), for `DWD Icon Global`:
+An example can be found [here](https://openmeteo-data-spatial.b-cdn.net/dwd_icon/latest.json), for `DWD Icon Global`:
 
 ```
-https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json
+https://openmeteo-data-spatial.b-cdn.net/dwd_icon/latest.json
 ```
 
 ```json
@@ -254,22 +256,22 @@ If you don't want to select a particular model run, but instead always want to u
 
 For example, with the link below replace the highlighted part:
 
-<pre><code>https://map-tiles.open-meteo.com/data_spatial/dwd_icon/<b style="color:#af1111">2025/06/06/1200Z/2025-06-06T1200.om</b>?variable=temperature_2m
+<pre><code>https://openmeteo-data-spatial.b-cdn.net/dwd_icon/<b style="color:#af1111">2025/06/06/1200Z/2025-06-06T1200.om</b>?variable=temperature_2m
 </code></pre>
 
 With `latest.json`:
 
-<pre><code>https://map-tiles.open-meteo.com/data_spatial/dwd_icon/<b style="color:#14a62d">latest.json</b>?variable=temperature_2m
+<pre><code>https://openmeteo-data-spatial.b-cdn.net/dwd_icon/<b style="color:#14a62d">latest.json</b>?variable=temperature_2m
 </code></pre>
 
 If you want to show the closest current time, or a pick a different valid time than the first one, you could use:
 
-<pre><code>https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?<b>time_step=current_time_1H</b>&variable=temperature_2m
+<pre><code>https://openmeteo-data-spatial.b-cdn.net/dwd_icon/latest.json?<b>time_step=current_time_1H</b>&variable=temperature_2m
 </code></pre>
 
 or the 5th index of the `valid_times` array
 
-<pre><code>https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?<b>time_step=valid_times_5</b>&variable=temperature_2m
+<pre><code>https://openmeteo-data-spatial.b-cdn.net/dwd_icon/latest.json?<b>time_step=valid_times_5</b>&variable=temperature_2m
 </code></pre>
 
 ### Time Step Modifiers

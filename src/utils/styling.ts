@@ -219,7 +219,8 @@ const getOptionalColorScale = (
 			return scale;
 		}
 
-		if (scale.type !== 'breakpoint') {
+		// Custom colorScales sources may not define a geopotential scale at all
+		if (!scale || scale.type !== 'breakpoint') {
 			return scale;
 		}
 

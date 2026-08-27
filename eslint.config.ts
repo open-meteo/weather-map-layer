@@ -4,7 +4,7 @@ import globals from 'globals';
 import ts from 'typescript-eslint';
 
 export default defineConfig([
-	globalIgnores(['node_modules', 'dist', 'coverage', '.vscode', '.gitignore']),
+	globalIgnores(['node_modules', 'dist', 'coverage', '.vscode', '.gitignore', '.svelte-kit']),
 	...ts.configs.recommended,
 	prettier,
 	{

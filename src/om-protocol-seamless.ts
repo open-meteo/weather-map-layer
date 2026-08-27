@@ -174,12 +174,11 @@ export const handleSeamlessRequest = async (
 		throw new Error(`Tile coordinates required for ${params.type} request`);
 	}
 
-	// Load data for every active layer SEQUENTIALLY to avoid a race condition:
-	// WeatherMapLayerFileReader.setToOmFile() is stateful (sets this.reader) and is not
-	// safe to call concurrently on the same instance.  Sequential loading ensures each
-	// setToOmFile / readVariable pair runs to completion before the next begins.
-	// After the first load the data is cached in state.data, so subsequent tile
-	// requests for the same time-step return immediately with no serialization cost.
+	// Load data for every active layer sequentially. Reads are atomic per call, so
+	// this is not needed for safety anymore — it just avoids bursting parallel
+	// requests for layers the finer ones may make redundant. After the first load
+	// the data is cached in state.data, so subsequent tile requests for the same
+	// time-step return immediately with no serialization cost.
 	const seamlessLayers: SeamlessLayerRenderData[] = [];
 
 	// The global fallback (last layer) covers the whole world and must always be

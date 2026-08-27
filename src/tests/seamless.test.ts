@@ -5,7 +5,7 @@
  *  - TileJSON returned immediately (no data load) with correct bounds
  *  - Clipping applied to seamless TileJSON bounds
  *  - Zoom-level layer filtering (minZoom gating)
- *  - Sequential data loading (no shared-reader race)
+ *  - Sequential data loading (finest-first order)
  *  - postReadCallback IS invoked once per real sub-layer load
  *  - Correct URL substitution for each concrete layer
  *  - Failed layers are skipped; surviving layers still render
@@ -31,18 +31,17 @@ import type {
 
 // ─── Hoisted mutable state shared between mock factories ──────────────────────
 
-const { mockReturnBuffer, mockSetToOmFileSpy, mockReadUrlLog, mockShouldFail, mockOnSetToOmFile } =
-	vi.hoisted(() => ({
+const { mockReturnBuffer, mockReadVariableSpy, mockShouldFail, mockOnReadVariable } = vi.hoisted(
+	() => ({
 		mockReturnBuffer: { value: new ArrayBuffer(16) },
-		/** All URLs passed to setToOmFile() in call order. */
-		mockSetToOmFileSpy: { calls: [] as string[] },
-		/** URL that was active (this.currentUrl) when each readVariable call ran. */
-		mockReadUrlLog: { calls: [] as string[] },
+		/** All URLs passed to readVariable() in call order. */
+		mockReadVariableSpy: { calls: [] as string[] },
 		/** Set of URL path substrings whose readVariable should throw. */
 		mockShouldFail: { substrings: new Set<string>() },
-		/** Optional hook called synchronously inside setToOmFile. */
-		mockOnSetToOmFile: { fn: undefined as ((url: string) => void) | undefined }
-	}));
+		/** Optional hook called synchronously at the start of readVariable. */
+		mockOnReadVariable: { fn: undefined as ((url: string) => void) | undefined }
+	})
+);
 
 // ─── Module mocks ─────────────────────────────────────────────────────────────
 
@@ -52,31 +51,31 @@ vi.mock('../om-file-reader', async () => {
 		...actual,
 		WeatherMapLayerFileReader: class {
 			config: Record<string, unknown>;
-			private currentUrl = '';
 			constructor(config: Record<string, unknown>) {
 				this.config = config;
 			}
 
-			async setToOmFile(url: string): Promise<void> {
-				this.currentUrl = url;
-				mockSetToOmFileSpy.calls.push(url);
-				mockOnSetToOmFile.fn?.(url);
-			}
-
 			async readVariable(
+				omUrl: string,
 				_variable: string,
 				ranges: DimensionRange[],
-				_signal?: AbortSignal
+				signal?: AbortSignal
 			): Promise<{ values: Float32Array; directions: undefined }> {
-				mockReadUrlLog.calls.push(this.currentUrl);
+				mockReadVariableSpy.calls.push(omUrl);
+				mockOnReadVariable.fn?.(omUrl);
+				if (signal?.aborted) {
+					throw new DOMException('Aborted', 'AbortError');
+				}
 				for (const sub of mockShouldFail.substrings) {
-					if (this.currentUrl.includes(sub)) {
+					if (omUrl.includes(sub)) {
 						throw new Error(`Simulated failure for: ${sub}`);
 					}
 				}
 				const totalValues = ranges?.reduce((acc, r) => acc * (r.end - r.start + 1), 1) ?? 0;
 				return { values: new Float32Array(totalValues), directions: undefined };
 			}
+
+			async warmFile(_omUrl: string): Promise<void> {}
 		}
 	};
 });
@@ -93,10 +92,9 @@ beforeEach(() => {
 	vi.resetModules();
 	vi.clearAllMocks();
 	mockReturnBuffer.value = new ArrayBuffer(16);
-	mockSetToOmFileSpy.calls = [];
-	mockReadUrlLog.calls = [];
+	mockReadVariableSpy.calls = [];
 	mockShouldFail.substrings.clear();
-	mockOnSetToOmFile.fn = undefined;
+	mockOnReadVariable.fn = undefined;
 	// Default to a world-covering viewport so the seamless viewport gate never
 	// excludes a layer; tests that exercise the gate override this explicitly.
 	updateCurrentBounds([-180, -90, 180, 90]);
@@ -208,8 +206,8 @@ describe('SeamlessDomain – TileJSON', () => {
 		expect(tj.minzoom).toBe(0);
 		expect(tj.maxzoom).toBe(12);
 
-		// No data was loaded — setToOmFile should not have been called
-		expect(mockSetToOmFileSpy.calls).toHaveLength(0);
+		// No data was loaded — readVariable should not have been called
+		expect(mockReadVariableSpy.calls).toHaveLength(0);
 	});
 
 	it('TileJSON tiles URL matches the request URL', async () => {
@@ -262,7 +260,7 @@ describe('SeamlessDomain – zoom-level layer filtering', () => {
 		await omProtocol(tileParams(0), new AbortController(), makeSettings());
 
 		// Only global domain URL should have been opened
-		const urls = mockSetToOmFileSpy.calls;
+		const urls = mockReadVariableSpy.calls;
 		expect(urls).toHaveLength(1);
 		expect(urls[0]).toContain('/test_global/');
 	});
@@ -271,7 +269,7 @@ describe('SeamlessDomain – zoom-level layer filtering', () => {
 		const { omProtocol } = await import('../om-protocol');
 		await omProtocol(tileParams(3), new AbortController(), makeSettings());
 
-		const domainValues = mockSetToOmFileSpy.calls.map(
+		const domainValues = mockReadVariableSpy.calls.map(
 			(u) => u.match(/\/data_spatial\/([^/]+)\//)?.[1]
 		);
 		// eu (minZoom 3) and global (minZoom 0) — d2 (minZoom 5) must be absent
@@ -284,7 +282,7 @@ describe('SeamlessDomain – zoom-level layer filtering', () => {
 		const { omProtocol } = await import('../om-protocol');
 		await omProtocol(tileParams(5), new AbortController(), makeSettings());
 
-		const domainValues = mockSetToOmFileSpy.calls.map(
+		const domainValues = mockReadVariableSpy.calls.map(
 			(u) => u.match(/\/data_spatial\/([^/]+)\//)?.[1]
 		);
 		expect(domainValues).toContain('test_d2');
@@ -296,7 +294,7 @@ describe('SeamlessDomain – zoom-level layer filtering', () => {
 		const { omProtocol } = await import('../om-protocol');
 		await omProtocol(tileParams(4), new AbortController(), makeSettings());
 
-		const domainValues = mockSetToOmFileSpy.calls.map(
+		const domainValues = mockReadVariableSpy.calls.map(
 			(u) => u.match(/\/data_spatial\/([^/]+)\//)?.[1]
 		);
 		expect(domainValues).not.toContain('test_d2');
@@ -313,7 +311,7 @@ describe('SeamlessDomain – viewport gating', () => {
 		const { omProtocol } = await import('../om-protocol');
 		await omProtocol(tileParams(5), new AbortController(), makeSettings());
 
-		const domainValues = mockSetToOmFileSpy.calls.map(
+		const domainValues = mockReadVariableSpy.calls.map(
 			(u) => u.match(/\/data_spatial\/([^/]+)\//)?.[1]
 		);
 		expect(domainValues).toContain('test_d2');
@@ -326,7 +324,7 @@ describe('SeamlessDomain – viewport gating', () => {
 		const { omProtocol } = await import('../om-protocol');
 		await omProtocol(tileParams(5), new AbortController(), makeSettings());
 
-		const domainValues = mockSetToOmFileSpy.calls.map(
+		const domainValues = mockReadVariableSpy.calls.map(
 			(u) => u.match(/\/data_spatial\/([^/]+)\//)?.[1]
 		);
 		// Off-screen regional layers are never fetched...
@@ -342,7 +340,7 @@ describe('SeamlessDomain – viewport gating', () => {
 		const { omProtocol } = await import('../om-protocol');
 		await omProtocol(tileParams(5), new AbortController(), makeSettings());
 
-		const domainValues = mockSetToOmFileSpy.calls.map(
+		const domainValues = mockReadVariableSpy.calls.map(
 			(u) => u.match(/\/data_spatial\/([^/]+)\//)?.[1]
 		);
 		expect(domainValues).not.toContain('test_d2');
@@ -351,30 +349,29 @@ describe('SeamlessDomain – viewport gating', () => {
 	});
 });
 
-describe('SeamlessDomain – sequential data loading / no race condition', () => {
-	it('setToOmFile calls are sequential, never concurrent', async () => {
-		// Each setToOmFile call must complete before the next starts.
+describe('SeamlessDomain – sequential data loading', () => {
+	it('layers load sequentially, finest first', async () => {
+		// Each atomic readVariable call completes before the next starts.
 		// We verify this by checking the order: d2 → eu → global (finest first).
 		const { omProtocol } = await import('../om-protocol');
 		await omProtocol(tileParams(5), new AbortController(), makeSettings());
 
-		const domainOrder = mockSetToOmFileSpy.calls.map(
+		const domainOrder = mockReadVariableSpy.calls.map(
 			(u) => u.match(/\/data_spatial\/([^/]+)\//)?.[1]
 		);
 		// Layers are finest-first in the seamless definition
 		expect(domainOrder).toEqual(['test_d2', 'test_eu', 'test_global']);
 	});
 
-	it('data for one layer does not bleed into another layer', async () => {
-		// The mock WeatherMapLayerFileReader tracks this.currentUrl per instance.
-		// mockReadUrlLog records the currentUrl at the moment each readVariable call runs.
-		// If the reader were shared incorrectly, urls would be wrong.
+	it('each read receives its own layer URL', async () => {
+		// Reads are atomic (URL passed per call), so no reader state can bleed
+		// between layers; each call must carry exactly its layer's concrete URL.
 		const { omProtocol } = await import('../om-protocol');
 		await omProtocol(tileParams(5), new AbortController(), makeSettings());
 
-		expect(mockReadUrlLog.calls[0]).toContain('/test_d2/');
-		expect(mockReadUrlLog.calls[1]).toContain('/test_eu/');
-		expect(mockReadUrlLog.calls[2]).toContain('/test_global/');
+		expect(mockReadVariableSpy.calls[0]).toContain('/test_d2/');
+		expect(mockReadVariableSpy.calls[1]).toContain('/test_eu/');
+		expect(mockReadVariableSpy.calls[2]).toContain('/test_global/');
 	});
 });
 
@@ -383,7 +380,7 @@ describe('SeamlessDomain – URL substitution', () => {
 		const { omProtocol } = await import('../om-protocol');
 		await omProtocol(tileParams(5), new AbortController(), makeSettings());
 
-		const urls = mockSetToOmFileSpy.calls;
+		const urls = mockReadVariableSpy.calls;
 		expect(urls).toHaveLength(3);
 		// Path structure is preserved; only the domain segment changes
 		for (const url of urls) {
@@ -405,7 +402,7 @@ describe('SeamlessDomain – error handling', () => {
 
 		expect(result.data).toBeInstanceOf(ArrayBuffer);
 		// eu and global should still have been loaded
-		const domainValues = mockSetToOmFileSpy.calls.map(
+		const domainValues = mockReadVariableSpy.calls.map(
 			(u) => u.match(/\/data_spatial\/([^/]+)\//)?.[1]
 		);
 		expect(domainValues).toContain('test_eu');
@@ -467,32 +464,32 @@ describe('SeamlessDomain – abort signal', () => {
 	});
 
 	it('abort mid-sequential-load stops further layer fetches', async () => {
-		// After the first layer (d2) starts loading, we abort via the mockOnSetToOmFile hook.
-		// eu and global should not be started.
+		// After the first layer (d2) starts loading, we abort via the mockOnReadVariable
+		// hook. eu and global should not be started.
 		const ac = new AbortController();
-		mockOnSetToOmFile.fn = () => ac.abort();
+		mockOnReadVariable.fn = () => ac.abort();
 
 		const { omProtocol } = await import('../om-protocol');
 		const result = await omProtocol(tileParams(5), ac, makeSettings());
 
-		// Only the first setToOmFile ran before the abort propagated
-		expect(mockSetToOmFileSpy.calls).toHaveLength(1);
+		// Only the first readVariable ran before the abort propagated
+		expect(mockReadVariableSpy.calls).toHaveLength(1);
 		expect(result.data).toBeNull();
 	});
 });
 
 describe('SeamlessDomain – state caching', () => {
-	it('second tile request uses cached state; setToOmFile called only once per layer', async () => {
+	it('second tile request uses cached state; readVariable called only once per layer', async () => {
 		const { omProtocol } = await import('../om-protocol');
 		const settings = makeSettings();
 
 		// First request populates the cache
 		await omProtocol(tileParams(5), new AbortController(), settings);
-		const firstCallCount = mockSetToOmFileSpy.calls.length;
+		const firstCallCount = mockReadVariableSpy.calls.length;
 
-		// Second request should hit state.data — no new setToOmFile calls
+		// Second request should hit state.data — no new readVariable calls
 		await omProtocol(tileParams(5), new AbortController(), settings);
-		expect(mockSetToOmFileSpy.calls).toHaveLength(firstCallCount);
+		expect(mockReadVariableSpy.calls).toHaveLength(firstCallCount);
 	});
 });
 
@@ -587,6 +584,6 @@ describe('SeamlessDomain – real dwd_icon_seamless TileJSON', () => {
 		expect(tj.bounds).toBeDefined();
 		expect(tj.bounds!.every(Number.isFinite)).toBe(true);
 		// No data was loaded
-		expect(mockSetToOmFileSpy.calls).toHaveLength(0);
+		expect(mockReadVariableSpy.calls).toHaveLength(0);
 	});
 });

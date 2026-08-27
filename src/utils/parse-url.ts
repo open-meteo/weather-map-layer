@@ -105,10 +105,16 @@ export const parseMetaJson = async (omUrl: string, domainOptions?: AnyDomain[]) 
 	const fetchJsonUrl = resolveJsonFetchUrl(jsonUrl, domainOptions);
 
 	if (!metaDataCache.has(jsonUrl)) {
-		metaDataCache.set(
-			jsonUrl,
-			fetch(fetchJsonUrl).then((response) => response.json() as Promise<DomainMetaDataJson>)
-		);
+		const metaRequest = fetch(fetchJsonUrl).then((response) => {
+			if (!response.ok) {
+				throw new Error(`Failed to fetch ${fetchJsonUrl}: ${response.status}`);
+			}
+			return response.json() as Promise<DomainMetaDataJson>;
+		});
+		// Evict failed fetches immediately so the next request retries instead of
+		// hitting the cached rejection for the rest of the 60 seconds.
+		metaRequest.catch(() => metaDataCache.delete(jsonUrl));
+		metaDataCache.set(jsonUrl, metaRequest);
 		setTimeout(() => metaDataCache.delete(jsonUrl), 60000); // delete after 60 seconds
 	}
 	const metaResult = await metaDataCache.get(jsonUrl)!;

@@ -7,7 +7,7 @@
 		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
 		<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
 		<!-- x-release-please-start-version -->
-		<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.0.19/dist/index.js"></script>
+		<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.1.0/dist/index.js"></script>
 		<!-- x-release-please-end -->
 		<!-- Local development -->
 		<script>
@@ -63,12 +63,12 @@
 
 			const map = new maplibregl.Map({
 				container: 'map',
-				style: 'https://map-assets.open-meteo.com/styles/minimal-planet-maps.json', // replace with your own style sheet
+				style: 'https://static-assets.open-meteo.com/map-assets/styles/minimal-planet-maps.json', // replace with your own style sheet
 				hash: true
 			});
 
 			let dark = true;
-			const baseOmUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=cloud_cover`;
+			const baseOmUrl = `https://openmeteo-data-spatial.b-cdn.net/dwd_icon/latest.json?time_step=current_time_1H&variable=cloud_cover`;
 
 			function ensureOmLayer(omUrl) {
 				const omFileSource = map.getSource('omFileSource');
@@ -106,13 +106,17 @@
 
 				if (dark) {
 					wrapper.classList.add('dark');
-					map.setStyle('https://map-assets.open-meteo.com/styles/minimal-planet-maps-dark.json');
+					map.setStyle(
+						'https://static-assets.open-meteo.com/map-assets/styles/minimal-planet-maps-dark.json'
+					);
 					map.once('styledata', () => {
 						ensureOmLayer(omUrl);
 					});
 				} else {
 					wrapper.classList.remove('dark');
-					map.setStyle('https://map-assets.open-meteo.com/styles/minimal-planet-maps.json');
+					map.setStyle(
+						'https://static-assets.open-meteo.com/map-assets/styles/minimal-planet-maps.json'
+					);
 					map.once('styledata', () => {
 						ensureOmLayer(omUrl);
 					});
