@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.1](https://github.com/open-meteo/weather-map-layer/compare/v0.1.0...v0.1.1) (2026-08-28)
+
+
+### Bug Fixes
+
+* circular direction interpolation ([#303](https://github.com/open-meteo/weather-map-layer/issues/303)) ([16f524b](https://github.com/open-meteo/weather-map-layer/commit/16f524ba5cdac869681b5a3c0f188c813d776026))
+* retire bunnycdn ([#306](https://github.com/open-meteo/weather-map-layer/issues/306)) ([37136ba](https://github.com/open-meteo/weather-map-layer/commit/37136ba4efa2abb332222b5079ce29a951b2588f))
+* worker errors, meta cache retry, grid memoization, clarify endpoints ([#301](https://github.com/open-meteo/weather-map-layer/issues/301)) ([f2f9d3f](https://github.com/open-meteo/weather-map-layer/commit/f2f9d3f053af44a88d1ba588c48c47b40be37c30))
+
 ## [0.1.0](https://github.com/open-meteo/weather-map-layer/compare/v0.0.20...v0.1.0) (2026-08-25)
 
 

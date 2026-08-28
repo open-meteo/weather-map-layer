@@ -62,7 +62,7 @@ For a standalone example, see `examples/temperature.html`.
 
 ```html
 ...
-<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.1.0/dist/index.js"></script>
+<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.1.1/dist/index.js"></script>
 ...
 ```
 
