@@ -9,6 +9,7 @@ coverage
 /.svelte-kit
 /build
 /dist
+.claude
 
 # OS
 .DS_Store

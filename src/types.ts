@@ -53,6 +53,8 @@ export interface OmUrlState {
 	omFileUrl: string;
 	data: Data | null;
 	dataPromise: Promise<Data> | null;
+	/** Set when the last data load failed; cleared when a new load starts. */
+	lastError?: unknown;
 	lastAccess: number;
 }
 
@@ -76,6 +78,13 @@ export interface OmProtocolSettings {
 	colorScales: ColorScales;
 	domainOptions: Domain[];
 	clippingOptions: ClippingOptions;
+
+	/**
+	 * Max states that keep data loaded. Should be as low as possible, but at
+	 * least the number of variables displayed simultaneously (times two while
+	 * cross-fading between timesteps). @default 2
+	 */
+	maxStatesWithData?: number;
 
 	/**
 	 * Optional custom resolver for URL settings.
