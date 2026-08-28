@@ -27,6 +27,7 @@ const fakeGrid = (
 		covers(lat, lon) ? (dirsRef && arr === dirsRef ? dir : speed) : NaN;
 	return {
 		getLinearInterpolatedValue: sample,
+		getLinearInterpolatedDirection: sample,
 		getInterpolatedValue: sample,
 		edgeDistanceDeg: (lat: number, lon: number) =>
 			Math.min(lon - bounds[0], bounds[2] - lon, lat - bounds[1], bounds[3] - lat)

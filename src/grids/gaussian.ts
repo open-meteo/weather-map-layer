@@ -1,7 +1,12 @@
 import { modPositive, roundWithPrecision } from '../utils/math';
 
 import { GridInterface, GridPoint } from './interface';
-import { bilinearNaNAware, catmullRom1D, monotoneHermite } from './interpolations';
+import {
+	bilinearAngleNaNAware,
+	bilinearNaNAware,
+	catmullRom1D,
+	monotoneHermite
+} from './interpolations';
 
 import { Bounds, DimensionRange, GaussianGridData, InterpolationMethod } from '../types';
 
@@ -214,8 +219,23 @@ export class GaussianGrid implements GridInterface {
 		return { v, p0, p1 };
 	}
 
-	/// Values is the 1D array of all HRES values (6 million something values)
-	getLinearInterpolatedValue(values: Float32Array, lat: number, lon: number): number {
+	/**
+	 * The four samples bracketing a coordinate plus the trapezoidal-cell
+	 * fractions, shared by the scalar and the angular linear interpolation.
+	 */
+	private linearStencil(
+		values: Float32Array,
+		lat: number,
+		lon: number
+	): {
+		p0: number;
+		p1: number;
+		p2: number;
+		p3: number;
+		xFractionLower: number;
+		xFractionUpper: number;
+		yFraction: number;
+	} {
 		const latitudeLines = this.latitudeLines;
 		const dy = 180 / (2 * latitudeLines + 0.5);
 		const yLower = modPositive(
@@ -235,17 +255,45 @@ export class GaussianGrid implements GridInterface {
 		const xFractionLower = modPositive(lon / dxLower, 1);
 		const xFractionUpper = modPositive(lon / dxUpper, 1);
 
+		return {
+			p0: values[integralLower + xLower0],
+			p1: values[integralLower + ((xLower0 + 1) % nxLower)],
+			p2: values[integralUpper + xUpper0],
+			p3: values[integralUpper + ((xUpper0 + 1) % nxUpper)],
+			xFractionLower,
+			xFractionUpper,
+			yFraction
+		};
+	}
+
+	/// Values is the 1D array of all HRES values (6 million something values)
+	getLinearInterpolatedValue(values: Float32Array, lat: number, lon: number): number {
+		const s = this.linearStencil(values, lat, lon);
+
 		// The two rows have a different number of longitude points, so the cell is
 		// a trapezoid (xFractionLower != xFractionUpper); the shared NaN-aware
 		// bilinear handles that and the masked-corner triangle cases.
 		return bilinearNaNAware(
-			values[integralLower + xLower0],
-			values[integralLower + ((xLower0 + 1) % nxLower)],
-			values[integralUpper + xUpper0],
-			values[integralUpper + ((xUpper0 + 1) % nxUpper)],
-			xFractionLower,
-			xFractionUpper,
-			yFraction
+			s.p0,
+			s.p1,
+			s.p2,
+			s.p3,
+			s.xFractionLower,
+			s.xFractionUpper,
+			s.yFraction
+		);
+	}
+
+	getLinearInterpolatedDirection(values: Float32Array, lat: number, lon: number): number {
+		const s = this.linearStencil(values, lat, lon);
+		return bilinearAngleNaNAware(
+			s.p0,
+			s.p1,
+			s.p2,
+			s.p3,
+			s.xFractionLower,
+			s.xFractionUpper,
+			s.yFraction
 		);
 	}
 

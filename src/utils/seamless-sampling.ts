@@ -170,11 +170,12 @@ const blendVector = (
 		if (!vals || !dirs) continue;
 
 		// Sample the magnitude with the selected method so arrow size/colour
-		// matches the raster; direction stays linear (averaging angles would be wrong).
+		// matches the raster; direction is blended circularly (scalar averaging
+		// flips arrows near the 0°/360° seam).
 		const speed = layerGrids[i].getInterpolatedValue(vals, lat, lon, method);
 		if (!isFinite(speed)) continue; // point not covered by this domain
 
-		const rad = degreesToRadians(layerGrids[i].getLinearInterpolatedValue(dirs, lat, lon));
+		const rad = degreesToRadians(layerGrids[i].getLinearInterpolatedDirection(dirs, lat, lon));
 		const u = speed * Math.sin(rad);
 		const v = speed * Math.cos(rad);
 

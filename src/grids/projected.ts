@@ -2,6 +2,7 @@ import { GridInterface, GridPoint } from './interface';
 import {
 	interpolateCubic,
 	interpolateLinear,
+	interpolateLinearAngle,
 	interpolateMonotone,
 	interpolateNearest
 } from './interpolations';
@@ -88,6 +89,11 @@ export class ProjectionGrid implements GridInterface {
 
 	getLinearInterpolatedValue(values: Float32Array, lat: number, lon: number): number {
 		return this.getInterpolatedValue(values, lat, lon, 'linear');
+	}
+
+	getLinearInterpolatedDirection(values: Float32Array, lat: number, lon: number): number {
+		const idx = this.findPointInterpolated(lat, lon);
+		return interpolateLinearAngle(values, idx.x, idx.y, idx.xFraction, idx.yFraction, this.nx);
 	}
 
 	getInterpolatedValue(

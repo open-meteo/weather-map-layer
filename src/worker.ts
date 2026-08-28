@@ -165,10 +165,11 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 			const vectorValues = values ?? new Float32Array(0);
 			sampleValue = (lat, lon) => grid.getInterpolatedValue(vectorValues, lat, lon, interpolation);
 			// Sample the magnitude with the selected method so arrow size/colour
-			// matches the raster; direction stays linear (averaging angles would be wrong).
+			// matches the raster; direction is blended circularly (scalar averaging
+			// flips arrows near the 0°/360° seam).
 			sampleVector = (lat, lon) => ({
 				value: grid.getInterpolatedValue(vectorValues, lat, lon, interpolation),
-				direction: directions ? grid.getLinearInterpolatedValue(directions, lat, lon) : 0
+				direction: directions ? grid.getLinearInterpolatedDirection(directions, lat, lon) : 0
 			});
 			gridSources = [{ grid, values: vectorValues, directions }];
 		}

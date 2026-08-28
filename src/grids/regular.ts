@@ -2,6 +2,7 @@ import { GridInterface, GridPoint } from './interface';
 import {
 	interpolateCubic,
 	interpolateLinear,
+	interpolateLinearAngle,
 	interpolateMonotone,
 	interpolateNearest
 } from './interpolations';
@@ -109,29 +110,24 @@ export class RegularGrid implements GridInterface {
 		this.wrapLastCellDouble = this.longitudeWrap && lonSpan < 360 - 0.5 * absDx;
 	}
 
-	getLinearInterpolatedValue(values: Float32Array, lat: number, lon: number): number {
-		return this.getInterpolatedValue(values, lat, lon, 'linear');
-	}
-
-	getInterpolatedValue(
-		values: Float32Array,
+	/** Grid cell and in-cell fractions for a coordinate, or null outside the grid. */
+	private locate(
 		lat: number,
-		lon: number,
-		method: InterpolationMethod
-	): number {
+		lon: number
+	): { x: number; y: number; xFraction: number; yFraction: number } | null {
 		// Compute floating-point grid indices from origin
 		const xRaw = (lon - this.originLon) / this.dx;
 		const yRaw = (lat - this.originLat) / this.dy;
 
 		// Check y bounds (works for both positive and negative dy)
 		if (yRaw < 0 || yRaw >= this.ny) {
-			return NaN;
+			return null;
 		}
 
 		// Check x bounds
 		if (!this.longitudeWrap) {
 			if (xRaw < 0 || xRaw >= this.nx) {
-				return NaN;
+				return null;
 			}
 		}
 
@@ -144,6 +140,41 @@ export class RegularGrid implements GridInterface {
 		const absDx = Math.abs(this.dx);
 		const effectiveDx = this.wrapLastCellDouble && xRaw >= this.nx - 1 ? absDx * 2 : absDx;
 		const xFraction = Math.abs((lon - this.originLon) % effectiveDx) / effectiveDx;
+
+		return { x, y, xFraction, yFraction };
+	}
+
+	getLinearInterpolatedValue(values: Float32Array, lat: number, lon: number): number {
+		return this.getInterpolatedValue(values, lat, lon, 'linear');
+	}
+
+	getLinearInterpolatedDirection(values: Float32Array, lat: number, lon: number): number {
+		const cell = this.locate(lat, lon);
+		if (!cell) {
+			return NaN;
+		}
+		return interpolateLinearAngle(
+			values,
+			cell.x,
+			cell.y,
+			cell.xFraction,
+			cell.yFraction,
+			this.nx,
+			this.longitudeWrap
+		);
+	}
+
+	getInterpolatedValue(
+		values: Float32Array,
+		lat: number,
+		lon: number,
+		method: InterpolationMethod
+	): number {
+		const cell = this.locate(lat, lon);
+		if (!cell) {
+			return NaN;
+		}
+		const { x, y, xFraction, yFraction } = cell;
 
 		switch (method) {
 			// 'nearest' returns the value of the closest grid node (round), centred on the node exactly like the

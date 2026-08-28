@@ -159,6 +159,25 @@ describe('RegularGrid', () => {
 		expect(grid.getLinearInterpolatedValue(values, 100, 100)).toBeNaN();
 	});
 
+	test('direction interpolation crosses the 0°/360° seam', () => {
+		const grid = new RegularGrid(gridData);
+		// Column 1 blows from 350°, column 2 from 10°: halfway between them the
+		// wind comes from due north, not from the 180° a scalar blend would give
+		const directions = new Float32Array(30).fill(350);
+		for (let row = 0; row < 3; row++) {
+			directions[row * 10 + 2] = 10;
+		}
+		expect(grid.getLinearInterpolatedDirection(directions, 52, 11.5)).toBeCloseTo(0);
+		// Away from the seam it matches the scalar interpolation
+		directions.fill(30);
+		for (let row = 0; row < 3; row++) {
+			directions[row * 10 + 2] = 50;
+		}
+		expect(grid.getLinearInterpolatedDirection(directions, 52, 11.5)).toBeCloseTo(40);
+		// Out-of-bounds behaves like the scalar sampler
+		expect(grid.getLinearInterpolatedDirection(directions, 100, 100)).toBeNaN();
+	});
+
 	describe('RegularGrid with negative dy', () => {
 		test('constructs and computes bounds (normalized min <= max)', () => {
 			const grid = new RegularGrid(gridDataNegDy);
