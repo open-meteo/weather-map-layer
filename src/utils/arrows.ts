@@ -49,10 +49,11 @@ export const generateArrows = (
 			}
 
 			// Sample speed with the selected method so arrow size/colour matches
-			// the raster; direction stays linear (averaging angles would be wrong).
+			// the raster; direction is blended circularly (scalar averaging flips
+			// arrows near the 0°/360° seam).
 			const speed = grid.getInterpolatedValue(values, lat, lon, interpolation);
 			const direction = degreesToRadians(
-				grid.getLinearInterpolatedValue(directions, lat, lon) + 180
+				grid.getLinearInterpolatedDirection(directions, lat, lon) + 180
 			);
 
 			const properties: { value?: number; direction?: number } = {
