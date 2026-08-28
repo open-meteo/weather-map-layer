@@ -57,7 +57,7 @@
 				maxZoom: 19
 			}).addTo(map);
 
-			const omUrl = `https://openmeteo-data-spatial.b-cdn.net/dwd_icon/latest.json?time_step=current_time_1H&variable=precipitation&contours=true`;
+			const omUrl = `https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=precipitation&contours=true`;
 
 			// Raster layer: precipitation colour fill.
 			leafletAdapter

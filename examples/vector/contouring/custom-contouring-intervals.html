@@ -36,7 +36,7 @@
 				hash: true
 			});
 
-			const omUrl = `https://openmeteo-data-spatial.b-cdn.net/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m&contours=true&intervals=-5.2,0,3,7,10.5,12.3,17,20.8`;
+			const omUrl = `https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m&contours=true&intervals=-5.2,0,3,7,10.5,12.3,17,20.8`;
 
 			map.on('load', () => {
 				map.addSource('omFileRasterSource', {
