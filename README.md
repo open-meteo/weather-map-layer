@@ -285,6 +285,31 @@ The modifier suffix on `current_time_` controls the rounding granularity when sn
 | d        | Days       |
 | m        | Months     |
 
+## Seamless Composite Domains
+
+Several domains support a **seamless mode** that automatically picks the highest-resolution available model for the current map zoom level and blends values smoothly near domain boundaries.
+
+To use a seamless domain, append `_seamless` to the base model name in the URL:
+
+<pre><code>https://map-tiles.open-meteo.com/data_spatial/<b>dwd_icon_seamless</b>/latest.json?variable=temperature_2m
+</code></pre>
+
+The protocol handler resolves the seamless domain on the client side: the `latest.json` metadata is transparently fetched from the global fallback model, and tiles are composited per-pixel from the active sub-layers.
+
+### Available seamless domains
+
+| Domain value           | Constituent models (finest → global)                                                                       |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `dwd_icon_seamless`    | dwd_icon_d2 (zoom 3+) → dwd_icon_eu (zoom 2+) → dwd_icon                                                   |
+| `ncep_gfs_seamless`    | ncep_hrrr_conus (zoom 2+) → ncep_gfs025                                                                    |
+| `meteofrance_seamless` | meteofrance_arome_france0025 (zoom 3+) → meteofrance_arpege_europe (zoom 2+) → meteofrance_arpege_world025 |
+| `cmc_gem_seamless`     | cmc_gem_hrdps_west (zoom 4+) → cmc_gem_hrdps (zoom 3+) → cmc_gem_rdps (zoom 2+) → cmc_gem_gdps             |
+| `jma_seamless`         | jma_msm (zoom 3+) → jma_gsm                                                                                |
+| `ukmo_seamless`        | ukmo_uk_deterministic_2km (zoom 3+) → ukmo_global_deterministic_10km                                       |
+| `knmi_seamless`        | knmi_harmonie_arome_netherlands (zoom 3+) → knmi_harmonie_arome_europe                                     |
+
+A ready-to-run example is available at `examples/seamless.html`.
+
 ## License
 
 This project is licensed under the [GNU General Public License v2.0](LICENSE).

@@ -81,6 +81,33 @@ export const boundsIncluded = (innerBounds: Bounds, outerBounds: Bounds): boolea
 	return inMinX >= outMinX && inMinY >= outMinY && inMaxX <= outMaxX && inMaxY <= outMaxY;
 };
 
+/** True when two longitude spans overlap, treating a span with min > max as
+ *  dateline-crossing ([min..180] ∪ [-180..max]). */
+const lonRangesOverlap = (aMin: number, aMax: number, bMin: number, bMax: number): boolean => {
+	const aWraps = aMin > aMax;
+	const bWraps = bMin > bMax;
+	if (!aWraps && !bWraps) return aMin <= bMax && bMin <= aMax;
+	// A wrapping span always includes the antimeridian, so two wrapping spans
+	// necessarily overlap there.
+	if (aWraps && bWraps) return true;
+	// Exactly one wraps: the non-wrapping span overlaps if it reaches either the
+	// [min..180] or the [-180..max] segment of the wrapping one.
+	if (aWraps) return bMax >= aMin || bMin <= aMax;
+	return aMax >= bMin || aMin <= bMax;
+};
+
+/**
+ * True when two lon/lat bounding boxes overlap (share any area). Latitude is a
+ * plain interval test; longitude tolerates dateline-crossing boxes on either
+ * side. Used to decide whether a domain is at least partially inside the map
+ * viewport before loading/blending it.
+ */
+export const boundsIntersect = (a: Bounds, b: Bounds): boolean => {
+	// Latitude never wraps.
+	if (a[1] > b[3] || b[1] > a[3]) return false;
+	return lonRangesOverlap(a[0], a[2], b[0], b[2]);
+};
+
 /*
 Compares domain bounds against bounds limitation set in clippingOptions.
 Returns undefined when the two bounds do not overlap at all.

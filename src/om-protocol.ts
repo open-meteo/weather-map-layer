@@ -3,19 +3,20 @@ import { type GetResourceResponse, type RequestParameters } from 'maplibre-gl';
 import { constrainBounds } from './utils/bounds';
 import { type ResolvedClippingOptions } from './utils/clipping';
 import { defaultResolveRequest, parseRequest } from './utils/parse-request';
-import { parseMetaJson } from './utils/parse-url';
+import { normalizeUrl } from './utils/parse-url';
 import { COLOR_SCALES_WITH_ALIASES as defaultColorScales } from './utils/styling';
 
 import { domainOptions as defaultDomainOptions } from './domains';
 import { GridFactory } from './grids/index';
 import { defaultFileReaderConfig } from './om-file-reader';
+import { handleSeamlessRequest, isSeamlessDomain } from './om-protocol-seamless';
 import { ensureData, getOrCreateState, getProtocolInstance } from './om-protocol-state';
 import { capitalize } from './utils';
-import { WorkerPool } from './worker-pool';
+import { workerPool } from './worker-pool-instance';
 
 import type {
 	Data,
-	DataIdentityOptions,
+	Domain,
 	OmProtocolSettings,
 	OmUrlState,
 	ParsedRequest,
@@ -24,8 +25,6 @@ import type {
 	TileResponse,
 	TileResult
 } from './types';
-
-const workerPool = new WorkerPool();
 
 export const defaultOmProtocolSettings: OmProtocolSettings = {
 	// static
@@ -54,8 +53,21 @@ export const omProtocol = async (
 
 	const instance = getProtocolInstance(settings);
 
-	const url = await normalizeUrl(params.url);
+	const url = await normalizeUrl(params.url, settings.domainOptions);
 	const request = parseRequest(url, settings);
+
+	// Route seamless composite domains to the dedicated handler
+	if (isSeamlessDomain(request.dataOptions.domain)) {
+		return handleSeamlessRequest(
+			params,
+			url,
+			request,
+			request.dataOptions.domain,
+			instance,
+			settings,
+			signal
+		);
+	}
 
 	const state = getOrCreateState(
 		instance.stateByKey,
@@ -79,7 +91,11 @@ export const omProtocol = async (
 			// Errors surface on the awaited tile requests; ignore here.
 		});
 		return {
-			data: await getTilejson(params.url, request.dataOptions, request.clippingOptions)
+			data: await getTilejson(
+				params.url,
+				request.dataOptions.domain as Domain,
+				request.clippingOptions
+			)
 		};
 	}
 
@@ -101,14 +117,6 @@ export const omProtocol = async (
 	} else {
 		return { data: tileResult.data };
 	}
-};
-
-export const normalizeUrl = async (url: string): Promise<string> => {
-	let normalized = url;
-	if (url.includes('.json')) {
-		normalized = await parseMetaJson(normalized);
-	}
-	return normalized;
 };
 
 const makeTileAbortedResponse = (): TileResult => {
@@ -163,11 +171,11 @@ const requestTile = async (
 
 const getTilejson = async (
 	fullUrl: string,
-	dataOptions: DataIdentityOptions,
+	domain: Domain,
 	clippingOptions?: ResolvedClippingOptions
 ): Promise<TileJSON> => {
 	// We initialize the grid with the ranges set to null, because we want to find out the maximum bounds of this grid
-	const grid = GridFactory.create(dataOptions.domain.grid, null);
+	const grid = GridFactory.create(domain.grid, null);
 	let bounds;
 	if (clippingOptions && clippingOptions.bounds) {
 		bounds = constrainBounds(grid.getBounds(), clippingOptions.bounds) ?? grid.getBounds();

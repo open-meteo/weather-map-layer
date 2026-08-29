@@ -2,16 +2,17 @@ import { boundsIncluded, constrainBounds } from './utils/bounds';
 import { DEFAULT_INTERPOLATION, VALID_INTERPOLATIONS } from './utils/constants';
 import { normalizeLon } from './utils/math';
 import { parseUrlComponents } from './utils/parse-url';
+import { normalizeUrl } from './utils/parse-url';
 
 import { GridFactory } from './grids';
 import { WeatherMapLayerFileReader } from './om-file-reader';
-import { normalizeUrl } from './om-protocol';
 
 import type {
 	Bounds,
 	Data,
 	DataIdentityOptions,
 	DimensionRange,
+	Domain,
 	GridData,
 	InterpolationMethod,
 	OmProtocolInstance,
@@ -110,7 +111,7 @@ export const getOrCreateState = (
 
 	evictStaleStates(stateByKey, stateKey);
 
-	const ranges = getRanges(dataOptions.domain.grid, dataOptions.bounds);
+	const ranges = getRanges((dataOptions.domain as Domain).grid, dataOptions.bounds);
 	const state: OmUrlState = {
 		dataOptions,
 		ranges,
@@ -227,7 +228,7 @@ export const getValueFromLatLong = async (
 		return { value: NaN };
 	}
 
-	const grid = GridFactory.create(state.dataOptions.domain.grid, state.ranges);
+	const grid = GridFactory.create((state.dataOptions.domain as Domain).grid, state.ranges);
 	const lonNormalized = normalizeLon(lon);
 	// Sample with the same interpolation the tiles are rendered with (encoded in
 	// the URL) so the popup value matches the pixel under the cursor.
