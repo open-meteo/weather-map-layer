@@ -11,15 +11,13 @@
  * strong wind needs many of them, so neighbouring barbs never run into each
  * other.
  */
-import { GridInterface } from '../grids';
 import { PbfWriter } from 'pbf';
 
 import { type ResolvedClippingOptions, createClippingTester } from './clipping';
 import { BARB_LATTICE, VECTOR_TILE_EXTENT } from './constants';
 import { degreesToRadians, rotatePoint, tile2lat, tile2lon } from './math';
 import { command, writeLayer, zigzag } from './pbf';
-
-import { InterpolationMethod } from '../types';
+import type { VectorSampler } from './seamless-sampling';
 
 const MS_TO_KNOTS = 1.9438445;
 
@@ -95,14 +93,11 @@ const barbCounts = (knots: number): { pennants: number; full: number; half: numb
 
 export const generateWindBarbs = (
 	pbf: PbfWriter,
-	values: Float32Array,
-	directions: Float32Array,
-	grid: GridInterface,
+	sampleVector: VectorSampler,
 	x: number,
 	y: number,
 	z: number,
 	clippingOptions: ResolvedClippingOptions | undefined,
-	interpolation: InterpolationMethod = 'linear',
 	extent: number = VECTOR_TILE_EXTENT,
 	barbs: number = BARB_LATTICE
 ) => {
@@ -135,7 +130,7 @@ export const generateWindBarbs = (
 				continue;
 			}
 
-			const speed = grid.getInterpolatedValue(values, lat, lon, interpolation);
+			const { value: speed, direction: directionDeg } = sampleVector(lat, lon);
 			const knots = speed * MS_TO_KNOTS;
 			if (!isFinite(knots)) {
 				continue;
@@ -143,7 +138,7 @@ export const generateWindBarbs = (
 
 			// The staff points at where the wind comes from, so the rotation is the
 			// direction as is (an arrow adds 180° to point the other way)
-			const rotation = degreesToRadians(grid.getLinearInterpolatedDirection(directions, lat, lon));
+			const rotation = degreesToRadians(directionDeg);
 			// The `direction` property keeps the arrow convention (downwind, i.e.
 			// direction + 180°) so consumers see the same value whatever the
 			// `arrow_style`; only the geometry uses the upwind rotation.

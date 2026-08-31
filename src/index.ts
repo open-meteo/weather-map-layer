@@ -10,6 +10,12 @@ export {
 // Functions
 
 export {
+	isSeamlessDomain,
+	getFallbackDomainValue,
+	resolveConcreteDomain,
+	getFallbackDomain
+} from './domain-helpers';
+export {
 	getValueFromLatLong,
 	clearBlockCache,
 	getDataState,
@@ -27,12 +33,14 @@ export { solarPosition, sunElevationSine } from './utils/sun';
 // Classes
 
 export { GridFactory } from './grids/index';
+export { WeatherMapLayerFileReader } from './om-file-reader';
 
 // Objects / Constants
 
 export { currentBounds } from './utils/bounds';
 export { defaultOmProtocolSettings } from './om-protocol';
 export { domainOptions, domainGroups } from './domains';
+export { DOMAIN_FOOTPRINTS, getDomainFootprint } from './domain-footprints';
 export { variableOptions, levelGroupVariables } from './utils/variables';
 export {
 	VARIABLE_PREFIX,
@@ -57,6 +65,7 @@ export { addOpenLayersProtocolSupport } from './adapters/openlayers';
 // Types
 
 export type {
+	AnyDomain,
 	ArrowRender,
 	ArrowStyle,
 	ClippingOptions,
@@ -71,7 +80,7 @@ export type {
 	OmProtocolSettings,
 	OmUrlState,
 	RenderableColorScale,
+	SeamlessDomain,
+	SeamlessLayer,
 	SunShadowOptions
 } from './types';
-
-export type { WeatherMapLayerFileReader } from './om-file-reader';

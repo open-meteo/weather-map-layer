@@ -18,12 +18,12 @@ import { getColorScale, resolveColorScale } from './styling';
 import { DEFAULT_WIND_POINTS, MAX_WIND_POINTS, MIN_WIND_POINTS } from './wind-points';
 
 import type {
+	AnyDomain,
 	ArrowRender,
 	ArrowStyle,
 	ClippingOptions,
 	ColorScales,
 	DataIdentityOptions,
-	Domain,
 	InterpolationMethod,
 	OmProtocolSettings,
 	ParsedRequest,
@@ -84,7 +84,7 @@ export const defaultResolveRequest = (
 
 const defaultResolveDataIdentity = (
 	urlComponents: ParsedUrlComponents,
-	domainOptions: Domain[]
+	domainOptions: AnyDomain[]
 ): DataIdentityOptions => {
 	const { baseUrl, params } = urlComponents;
 

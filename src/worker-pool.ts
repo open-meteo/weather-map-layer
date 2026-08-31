@@ -160,6 +160,3 @@ export class WorkerPool {
 		});
 	}
 }
-
-// Shared pool so the om and sun protocols reuse the same workers
-export const workerPool = new WorkerPool();

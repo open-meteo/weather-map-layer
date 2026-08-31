@@ -8,15 +8,13 @@
  * tile coordinates and it grows with the tile until the next zoom level loads.
  * The shape lives in the icon here; the tile only says where and which way.
  */
-import { GridInterface } from '../grids';
 import { PbfWriter } from 'pbf';
 
 import { type ResolvedClippingOptions, createClippingTester } from './clipping';
 import { VECTOR_TILE_EXTENT } from './constants';
 import { tile2lat, tile2lon } from './math';
 import { command, writeLayer, zigzag } from './pbf';
-
-import { InterpolationMethod } from '../types';
+import type { VectorSampler } from './seamless-sampling';
 
 /** Points across a tile when the caller does not say. */
 export const DEFAULT_WIND_POINTS = 28;
@@ -26,14 +24,11 @@ export const MAX_WIND_POINTS = 200;
 
 export const generateWindPoints = (
 	pbf: PbfWriter,
-	values: Float32Array,
-	directions: Float32Array,
-	grid: GridInterface,
+	sampleVector: VectorSampler,
 	x: number,
 	y: number,
 	z: number,
 	clippingOptions: ResolvedClippingOptions | undefined,
-	interpolation: InterpolationMethod = 'linear',
 	extent: number = VECTOR_TILE_EXTENT,
 	points: number = DEFAULT_WIND_POINTS
 ) => {
@@ -75,13 +70,12 @@ export const generateWindPoints = (
 				continue;
 			}
 
-			const value = grid.getInterpolatedValue(values, lat, lon, interpolation);
+			// Degrees, the direction the flow comes from, as the renderer's
+			// rotation expressions expect
+			const { value, direction } = sampleVector(lat, lon);
 			if (!isFinite(value)) {
 				continue;
 			}
-			// Degrees, the direction the flow comes from, as the renderer's
-			// rotation expressions expect
-			const direction = grid.getLinearInterpolatedDirection(directions, lat, lon);
 
 			features.push({
 				id: tileX + tileY,

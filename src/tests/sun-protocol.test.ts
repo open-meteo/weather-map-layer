@@ -8,7 +8,7 @@ const { mockRequestTile } = vi.hoisted(() => ({
 	mockRequestTile: vi.fn()
 }));
 
-vi.mock('../worker-pool', () => ({
+vi.mock('../worker-pool-instance', () => ({
 	workerPool: { requestTile: mockRequestTile }
 }));
 

@@ -3,7 +3,7 @@ import { type GetResourceResponse, type RequestParameters } from 'maplibre-gl';
 import { VALID_TILE_SIZES } from './utils/constants';
 import { parseTileIndex } from './utils/parse-url';
 
-import { workerPool } from './worker-pool';
+import { workerPool } from './worker-pool-instance';
 
 import type { RGB, SunShadowOptions, TileJSON, TileResponse, TileSize } from './types';
 
