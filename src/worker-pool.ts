@@ -1,7 +1,7 @@
 // @ts-expect-error worker import
 import TileWorker from './worker?worker&inline';
 
-import { TilePromise, TileRequest, TileResult, WorkerResponse } from './types';
+import { TilePromise, TileResult, WorkerRequest, WorkerResponse } from './types';
 
 export class WorkerPool {
 	private workers: Worker[] = [];
@@ -89,7 +89,7 @@ export class WorkerPool {
 		return worker;
 	}
 
-	public requestTile(request: TileRequest): TilePromise {
+	public requestTile(request: WorkerRequest): TilePromise {
 		if (request.signal?.aborted) {
 			return Promise.resolve({ cancelled: true });
 		}
@@ -160,3 +160,6 @@ export class WorkerPool {
 		});
 	}
 }
+
+// Shared pool so the om and sun protocols reuse the same workers
+export const workerPool = new WorkerPool();

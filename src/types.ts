@@ -147,7 +147,28 @@ export interface TileRequest {
 	signal?: AbortSignal;
 }
 
-export type WorkerRequest = TileRequest;
+export interface SunShadowOptions {
+	// UTC timestamp (epoch milliseconds) the sun position is computed for.
+	time: number;
+	// Maximum shadow opacity on the fully dark side, 0..1.
+	opacity: number;
+	// Twilight width in degrees of solar elevation: the shadow fades from 0 at
+	// the terminator to full opacity at -gradient degrees. 0 gives a hard edge.
+	gradient: number;
+	// Shadow colour.
+	color: RGB;
+}
+
+export interface ShadowTileRequest {
+	type: 'getShadowImage';
+	key: string;
+	tileIndex: TileIndex;
+	tileSize: TileSize;
+	shadowOptions: SunShadowOptions;
+	signal?: AbortSignal;
+}
+
+export type WorkerRequest = TileRequest | ShadowTileRequest;
 
 export type TileResponse = ImageBitmap | ArrayBuffer;
 export interface TileResult {

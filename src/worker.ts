@@ -10,35 +10,58 @@ import { halfQuantum as computeHalfQuantum, tile2lat, tile2lon } from './utils/m
 import { makeColorSampler } from './utils/styling';
 import { generateWindBarbs } from './utils/wind-barbs';
 import { generateWindPoints } from './utils/wind-points';
+import { renderSunShadow } from './utils/sun';
 
 import { GridFactory } from './grids/index';
 
 import { WorkerRequest } from './types';
 
 self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => {
-	const key = message.data.key;
+	const request = message.data;
+	const key = request.key;
 
 	// Handle cancellation messages
-	if (message.data.type === 'cancel') {
+	if (request.type === 'cancel') {
 		postMessage({ type: 'cancelled', key });
 		return;
 	}
 
-	const { z, x, y } = message.data.tileIndex;
-	const values = message.data.data.values;
-	const ranges = message.data.ranges;
-	const domain = message.data.dataOptions.domain;
-	const tileSize = message.data.renderOptions.tileSize;
-	const interpolation = message.data.renderOptions.interpolation;
-	const colorBlend = message.data.renderOptions.colorBlend;
-	const colorScale = message.data.renderOptions.colorScale;
-	const clippingOptions = message.data.clippingOptions;
+	// Sun shadow tiles are purely analytical: no weather data involved
+	if (request.type === 'getShadowImage') {
+		const shadowTileSize = request.tileSize;
+		const { z, x, y } = request.tileIndex;
+		const rgba = new Uint8ClampedArray(shadowTileSize * shadowTileSize * 4);
+
+		renderSunShadow(rgba, shadowTileSize, z, x, y, request.shadowOptions);
+
+		const imageData = new ImageData(rgba, shadowTileSize, shadowTileSize);
+		const canvas = new OffscreenCanvas(shadowTileSize, shadowTileSize);
+		const context = canvas.getContext('2d');
+		if (!context) {
+			throw new Error('Could not initialise canvas context');
+		}
+		context.putImageData(imageData, 0, 0);
+
+		const imageBitmap = canvas.transferToImageBitmap();
+		postMessage({ type: 'returnImage', tile: imageBitmap, key: key }, { transfer: [imageBitmap] });
+		return;
+	}
+
+	const { z, x, y } = request.tileIndex;
+	const values = request.data.values;
+	const ranges = request.ranges;
+	const domain = request.dataOptions.domain;
+	const tileSize = request.renderOptions.tileSize;
+	const interpolation = request.renderOptions.interpolation;
+	const colorBlend = request.renderOptions.colorBlend;
+	const colorScale = request.renderOptions.colorScale;
+	const clippingOptions = request.clippingOptions;
 
 	if (!values) {
 		throw new Error('No values provided');
 	}
 
-	if (message.data.type == 'getImage') {
+	if (request.type == 'getImage') {
 		const pixels = tileSize * tileSize;
 		// Initialized with zeros
 		const rgba = new Uint8ClampedArray(pixels * 4);
@@ -48,7 +71,7 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 		// Offset the colour threshold by half the data's quantization step so
 		// band edges fall inside grid cells (smooth) instead of snapping to the
 		// cell corners when a breakpoint coincides with a quantization level.
-		const halfQuantum = computeHalfQuantum(message.data.data.scaleFactor);
+		const halfQuantum = computeHalfQuantum(request.data.scaleFactor);
 
 		// Reused per-pixel so colour blending doesn't allocate an array per pixel.
 		const colorOut: [number, number, number, number] = [0, 0, 0, 0];
@@ -113,18 +136,18 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 		}
 
 		postMessage({ type: 'returnImage', tile: imageBitmap, key: key }, { transfer: [imageBitmap] });
-	} else if (message.data.type == 'getArrayBuffer') {
-		const directions = message.data.data.directions;
+	} else if (request.type == 'getArrayBuffer') {
+		const directions = request.data.directions;
 
 		const pbf = new PbfWriter();
 
 		const grid = GridFactory.create(domain.grid, ranges);
-		if (message.data.renderOptions.drawGrid) {
+		if (request.renderOptions.drawGrid) {
 			generateGridPoints(pbf, grid, values, directions, x, y, z, clippingOptions);
 		}
-		if (message.data.renderOptions.drawArrows && directions) {
-			const arrowStyle = message.data.renderOptions.arrowStyle;
-			if (message.data.renderOptions.arrowRender === 'icon') {
+		if (request.renderOptions.drawArrows && directions) {
+			const arrowStyle = request.renderOptions.arrowStyle;
+			if (request.renderOptions.arrowRender === 'icon') {
 				// As icons the shape comes from the renderer's sprite, so the tile
 				// only carries the sampled points
 				generateWindPoints(
@@ -138,15 +161,15 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 					clippingOptions,
 					interpolation,
 					VECTOR_TILE_EXTENT,
-					message.data.renderOptions.arrowPoints
+					request.renderOptions.arrowPoints
 				);
 			} else {
 				const draw = arrowStyle === 'barb' ? generateWindBarbs : generateArrows;
 				draw(pbf, values, directions, grid, x, y, z, clippingOptions, interpolation);
 			}
 		}
-		if (message.data.renderOptions.drawContours) {
-			const intervals = message.data.renderOptions.intervals;
+		if (request.renderOptions.drawContours) {
+			const intervals = request.renderOptions.intervals;
 			generateContours(
 				pbf,
 				values,
@@ -158,7 +181,7 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 				intervals,
 				clippingOptions,
 				interpolation,
-				computeHalfQuantum(message.data.data.scaleFactor)
+				computeHalfQuantum(request.data.scaleFactor)
 			);
 		}
 
