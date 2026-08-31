@@ -6,9 +6,29 @@ export const DEFAULT_TILE_SIZE = 512;
 export const VALID_INTERPOLATIONS = ['nearest', 'linear', 'cubic', 'monotone'] as const;
 export const DEFAULT_INTERPOLATION = 'linear';
 
+// Shape drawn for wind/wave directions: a plain arrow, or station-model wind
+// barbs reading the speed off pennants and barbs.
+export const VALID_ARROW_STYLES = ['arrow', 'barb'] as const;
+export const DEFAULT_ARROW_STYLE = 'arrow';
+
+// How that shape reaches the map: baked into the tile geometry, or as points
+// the renderer turns into screen-space symbols (constant size while zooming).
+export const VALID_ARROW_RENDERS = ['line', 'icon'] as const;
+export const DEFAULT_ARROW_RENDER = 'line';
+
 // Interpolate colours between colour-scale breakpoints instead of hard bands.
 export const DEFAULT_COLOR_BLEND = false;
 export const VECTOR_TILE_EXTENT = 4096;
+
+/**
+ * Nominal on-screen width of a vector tile, and how many arrows or barbs the
+ * geometry generators put across one. Together they give the on-screen size of
+ * a lattice cell, which is the size the shape is drawn to fill: a renderer
+ * drawing the same shapes as screen-space icons matches by using it.
+ */
+export const TILE_PX = 512;
+export const ARROW_LATTICE = 25;
+export const BARB_LATTICE = 18;
 
 // Parameters affecting data identity
 export const DATA_RELEVANT_PARAMS = new Set(['variable']);

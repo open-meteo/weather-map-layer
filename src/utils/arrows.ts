@@ -2,7 +2,7 @@ import { GridInterface } from '../grids';
 import { PbfWriter } from 'pbf';
 
 import { type ResolvedClippingOptions, createClippingTester } from './clipping';
-import { VECTOR_TILE_EXTENT } from './constants';
+import { ARROW_LATTICE, VECTOR_TILE_EXTENT } from './constants';
 import { degreesToRadians, rotatePoint, tile2lat, tile2lon } from './math';
 import { command, writeLayer, zigzag } from './pbf';
 
@@ -19,7 +19,7 @@ export const generateArrows = (
 	clippingOptions: ResolvedClippingOptions | undefined,
 	interpolation: InterpolationMethod = 'linear',
 	extent: number = VECTOR_TILE_EXTENT,
-	arrows: number = 25
+	arrows: number = ARROW_LATTICE
 ) => {
 	if (z === 0) {
 		arrows = 50;
@@ -34,9 +34,14 @@ export const generateArrows = (
 	let cursor = [0, 0];
 	const isInsideClip = createClippingTester(clippingOptions);
 
-	for (let tileY = 0; tileY < extent + 1; tileY += size) {
+	// Stepped by index rather than by accumulating `size`, which drifts. The
+	// far edge is included: a shape there is clipped to its own tile, and the
+	// neighbouring tile draws the other half of it.
+	for (let row = 0; row <= arrows; row++) {
+		const tileY = (row * extent) / arrows;
 		const lat = tile2lat(y + tileY / extent, z);
-		for (let tileX = 0; tileX < extent + 1; tileX += size) {
+		for (let column = 0; column <= arrows; column++) {
+			const tileX = (column * extent) / arrows;
 			const lon = tile2lon(x + tileX / extent, z);
 
 			// correct center would be (- size / 2 ), but it looks way better on the edges when center is far end of box
