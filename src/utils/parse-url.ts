@@ -5,7 +5,6 @@ import {
 	DATA_RELEVANT_PARAMS,
 	DOMAIN_META_REGEX,
 	OM_PREFIX_REGEX,
-	RESOLVE_DOMAIN_REGEX,
 	TILE_SUFFIX_REGEX,
 	TIME_STEP_REGEX
 } from './constants';
@@ -80,19 +79,23 @@ const metaDataCache = new Map<string, Promise<DomainMetaDataJson>>();
  * backing domain so the server request resolves correctly.  The server only serves
  * concrete domain paths; the seamless domain is a client-side concept.
  */
-const resolveJsonFetchUrl = (jsonUrl: string, domainOptions?: AnyDomain[]): string => {
+// The domain of a meta-JSON URL is the path segment before the "<meta>.json"
+// file. RESOLVE_DOMAIN_REGEX cannot be used here: it requires a ".om" suffix,
+// which a "latest.json"/"in-progress.json" URL never has.
+const JSON_DOMAIN_REGEX = /(?<domain>[^/]+)\/[^/]+\.json$/;
+
+export const resolveJsonFetchUrl = (jsonUrl: string, domainOptions?: AnyDomain[]): string => {
 	if (!domainOptions) return jsonUrl;
-	const domainMatch = jsonUrl.match(RESOLVE_DOMAIN_REGEX);
+	const domainMatch = jsonUrl.match(JSON_DOMAIN_REGEX);
 	const urlDomainValue = domainMatch?.groups?.domain;
 	if (!urlDomainValue) return jsonUrl;
 	const domain = domainOptions.find((d) => d.value === urlDomainValue);
 	if (!domain || !isSeamlessDomain(domain)) return jsonUrl;
-	// domain is a SeamlessDomain — use the last (global fallback) layer for the fetch
+	// domain is a SeamlessDomain — use the last (global fallback) layer for the
+	// fetch. Replace the domain path segment independent of any "data_spatial/"
+	// prefix (CDN pull zones drop it, see RESOLVE_DOMAIN_REGEX).
 	const backingDomainValue = getFallbackDomainValue(domain);
-	return jsonUrl.replace(
-		`/data_spatial/${urlDomainValue}/`,
-		`/data_spatial/${backingDomainValue}/`
-	);
+	return jsonUrl.replace(`/${urlDomainValue}/`, `/${backingDomainValue}/`);
 };
 
 export const parseMetaJson = async (omUrl: string, domainOptions?: AnyDomain[]) => {
