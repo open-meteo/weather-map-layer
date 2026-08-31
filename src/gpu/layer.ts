@@ -104,6 +104,13 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 	private fadeStart = 0;
 
 	private seamless: SeamlessFrame | undefined;
+	/**
+	 * Replacement seamless frame still loading. The old frame keeps rendering
+	 * until the new one has all zoom-active sub-layers resolved, then they swap
+	 * atomically — otherwise every refresh would flash global-only (or nothing)
+	 * while the finer layers reload.
+	 */
+	private pendingSeamless: SeamlessFrame | undefined;
 
 	/** Guards against out-of-order setUrl loads; only the latest wins. */
 	private loadSequence = 0;
@@ -131,9 +138,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 
 		if (isSeamlessDomain(request.dataOptions.domain)) {
 			const renderOptions = request.renderOptions;
-			this.current = undefined;
-			this.previous = undefined;
-			this.seamless = {
+			const frame: SeamlessFrame = {
 				domain: request.dataOptions.domain,
 				request,
 				entries: new Map(),
@@ -142,9 +147,22 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 				colorBlend: renderOptions.colorBlend,
 				clipBounds: request.clippingOptions?.bounds
 			};
+			if (this.seamless || this.current) {
+				// Something is already on screen: load the new frame behind it and
+				// swap only once every zoom-active sub-layer has resolved.
+				this.pendingSeamless = frame;
+			} else {
+				// Nothing showing yet: render progressively as sub-layers arrive.
+				this.seamless = frame;
+			}
 			// Load the layers active at the current zoom right away; render() keeps
 			// them in sync when the zoom changes later.
-			await this.ensureSeamlessLoads(this.seamless, this.map?.getZoom() ?? 0);
+			await this.ensureSeamlessLoads(frame, this.map?.getZoom() ?? 0);
+			if (sequence !== this.loadSequence) return;
+			this.current = undefined;
+			this.previous = undefined;
+			this.seamless = frame;
+			if (this.pendingSeamless === frame) this.pendingSeamless = undefined;
 			this.map?.triggerRepaint();
 			return;
 		}
@@ -182,6 +200,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		}
 
 		this.seamless = undefined;
+		this.pendingSeamless = undefined;
 		this.current = {
 			values,
 			gridUniforms,
@@ -339,7 +358,8 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			this.settings,
 			activeLayerCount
 		);
-		if (this.seamless !== frame) return; // superseded by a newer setUrl
+		// superseded by a newer setUrl
+		if (this.seamless !== frame && this.pendingSeamless !== frame) return;
 		frame.entries.set(
 			layerDef.domainValue,
 			data ? { status: 'loaded', data } : { status: 'skipped' }
