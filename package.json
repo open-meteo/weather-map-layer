@@ -75,7 +75,7 @@
 		"npm-watch": "^0.13.0",
 		"prettier": "^3.6.2",
 		"tsx": "^4.20.6",
-		"typescript": "^6.0.3",
+		"typescript": "^7.0.2",
 		"typescript-eslint": "^8.58.1",
 		"unplugin-dts": "^1.0.0-beta.6",
 		"vite": "^8.0.12",
@@ -85,7 +85,7 @@
 		"@mapbox/tilebelt": "^2.0.3",
 		"@mapbox/vector-tile": "^3.0.0",
 		"@openmeteo/file-reader": "^0.0.18",
-		"maplibre-gl": "^5.20.1",
+		"maplibre-gl": "^6.5.0",
 		"pbf": "^5.1.0",
 		"point-in-polygon-hao": "^1.2.4"
 	}
