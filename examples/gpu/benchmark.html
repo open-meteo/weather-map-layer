@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Weather Map Layer - CPU vs GPU Benchmark</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
+		<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+		<!-- x-release-please-start-version -->
+		<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.1.0/dist/index.js"></script>
+		<!-- x-release-please-end -->
+		<!-- Local development -->
+		<script>
+			if (location.hostname === 'localhost' || location.href.startsWith('file://')) {
+				document.write('<script src="../../dist/index.js"><\/script>');
+			}
+		</script>
+		<style>
+			body {
+				font: 14px/1.5 sans-serif;
+				margin: 20px;
+				max-width: 1000px;
+			}
+			fieldset {
+				display: inline-block;
+				vertical-align: top;
+				margin-right: 12px;
+			}
+			table {
+				border-collapse: collapse;
+				margin: 10px 0;
+			}
+			td,
+			th {
+				border: 1px solid #ccc;
+				padding: 4px 10px;
+				text-align: right;
+			}
+			th:first-child,
+			td:first-child {
+				text-align: left;
+			}
+			#parity canvas {
+				border: 1px solid #ccc;
+				width: 256px;
+				height: 256px;
+				image-rendering: pixelated;
+				margin-right: 6px;
+			}
+			#fpsmap {
+				width: 640px;
+				height: 400px;
+				border: 1px solid #ccc;
+			}
+			button {
+				font-size: 14px;
+				padding: 4px 12px;
+			}
+			.note {
+				color: #666;
+				font-size: 12px;
+			}
+		</style>
+	</head>
+	<body>
+		<h2>CPU worker vs GPU tile renderer vs GPU custom layer</h2>
+
+		<fieldset>
+			<legend>Setup</legend>
+			<label>
+				Domain
+				<select id="domain">
+					<option value="dwd_icon" selected>dwd_icon (regular, global)</option>
+					<option value="ncep_hrrr_conus">ncep_hrrr_conus (LCC projected)</option>
+					<option value="dmi_harmonie_arome_europe">dmi_harmonie_arome_europe (LCC)</option>
+				</select>
+			</label>
+			<label>
+				Variable
+				<select id="variable">
+					<option value="temperature_2m" selected>temperature_2m</option>
+					<option value="cloud_cover">cloud_cover</option>
+					<option value="precipitation">precipitation</option>
+				</select>
+			</label>
+			<label>
+				Interpolation
+				<select id="interpolation">
+					<option value="nearest">nearest</option>
+					<option value="linear" selected>linear</option>
+					<option value="cubic">cubic</option>
+					<option value="monotone">monotone</option>
+				</select>
+			</label>
+			<label>
+				Zoom
+				<select id="zoom">
+					<option>2</option>
+					<option>3</option>
+					<option selected>4</option>
+					<option>5</option>
+					<option>6</option>
+				</select>
+			</label>
+			<label>
+				Tile size
+				<select id="tilesize">
+					<option>256</option>
+					<option selected>512</option>
+					<option>1024</option>
+				</select>
+			</label>
+		</fieldset>
+
+		<p>
+			<button id="run">Run tile benchmark</button>
+			<button id="runParity">Run parity check</button>
+			<button id="runFps">Measure GPU layer FPS (3 s)</button>
+		</p>
+		<div id="log" class="note"></div>
+
+		<h3>Tile rendering (identical pipeline, only the rasterizer differs)</h3>
+		<table id="results">
+			<tr>
+				<th>Backend</th>
+				<th>Tiles</th>
+				<th>Total (best of 3)</th>
+				<th>ms / tile</th>
+			</tr>
+		</table>
+		<p class="note">
+			Data is warmed first, so this measures URL parsing + rasterization + transfer, not the
+			network. The CPU path spreads across the worker pool; the GPU path renders sequentially on one
+			context.
+		</p>
+
+		<h3>Parity: CPU tile vs GPU tile</h3>
+		<div id="parity"></div>
+		<div id="parityStats"></div>
+		<p class="note">
+			Expected: sub-pixel float differences (fp32 vs fp64) and band edges quantised to the
+			2048-texel LUT on non-blended scales.
+		</p>
+
+		<h3>GPU custom layer (path B) frame rate</h3>
+		<div id="fpsmap"></div>
+		<div id="fpsResult"></div>
+
+		<script>
+			const OM = OMWeatherMapLayer;
+			const log = (message) => (document.getElementById('log').textContent = message);
+
+			const settings = () => ({
+				domain: document.getElementById('domain').value,
+				variable: document.getElementById('variable').value,
+				interpolation: document.getElementById('interpolation').value,
+				zoom: Number(document.getElementById('zoom').value),
+				tileSize: Number(document.getElementById('tilesize').value)
+			});
+
+			const baseUrl = (s) =>
+				`om://https://openmeteo.s3.amazonaws.com/data_spatial/${s.domain}/latest.json` +
+				`?time_step=current_time_1H&variable=${s.variable}` +
+				`&interpolation=${s.interpolation}&tile_size=${s.tileSize}`;
+
+			// Tile helpers (web mercator)
+			const lon2tileX = (lon, z) => Math.pow(2, z) * ((lon + 180) / 360);
+			const lat2tileY = (lat, z) => {
+				const rad = (lat * Math.PI) / 180;
+				return (Math.pow(2, z) * (1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI)) / 2;
+			};
+
+			const tilesForDomain = (s, cap = 32) => {
+				const domain = OM.domainOptions.find((d) => d.value === s.domain);
+				const bounds = OM.GridFactory.create(domain.grid, null).getBounds();
+				const clampLat = (lat) => Math.max(-85, Math.min(85, lat));
+				const z = s.zoom;
+				const n = Math.pow(2, z);
+				const x0 = Math.max(0, Math.floor(lon2tileX(bounds[0], z)));
+				const x1 = Math.min(n - 1, Math.floor(lon2tileX(bounds[2], z)));
+				const y0 = Math.max(0, Math.floor(lat2tileY(clampLat(bounds[3]), z)));
+				const y1 = Math.min(n - 1, Math.floor(lat2tileY(clampLat(bounds[1]), z)));
+				const tiles = [];
+				for (let y = y0; y <= y1; y++) {
+					for (let x = x0; x <= x1; x++) {
+						tiles.push({ z, x, y });
+					}
+				}
+				// Sample evenly when the level has more tiles than the cap
+				if (tiles.length > cap) {
+					const step = tiles.length / cap;
+					return Array.from({ length: cap }, (_, i) => tiles[Math.floor(i * step)]);
+				}
+				return tiles;
+			};
+
+			const requestTile = (protocol, url, tile) =>
+				protocol(
+					{ url: `${url}/${tile.z}/${tile.x}/${tile.y}`, type: 'image' },
+					new AbortController()
+				);
+
+			const benchBackend = async (protocol, url, tiles, rounds = 3) => {
+				let best = Infinity;
+				for (let round = 0; round < rounds; round++) {
+					const started = performance.now();
+					await Promise.all(tiles.map((tile) => requestTile(protocol, url, tile)));
+					best = Math.min(best, performance.now() - started);
+				}
+				return best;
+			};
+
+			const addResult = (name, tiles, total) => {
+				const row = document.getElementById('results').insertRow();
+				row.insertCell().textContent = name;
+				row.insertCell().textContent = String(tiles);
+				row.insertCell().textContent = `${total.toFixed(1)} ms`;
+				row.insertCell().textContent = (total / tiles).toFixed(2);
+			};
+
+			document.getElementById('run').onclick = async () => {
+				const s = settings();
+				const url = baseUrl(s);
+				const tiles = tilesForDomain(s);
+				log(`Warming data + pipelines (${tiles.length} tiles at z${s.zoom})…`);
+				// One tile through each backend loads the data (shared state) and spins
+				// up workers / compiles shaders before timing starts.
+				await requestTile(OM.omProtocol, url, tiles[0]);
+				await requestTile(OM.omProtocolGpu, url, tiles[0]);
+
+				log('Benchmarking CPU worker pool…');
+				const cpu = await benchBackend(OM.omProtocol, url, tiles);
+				addResult(`CPU workers (${s.interpolation}, ${s.tileSize}px)`, tiles.length, cpu);
+
+				log('Benchmarking GPU tile renderer…');
+				const gpu = await benchBackend(OM.omProtocolGpu, url, tiles);
+				addResult(`GPU tiles (${s.interpolation}, ${s.tileSize}px)`, tiles.length, gpu);
+
+				log(`Done. GPU tile speedup: ${(cpu / gpu).toFixed(1)}x`);
+			};
+
+			// ------------------------------------------------------------------
+			// Parity
+			// ------------------------------------------------------------------
+			const toImageData = (bitmap, size) => {
+				const canvas = document.createElement('canvas');
+				canvas.width = size;
+				canvas.height = size;
+				const context = canvas.getContext('2d');
+				context.drawImage(bitmap, 0, 0);
+				return { canvas, imageData: context.getImageData(0, 0, size, size) };
+			};
+
+			document.getElementById('runParity').onclick = async () => {
+				const s = settings();
+				const url = baseUrl(s);
+				const tiles = tilesForDomain(s);
+				const tile = tiles[Math.floor(tiles.length / 2)];
+				log(`Parity check on tile ${tile.z}/${tile.x}/${tile.y}…`);
+
+				const cpuTile = await requestTile(OM.omProtocol, url, tile);
+				const gpuTile = await requestTile(OM.omProtocolGpu, url, tile);
+
+				const cpu = toImageData(cpuTile.data, s.tileSize);
+				const gpu = toImageData(gpuTile.data, s.tileSize);
+
+				const diffCanvas = document.createElement('canvas');
+				diffCanvas.width = s.tileSize;
+				diffCanvas.height = s.tileSize;
+				const diffContext = diffCanvas.getContext('2d');
+				const diff = diffContext.createImageData(s.tileSize, s.tileSize);
+
+				let maxDiff = 0;
+				let sumDiff = 0;
+				let differing = 0;
+				const a = cpu.imageData.data;
+				const b = gpu.imageData.data;
+				for (let i = 0; i < a.length; i += 4) {
+					let pixelDiff = 0;
+					for (let c = 0; c < 4; c++) {
+						pixelDiff = Math.max(pixelDiff, Math.abs(a[i + c] - b[i + c]));
+					}
+					maxDiff = Math.max(maxDiff, pixelDiff);
+					sumDiff += pixelDiff;
+					if (pixelDiff > 2) differing++;
+					diff.data[i] = Math.min(255, pixelDiff * 16);
+					diff.data[i + 3] = 255;
+				}
+				diffContext.putImageData(diff, 0, 0);
+
+				const parity = document.getElementById('parity');
+				parity.replaceChildren(cpu.canvas, gpu.canvas, diffCanvas);
+				const pixels = a.length / 4;
+				document.getElementById('parityStats').textContent =
+					`CPU | GPU | diff (x16) — max channel diff ${maxDiff}, ` +
+					`mean ${(sumDiff / pixels).toFixed(3)}, ` +
+					`pixels >2/255: ${((100 * differing) / pixels).toFixed(3)}%`;
+				log('Parity check done.');
+			};
+
+			// ------------------------------------------------------------------
+			// Custom layer FPS
+			// ------------------------------------------------------------------
+			let fpsMap;
+			document.getElementById('runFps').onclick = async () => {
+				const s = settings();
+				if (!fpsMap) {
+					fpsMap = new maplibregl.Map({
+						container: 'fpsmap',
+						style:
+							'https://static-assets.open-meteo.com/map-assets/styles/minimal-planet-maps.json',
+						center: [10, 50],
+						zoom: 4
+					});
+					await new Promise((resolve) => fpsMap.on('load', resolve));
+				}
+				if (fpsMap.getLayer('bench-gpu-layer')) fpsMap.removeLayer('bench-gpu-layer');
+				const layer = new OM.WeatherGpuLayer({ id: 'bench-gpu-layer', opacity: 0.75 });
+				fpsMap.addLayer(layer);
+				log('Loading layer data…');
+				await layer.setUrl(baseUrl(s));
+
+				log('Measuring… (forcing continuous repaints for 3 s)');
+				let frames = 0;
+				const onRender = () => {
+					frames++;
+					fpsMap.triggerRepaint();
+				};
+				fpsMap.on('render', onRender);
+				fpsMap.triggerRepaint();
+				await new Promise((resolve) => setTimeout(resolve, 3000));
+				fpsMap.off('render', onRender);
+				document.getElementById('fpsResult').textContent =
+					`${(frames / 3).toFixed(0)} fps with full-viewport per-pixel ` +
+					`${s.interpolation} interpolation of ${s.domain} (${s.variable})`;
+				log('Done.');
+			};
+		</script>
+	</body>
+</html>

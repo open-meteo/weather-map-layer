@@ -56,6 +56,24 @@ export {
 	BARB_LATTICE
 } from './utils/constants';
 
+// GPU render paths (experimental, see src/gpu/README.md)
+
+export {
+	WeatherGpuLayer,
+	omProtocolGpu,
+	GpuTileRenderer,
+	getSharedTileRenderer,
+	isGpuSupported,
+	loadOmUrl,
+	WeatherGpuRenderer,
+	computeGridUniforms,
+	mercatorBoxMatrix
+} from './gpu/index';
+export type { WeatherGpuLayerOptions, LoadedOmData } from './gpu/index';
+// Exposed for the GPU parity verification (scripts/verify-gpu.mjs): the exact
+// CPU blend the seamless raster/vector paths use.
+export { sampleBlendedValue } from './utils/seamless-sampling';
+
 // Adapters
 
 export { addLeafletProtocolSupport } from './adapters/leaflet';

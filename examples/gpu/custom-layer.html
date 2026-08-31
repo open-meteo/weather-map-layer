@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Weather Map Layer - GPU Custom Layer (Path B)</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
+		<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+		<!-- x-release-please-start-version -->
+		<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.1.0/dist/index.js"></script>
+		<!-- x-release-please-end -->
+		<!-- Local development -->
+		<script>
+			if (location.hostname === 'localhost' || location.href.startsWith('file://')) {
+				document.write('<script src="../../dist/index.js"><\/script>');
+			}
+		</script>
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+			#controls {
+				position: absolute;
+				top: 10px;
+				left: 10px;
+				z-index: 10;
+				background: rgba(255, 255, 255, 0.92);
+				border-radius: 6px;
+				padding: 10px 12px;
+				font: 13px/1.6 sans-serif;
+				box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+				max-width: 270px;
+			}
+			#controls label {
+				display: block;
+			}
+			#controls select,
+			#controls input[type='range'] {
+				width: 130px;
+			}
+			#status {
+				color: #555;
+				font-size: 12px;
+			}
+			#timesteps button {
+				margin: 1px;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<div id="controls">
+			<strong>GPU custom layer (tile-free)</strong>
+			<label>
+				Domain
+				<select id="domain">
+					<option value="dwd_icon" selected>dwd_icon (regular, global)</option>
+					<option value="dwd_icon_seamless">dwd_icon_seamless (composite)</option>
+					<option value="ecmwf_ifs">ecmwf_ifs (reduced gaussian)</option>
+					<option value="ncep_hrrr_conus">ncep_hrrr_conus (LCC projected)</option>
+					<option value="dmi_harmonie_arome_europe">dmi_harmonie_arome_europe (LCC)</option>
+				</select>
+			</label>
+			<label>
+				Variable
+				<select id="variable">
+					<option value="temperature_2m" selected>temperature_2m</option>
+					<option value="cloud_cover">cloud_cover</option>
+					<option value="precipitation">precipitation</option>
+					<option value="wind_gusts_10m">wind_gusts_10m</option>
+				</select>
+			</label>
+			<label>
+				Interpolation
+				<select id="interpolation">
+					<option value="nearest">nearest</option>
+					<option value="linear" selected>linear</option>
+					<option value="cubic">cubic</option>
+					<option value="monotone">monotone</option>
+				</select>
+			</label>
+			<label><input type="checkbox" id="blend" /> Colour blending</label>
+			<label>
+				Opacity
+				<input type="range" id="opacity" min="0" max="100" value="75" />
+			</label>
+			<div>
+				Timestep (in-shader value blend):
+				<div id="timesteps"></div>
+			</div>
+			<div id="status">Loading…</div>
+		</div>
+		<script>
+			// The GPU layer takes the same om:// URLs as the tile protocol; changing
+			// interpolation / colour options is just a uniform change, and stepping
+			// through time blends the data values of both timesteps in the shader.
+			const layer = new OMWeatherMapLayer.WeatherGpuLayer({ opacity: 0.75 });
+
+			const map = new maplibregl.Map({
+				container: 'map',
+				style: 'https://static-assets.open-meteo.com/map-assets/styles/minimal-planet-maps.json',
+				hash: true
+			});
+
+			const status = document.getElementById('status');
+			let hourOffset = 0;
+
+			const buildUrl = () => {
+				const domain = document.getElementById('domain').value;
+				const variable = document.getElementById('variable').value;
+				const interpolation = document.getElementById('interpolation').value;
+				const blend = document.getElementById('blend').checked;
+				const timeStep = hourOffset === 0 ? 'current_time' : `current_time_${hourOffset}H`;
+				return (
+					`om://https://openmeteo.s3.amazonaws.com/data_spatial/${domain}/latest.json` +
+					`?time_step=${timeStep}&variable=${variable}` +
+					`&interpolation=${interpolation}&color_blend=${blend}`
+				);
+			};
+
+			const update = async () => {
+				status.textContent = 'Loading…';
+				const started = performance.now();
+				try {
+					await layer.setUrl(buildUrl());
+					status.textContent = `Loaded in ${Math.round(performance.now() - started)} ms (t+${hourOffset}h)`;
+				} catch (error) {
+					status.textContent = String(error);
+				}
+			};
+
+			const timesteps = document.getElementById('timesteps');
+			for (const h of [0, 1, 2, 3, 4, 6, 9, 12]) {
+				const button = document.createElement('button');
+				button.textContent = `+${h}h`;
+				button.onclick = () => {
+					hourOffset = h;
+					update();
+				};
+				timesteps.appendChild(button);
+			}
+
+			for (const id of ['domain', 'variable', 'interpolation', 'blend']) {
+				document.getElementById(id).addEventListener('change', update);
+			}
+			document.getElementById('opacity').addEventListener('input', (event) => {
+				layer.setOpacity(Number(event.target.value) / 100);
+			});
+
+			map.on('load', () => {
+				map.addLayer(layer, 'waterway-tunnel');
+				update();
+			});
+		</script>
+	</body>
+</html>
