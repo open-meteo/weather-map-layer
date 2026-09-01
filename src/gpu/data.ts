@@ -21,6 +21,13 @@ export interface LoadedOmData {
 	ranges: DimensionRange[];
 }
 
+let warnedPolygonClip = false;
+const warnPolygonClipOnce = (): void => {
+	if (warnedPolygonClip) return;
+	warnedPolygonClip = true;
+	console.warn('gpu: polygon clipping is not supported yet, rendering unclipped');
+};
+
 /** True when the GPU raster path can render this request; the callers fall back to the CPU path otherwise. */
 export const isGpuRenderable = (request: ParsedRequest): boolean => {
 	// Polygon clipping happens in canvas 2D space on the CPU path; only plain
@@ -42,7 +49,9 @@ export const loadOmUrl = async (
 	const request = parseRequest(url, settings);
 
 	if (!isGpuRenderable(request)) {
-		throw new Error('gpu: polygon clipping is not supported yet');
+		// Bounds clipping works in-shader; polygon clipping is not ported yet.
+		// Rendering unclipped (with a warning) beats failing the whole layer.
+		warnPolygonClipOnce();
 	}
 	if (isSeamlessDomain(request.dataOptions.domain)) {
 		// Seamless composites load per sub-layer; see seamless-data.ts.

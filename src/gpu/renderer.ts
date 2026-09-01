@@ -39,6 +39,18 @@ interface ProgramInfo {
 }
 
 /**
+ * A layer's uploaded arrow instances: the renderer can be shared by several
+ * layers on one GL context, so this state lives with the layer. VAOs are
+ * cached per projection variant.
+ */
+export interface ArrowInstances {
+	buffer: WebGLBuffer;
+	capacityBytes: number;
+	count: number;
+	vaos: Map<string, WebGLVertexArrayObject>;
+}
+
+/**
  * The projection uniforms of CustomRenderMethodInput['defaultProjectionData'],
  * feeding the prelude's `projectTile` (mercator, globe and the transition).
  */
@@ -63,6 +75,12 @@ export interface GpuLayerDraw {
 	blendWidthDeg?: number;
 	/** NaN-distance texture (same grid layout as the values) refining the blend edge. */
 	nanTexture?: WebGLTexture;
+	/**
+	 * Previous-timestep values on the same grid. When every layer of a
+	 * multi-layer draw carries one, the whole composite blends temporally by
+	 * `mix` (single-layer draws use GpuDrawOptions.prevTexture instead).
+	 */
+	prevTexture?: WebGLTexture;
 }
 
 export interface GpuDrawOptions {
@@ -129,25 +147,46 @@ export class WeatherGpuRenderer {
 		indexCount: number;
 	} | null = null;
 
-	private arrowPrograms = new Map<string, Omit<ProgramInfo, 'indexCount'>>();
+	private arrowPrograms = new Map<
+		string,
+		{ program: WebGLProgram; uniforms: Map<string, WebGLUniformLocation> }
+	>();
 	private arrowTemplateBuffer: WebGLBuffer | null = null;
-	private arrowInstanceBuffer: WebGLBuffer | null = null;
-	private arrowInstanceCapacity = 0;
-	private arrowInstanceCount = 0;
 
 	// Value textures keyed by the source Float32Array identity: the protocol
 	// state caches one array per variable/timestep, so identity is a stable key.
+	// LRU-evicted by a byte budget: at global views a single O1280 texture is
+	// ~26 MB, and an unbounded count would exhaust VRAM during animation loops
+	// (failed allocations sample as uninitialised-memory noise on real drivers).
 	private valueTextures = new Map<
 		Float32Array,
-		{ texture: WebGLTexture; nx: number; ny: number }
+		{ texture: WebGLTexture; nx: number; ny: number; bytes: number }
 	>();
-	private static readonly VALUE_TEXTURE_CACHE_MAX = 16;
+	private valueTextureBytes = 0;
+	private valueTextureBudget: number;
+	static readonly DEFAULT_TEXTURE_CACHE_MB = 256;
 
 	private lutTextures = new Map<string, LutHandle>();
 	private static readonly LUT_CACHE_MAX = 8;
 
-	constructor(gl: WebGL2RenderingContext) {
+	constructor(gl: WebGL2RenderingContext, options: { textureCacheMb?: number } = {}) {
 		this.gl = gl;
+		this.valueTextureBudget =
+			(options.textureCacheMb ?? WeatherGpuRenderer.DEFAULT_TEXTURE_CACHE_MB) * 1024 * 1024;
+	}
+
+	/** Bytes of cached value textures, the configured budget, and the count. */
+	getMemoryUsage(): { bytes: number; budgetBytes: number; textures: number } {
+		return {
+			bytes: this.valueTextureBytes,
+			budgetBytes: this.valueTextureBudget,
+			textures: this.valueTextures.size
+		};
+	}
+
+	/** Raise (never lower below use) the value-texture budget at runtime. */
+	setTextureBudget(mb: number): void {
+		this.valueTextureBudget = Math.max(this.valueTextureBudget, mb * 1024 * 1024);
 	}
 
 	/** Upload (or reuse) the R32F value texture for a data array. */
@@ -178,23 +217,63 @@ export class WeatherGpuRenderer {
 		}
 		sanitized.fill(MISSING_SENTINEL, n);
 
+		const bytes = texels * 4;
+		// Evict to budget before allocating (never evicting what a current draw
+		// uses: everything a draw binds it fetched via this call in the same
+		// frame, so those entries are the most recent).
+		this.evictValueTextures(this.valueTextureBudget - bytes);
+
+		let texture = this.uploadValueTexture(nx, ny, sanitized);
+		if (!texture) {
+			// Allocation failed (VRAM exhausted): drop the whole cache and retry
+			// once — corrupt sampling from a failed allocation must never persist.
+			this.evictValueTextures(0);
+			texture = this.uploadValueTexture(nx, ny, sanitized);
+			if (!texture) throw new Error(`gpu: value texture allocation failed (${nx}x${ny})`);
+		}
+
+		this.valueTextures.set(values, { texture, nx, ny, bytes });
+		this.valueTextureBytes += bytes;
+		return texture;
+	}
+
+	private uploadValueTexture(nx: number, ny: number, data: Float32Array): WebGLTexture | null {
+		const gl = this.gl;
 		const texture = gl.createTexture();
-		if (!texture) throw new Error('gpu: could not create value texture');
+		if (!texture) return null;
 		gl.bindTexture(gl.TEXTURE_2D, texture);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-		gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, nx, ny, 0, gl.RED, gl.FLOAT, sanitized);
-
-		this.valueTextures.set(values, { texture, nx, ny });
-		if (this.valueTextures.size > WeatherGpuRenderer.VALUE_TEXTURE_CACHE_MAX) {
-			const oldestKey = this.valueTextures.keys().next().value!;
-			const oldest = this.valueTextures.get(oldestKey)!;
-			gl.deleteTexture(oldest.texture);
-			this.valueTextures.delete(oldestKey);
+		// Flush pending errors so the check below attributes to this upload.
+		gl.getError();
+		gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, nx, ny, 0, gl.RED, gl.FLOAT, data);
+		if (gl.getError() !== gl.NO_ERROR) {
+			gl.deleteTexture(texture);
+			return null;
 		}
 		return texture;
+	}
+
+	/**
+	 * A draw binds up to ~9 textures fetched one after another in the same
+	 * frame; the most recent entries must survive eviction or a batch could
+	 * delete a texture it is about to bind. (targetBytes 0 = full clear.)
+	 */
+	private static readonly MIN_RESIDENT_TEXTURES = 12;
+
+	/** Evict least-recently-used value textures until at most `targetBytes` remain. */
+	private evictValueTextures(targetBytes: number): void {
+		const gl = this.gl;
+		const keepCount = targetBytes <= 0 ? 0 : WeatherGpuRenderer.MIN_RESIDENT_TEXTURES;
+		for (const [key, entry] of this.valueTextures) {
+			if (this.valueTextureBytes <= Math.max(0, targetBytes)) break;
+			if (this.valueTextures.size <= keepCount) break;
+			gl.deleteTexture(entry.texture);
+			this.valueTextureBytes -= entry.bytes;
+			this.valueTextures.delete(key);
+		}
 	}
 
 	/** Bake (or reuse) the colour LUT texture for a scale. */
@@ -242,9 +321,11 @@ export class WeatherGpuRenderer {
 	draw(opts: GpuDrawOptions): void {
 		const gl = this.gl;
 		const layers = opts.layers;
+		const multiTemporal = layers.length > 1 && layers.every((layer) => layer.prevTexture);
 		const spec: FragmentShaderSpec = {
 			layers: layers.map((layer, i) => layerSpecOf(layer, i === layers.length - 1)),
-			interpolation: opts.interpolation
+			interpolation: opts.interpolation,
+			temporal: multiTemporal
 		};
 		const info = this.getProgram(spec, opts.projection?.shaderData);
 		const u = (name: string): WebGLUniformLocation | null => info.uniforms.get(name) ?? null;
@@ -308,6 +389,11 @@ export class WeatherGpuRenderer {
 		if (layers.length === 1) {
 			bindTexture('u_valuesPrev', opts.prevTexture ?? layers[0].valuesTexture);
 			gl.uniform1f(u('u_mix'), opts.prevTexture ? (opts.mix ?? 1) : 1);
+		} else if (multiTemporal) {
+			for (let i = 0; i < layers.length; i++) {
+				bindTexture(`u_valuesPrev${i}`, layers[i].prevTexture!);
+			}
+			gl.uniform1f(u('u_mix'), opts.mix ?? 1);
 		}
 
 		const projection = opts.projection;
@@ -358,28 +444,43 @@ export class WeatherGpuRenderer {
 	}
 
 	/**
+	 * Create a per-layer arrow instance store. The renderer may be shared by
+	 * several layers on one GL context, so instances (and their VAOs) belong to
+	 * the layer, not the renderer.
+	 */
+	createArrowInstances(): ArrowInstances {
+		const buffer = this.gl.createBuffer();
+		if (!buffer) throw new Error('gpu: could not create arrow instance buffer');
+		return { buffer, capacityBytes: 0, count: 0, vaos: new Map() };
+	}
+
+	deleteArrowInstances(instances: ArrowInstances): void {
+		const gl = this.gl;
+		gl.deleteBuffer(instances.buffer);
+		for (const vao of instances.vaos.values()) gl.deleteVertexArray(vao);
+		instances.vaos.clear();
+		instances.count = 0;
+	}
+
+	/**
 	 * Upload the instanced arrow states (ARROW_INSTANCE_FLOATS per arrow). The
 	 * buffer persists; call once per data/viewport change, not per frame.
 	 */
-	setArrowInstances(data: Float32Array): void {
+	setArrowInstances(instances: ArrowInstances, data: Float32Array): void {
 		const gl = this.gl;
-		if (!this.arrowInstanceBuffer) {
-			const buffer = gl.createBuffer();
-			if (!buffer) throw new Error('gpu: could not create arrow instance buffer');
-			this.arrowInstanceBuffer = buffer;
-		}
-		gl.bindBuffer(gl.ARRAY_BUFFER, this.arrowInstanceBuffer);
-		if (data.byteLength > this.arrowInstanceCapacity) {
+		gl.bindBuffer(gl.ARRAY_BUFFER, instances.buffer);
+		if (data.byteLength > instances.capacityBytes) {
 			gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
-			this.arrowInstanceCapacity = data.byteLength;
+			instances.capacityBytes = data.byteLength;
 		} else {
 			gl.bufferSubData(gl.ARRAY_BUFFER, 0, data);
 		}
-		this.arrowInstanceCount = data.length / ARROW_INSTANCE_FLOATS;
+		instances.count = data.length / ARROW_INSTANCE_FLOATS;
 	}
 
-	/** Draw the uploaded arrow instances as a screen-space overlay pass. */
+	/** Draw an arrow instance store as a screen-space overlay pass. */
 	drawArrows(opts: {
+		instances: ArrowInstances;
 		projection?: GpuDrawOptions['projection'];
 		matrix?: ArrayLike<number>;
 		/** Icon box size in pixels. */
@@ -395,13 +496,14 @@ export class WeatherGpuRenderer {
 		refStepPx: number;
 		worldOffsets?: number[];
 	}): void {
-		if (this.arrowInstanceCount === 0) return;
+		const instances = opts.instances;
+		if (instances.count === 0) return;
 		const gl = this.gl;
 		const info = this.getArrowProgram(opts.projection?.shaderData);
 		const u = (name: string): WebGLUniformLocation | null => info.uniforms.get(name) ?? null;
 
 		gl.useProgram(info.program);
-		gl.bindVertexArray(info.vao);
+		gl.bindVertexArray(this.getArrowVao(instances, opts.projection?.shaderData));
 
 		if (opts.projection) {
 			const p = opts.projection.data;
@@ -427,7 +529,7 @@ export class WeatherGpuRenderer {
 
 		for (const offset of opts.worldOffsets ?? [0]) {
 			gl.uniform1f(u('u_worldOffset'), offset);
-			gl.drawArraysInstanced(gl.TRIANGLES, 0, ARROW_TEMPLATE.length / 3, this.arrowInstanceCount);
+			gl.drawArraysInstanced(gl.TRIANGLES, 0, ARROW_TEMPLATE.length / 3, instances.count);
 		}
 
 		gl.bindVertexArray(null);
@@ -437,6 +539,7 @@ export class WeatherGpuRenderer {
 		const gl = this.gl;
 		for (const { texture } of this.valueTextures.values()) gl.deleteTexture(texture);
 		this.valueTextures.clear();
+		this.valueTextureBytes = 0;
 		for (const { texture } of this.lutTextures.values()) gl.deleteTexture(texture);
 		this.lutTextures.clear();
 		for (const { program, vao } of this.programs.values()) {
@@ -444,9 +547,8 @@ export class WeatherGpuRenderer {
 			gl.deleteVertexArray(vao);
 		}
 		this.programs.clear();
-		for (const { program, vao } of this.arrowPrograms.values()) {
+		for (const { program } of this.arrowPrograms.values()) {
 			gl.deleteProgram(program);
-			gl.deleteVertexArray(vao);
 		}
 		this.arrowPrograms.clear();
 		if (this.quadBuffer) {
@@ -461,12 +563,6 @@ export class WeatherGpuRenderer {
 		if (this.arrowTemplateBuffer) {
 			gl.deleteBuffer(this.arrowTemplateBuffer);
 			this.arrowTemplateBuffer = null;
-		}
-		if (this.arrowInstanceBuffer) {
-			gl.deleteBuffer(this.arrowInstanceBuffer);
-			this.arrowInstanceBuffer = null;
-			this.arrowInstanceCapacity = 0;
-			this.arrowInstanceCount = 0;
 		}
 	}
 
@@ -581,7 +677,10 @@ export class WeatherGpuRenderer {
 		return info;
 	}
 
-	private getArrowProgram(shaderData?: ProjectionShaderData): Omit<ProgramInfo, 'indexCount'> {
+	private getArrowProgram(shaderData?: ProjectionShaderData): {
+		program: WebGLProgram;
+		uniforms: Map<string, WebGLUniformLocation>;
+	} {
 		const key = shaderData?.variantName ?? 'plain';
 		const cached = this.arrowPrograms.get(key);
 		if (cached) return cached;
@@ -607,17 +706,28 @@ export class WeatherGpuRenderer {
 			if (location) uniforms.set(active.name.replace(/\[0\]$/, ''), location);
 		}
 
+		const info = { program, uniforms };
+		this.arrowPrograms.set(key, info);
+		return info;
+	}
+
+	/** VAO tying a layer's instance buffer to the projection variant's program. */
+	private getArrowVao(
+		instances: ArrowInstances,
+		shaderData?: ProjectionShaderData
+	): WebGLVertexArrayObject {
+		const key = shaderData?.variantName ?? 'plain';
+		const cached = instances.vaos.get(key);
+		if (cached) return cached;
+
+		const gl = this.gl;
+		const { program } = this.getArrowProgram(shaderData);
 		if (!this.arrowTemplateBuffer) {
 			const buffer = gl.createBuffer();
 			if (!buffer) throw new Error('gpu: could not create arrow template buffer');
 			gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
 			gl.bufferData(gl.ARRAY_BUFFER, ARROW_TEMPLATE, gl.STATIC_DRAW);
 			this.arrowTemplateBuffer = buffer;
-		}
-		if (!this.arrowInstanceBuffer) {
-			const buffer = gl.createBuffer();
-			if (!buffer) throw new Error('gpu: could not create arrow instance buffer');
-			this.arrowInstanceBuffer = buffer;
 		}
 
 		const vao = gl.createVertexArray();
@@ -629,7 +739,7 @@ export class WeatherGpuRenderer {
 		gl.vertexAttribPointer(aTemplate, 3, gl.FLOAT, false, 0, 0);
 
 		// Per-instance state: anchor + previous/current samples + alphas.
-		gl.bindBuffer(gl.ARRAY_BUFFER, this.arrowInstanceBuffer);
+		gl.bindBuffer(gl.ARRAY_BUFFER, instances.buffer);
 		const stride = ARROW_INSTANCE_FLOATS * 4;
 		const instanceAttribute = (name: string, size: number, offsetFloats: number): void => {
 			const location = gl.getAttribLocation(program, name);
@@ -644,9 +754,8 @@ export class WeatherGpuRenderer {
 		instanceAttribute('a_alpha', 2, 10);
 		gl.bindVertexArray(null);
 
-		const info = { program, vao, uniforms };
-		this.arrowPrograms.set(key, info);
-		return info;
+		instances.vaos.set(key, vao);
+		return vao;
 	}
 
 	private compile(type: number, source: string): WebGLShader {

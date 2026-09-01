@@ -43,6 +43,12 @@ export interface FragmentShaderSpec {
 	/** Finest-first, at least one. A plain (non-seamless) domain is one layer. */
 	layers: LayerShaderSpec[];
 	interpolation: InterpolationMethod;
+	/**
+	 * Multi-layer temporal blend: every layer carries a previous-timestep
+	 * texture and the composite of both timesteps is mixed by u_mix. Single
+	 * layers always compile the temporal path.
+	 */
+	temporal?: boolean;
 }
 
 export const shaderKey = (spec: FragmentShaderSpec): string =>
@@ -51,7 +57,7 @@ export const shaderKey = (spec: FragmentShaderSpec): string =>
 			(l) =>
 				`${l.gridKind}:${l.projectionName ?? ''}:${l.blends ? 'b' : ''}${l.hasNanField ? 'n' : ''}`
 		)
-		.join('|') + `|${spec.interpolation}`;
+		.join('|') + `|${spec.interpolation}${spec.temporal ? '|t' : ''}`;
 
 /**
  * MapLibre's per-projection shader chunk for custom layers
@@ -725,35 +731,54 @@ export const fragmentSource = (spec: FragmentShaderSpec): string => {
 	// Bottom-up unroll of the recursive seamless blend (seamless-sampling.ts
 	// blendValue): the coarsest layer seeds the value, each finer layer that
 	// covers the point mixes over it with its edge weight. A single plain layer
-	// reduces to one sample.
+	// reduces to one sample. Parameterised by the samplers so the temporal path
+	// can evaluate the same composite for the previous timestep's textures.
+	const texParams = layers.map((_, i) => `, sampler2D tex${i}`).join('');
 	const blendLines: string[] = [];
 	for (let i = layers.length - 1; i >= 0; i--) {
 		const weight =
 			i === layers.length - 1 || !layers[i].blends ? '1.0' : `edgeWeight${i}(lat, lon)`;
 		blendLines.push(`	{
-		float v = sampleValue${i}(u_values${i}, lat, lon);
+		float v = sampleValue${i}(tex${i}, lat, lon);
 		if (!isMissing(v)) {
 			value = isMissing(value) ? v : mix(value, v, ${weight});
 		}
 	}`);
 	}
+	const blendFunction = `
+float blendedValue(float lat, float lon${texParams}) {
+	float value = MISSING;
+${blendLines.join('\n')}
+	return value;
+}`;
 
-	// In-shader temporal blend between two timesteps of the same grid; only
-	// generated for single-layer configurations.
-	const temporal = single
-		? `
+	// In-shader temporal blend between two timesteps on the same grids.
+	const multiTemporal = !single && spec.temporal === true;
+	const currentArgs = layers.map((_, i) => `, u_values${i}`).join('');
+	const prevArgs = single ? ', u_valuesPrev' : layers.map((_, i) => `, u_valuesPrev${i}`).join('');
+	const temporal =
+		single || multiTemporal
+			? `
 	if (u_mix < 1.0) {
-		float vPrev = sampleValue0(u_valuesPrev, lat, lon);
+		float vPrev = blendedValue(lat, lon${prevArgs});
 		if (!isMissing(value) && !isMissing(vPrev)) {
 			value = mix(vPrev, value, u_mix);
 		} else if (isMissing(value)) {
 			value = vPrev;
 		}
 	}`
-		: '';
+			: '';
+
+	const prevUniforms = single
+		? 'uniform sampler2D u_valuesPrev;\nuniform float u_mix; // 0 = previous, 1 = current'
+		: multiTemporal
+			? layers.map((_, i) => `uniform sampler2D u_valuesPrev${i};`).join('\n') +
+				'\nuniform float u_mix; // 0 = previous, 1 = current'
+			: '';
 
 	parts.push(`
-${single ? 'uniform sampler2D u_valuesPrev;\nuniform float u_mix; // 0 = previous, 1 = current' : ''}
+${prevUniforms}
+${blendFunction}
 
 uniform sampler2D u_lut;
 // (min, 1 / (max - min), texcoord offset, texcoord scale) — the last two map
@@ -779,8 +804,7 @@ void main() {
 		return;
 	}
 
-	float value = MISSING;
-${blendLines.join('\n')}
+	float value = blendedValue(lat, lon${currentArgs});
 ${temporal}
 	if (isMissing(value)) {
 		fragColor = vec4(0.0);

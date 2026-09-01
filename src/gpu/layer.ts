@@ -46,7 +46,7 @@ import { loadOmUrl } from './data';
 import { computeGridUniforms } from './grid-uniforms';
 import type { GpuGridUniforms } from './grid-uniforms';
 import { WeatherGpuRenderer } from './renderer';
-import type { GpuDrawOptions, GpuLayerDraw } from './renderer';
+import type { ArrowInstances, GpuDrawOptions, GpuLayerDraw } from './renderer';
 import { activeSeamlessLayers, loadSeamlessLayer } from './seamless-data';
 import type { GpuSeamlessLayerData } from './seamless-data';
 
@@ -73,6 +73,12 @@ export interface WeatherGpuLayerOptions {
 	fadeMs?: number;
 	/** Draw the colour-mapped raster field. Disable for an arrows-only layer. @default true */
 	drawRaster?: boolean;
+	/**
+	 * Byte budget (in MB) for cached value textures in VRAM. More budget keeps
+	 * more timesteps resident, so animation loops replay without re-uploads.
+	 * @default 256
+	 */
+	textureCacheMb?: number;
 }
 
 interface RenderStyle {
@@ -107,6 +113,42 @@ interface SeamlessFrame extends RenderStyle {
 	samplerKey?: string;
 }
 
+/**
+ * One renderer per GL context, shared by every WeatherGpuLayer on the map:
+ * programs, LUTs and value textures dedupe across layers (a raster slot and an
+ * arrow slot of the same source reuse one texture), and the VRAM budget is a
+ * single global figure instead of one per layer.
+ */
+const sharedRenderers = new Map<
+	WebGL2RenderingContext,
+	{ renderer: WeatherGpuRenderer; refs: number }
+>();
+
+const acquireSharedRenderer = (
+	gl: WebGL2RenderingContext,
+	textureCacheMb?: number
+): WeatherGpuRenderer => {
+	let entry = sharedRenderers.get(gl);
+	if (!entry) {
+		entry = { renderer: new WeatherGpuRenderer(gl, { textureCacheMb }), refs: 0 };
+		sharedRenderers.set(gl, entry);
+	} else if (textureCacheMb !== undefined) {
+		entry.renderer.setTextureBudget(textureCacheMb);
+	}
+	entry.refs++;
+	return entry.renderer;
+};
+
+const releaseSharedRenderer = (gl: WebGL2RenderingContext): void => {
+	const entry = sharedRenderers.get(gl);
+	if (!entry) return;
+	entry.refs--;
+	if (entry.refs <= 0) {
+		entry.renderer.dispose();
+		sharedRenderers.delete(gl);
+	}
+};
+
 export class WeatherGpuLayer implements CustomLayerInterface {
 	id: string;
 	type = 'custom' as const;
@@ -116,9 +158,12 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 	private opacity: number;
 	private fadeMs: number;
 	private drawRaster: boolean;
+	private textureCacheMb: number | undefined;
 
 	private map: MapLibreMap | undefined;
 	private renderer: WeatherGpuRenderer | undefined;
+	private rendererGl: WebGL2RenderingContext | undefined;
+	private arrowInstances: ArrowInstances | undefined;
 
 	private current: PlainFrame | undefined;
 	private previous: Pick<PlainFrame, 'values' | 'gridUniforms'> | undefined;
@@ -132,6 +177,12 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 	 * while the finer layers reload.
 	 */
 	private pendingSeamless: SeamlessFrame | undefined;
+	/**
+	 * Previous-timestep values per sub-domain: when a seamless commit replaces a
+	 * compatible composite (same domain/variable/grids), both composites blend
+	 * temporally in-shader like the single-layer path.
+	 */
+	private seamlessPrev: Map<string, { values: Float32Array; nx: number; ny: number }> | undefined;
 
 	private arrows: GpuArrowConfig | undefined;
 	/** Sampler of the outgoing frame, for rebuilding instances mid-blend. */
@@ -149,6 +200,12 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		this.opacity = options.opacity ?? 1;
 		this.fadeMs = options.fadeMs ?? 250;
 		this.drawRaster = options.drawRaster ?? true;
+		this.textureCacheMb = options.textureCacheMb;
+	}
+
+	/** VRAM used/budgeted by this layer's cached value textures. */
+	getMemoryUsage(): { bytes: number; budgetBytes: number; textures: number } {
+		return this.renderer?.getMemoryUsage() ?? { bytes: 0, budgetBytes: 0, textures: 0 };
 	}
 
 	/**
@@ -200,9 +257,12 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			if (sequence !== this.loadSequence) return null;
 			return () => {
 				if (sequence !== this.loadSequence) return;
+				const old = this.seamless;
+				this.seamlessPrev = this.seamlessPrevOf(old, frame);
+				this.arrowPrevSampler = this.seamlessPrev ? old?.sampler : undefined;
+				if (this.seamlessPrev) this.fadeStart = performance.now();
 				this.current = undefined;
 				this.previous = undefined;
-				this.arrowPrevSampler = undefined;
 				this.seamless = frame;
 				if (this.pendingSeamless === frame) this.pendingSeamless = undefined;
 				this.arrowGeneration++;
@@ -299,11 +359,19 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			throw new Error('gpu: WeatherGpuLayer requires a WebGL2 map context');
 		}
 		this.map = map;
-		this.renderer = new WeatherGpuRenderer(gl);
+		this.rendererGl = gl;
+		this.renderer = acquireSharedRenderer(gl, this.textureCacheMb);
 	}
 
 	onRemove(): void {
-		this.renderer?.dispose();
+		if (this.renderer && this.arrowInstances) {
+			this.renderer.deleteArrowInstances(this.arrowInstances);
+			this.arrowInstances = undefined;
+		}
+		if (this.rendererGl) {
+			releaseSharedRenderer(this.rendererGl);
+			this.rendererGl = undefined;
+		}
 		this.renderer = undefined;
 		this.map = undefined;
 	}
@@ -382,6 +450,17 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		// kicks its load; the frame renders with whatever is loaded meanwhile.
 		void this.ensureSeamlessLoads(frame, zoom);
 
+		let mix = 1;
+		if (this.seamlessPrev) {
+			mix = Math.min(1, (performance.now() - this.fadeStart) / this.fadeMs);
+			if (mix < 1) {
+				this.map!.triggerRepaint(); // keep animating the blend
+			} else {
+				this.seamlessPrev = undefined;
+				this.arrowPrevSampler = undefined;
+			}
+		}
+
 		const active = activeSeamlessLayers(frame.domain, zoom);
 		const drawLayers: GpuLayerDraw[] = [];
 		const drawnData: GpuSeamlessLayerData[] = [];
@@ -391,22 +470,32 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			if (entry?.status !== 'loaded' || !entry.data) continue;
 			const data = entry.data;
 			const g = data.gridUniforms;
+			const prev = mix < 1 ? this.seamlessPrev?.get(layerDef.domainValue) : undefined;
 			drawLayers.push({
 				gridUniforms: g,
 				valuesTexture: renderer.getValueTexture(data.values, g.nx, g.ny),
 				blendWidthDeg: data.blendWidthDeg,
-				nanTexture: data.nanField ? renderer.getValueTexture(data.nanField, g.nx, g.ny) : undefined
+				nanTexture: data.nanField ? renderer.getValueTexture(data.nanField, g.nx, g.ny) : undefined,
+				prevTexture: prev ? renderer.getValueTexture(prev.values, prev.nx, prev.ny) : undefined
 			});
 			drawnData.push(data);
 			finestScaleFactor ??= data.scaleFactor;
 		}
 		if (drawLayers.length === 0) return;
 
+		// All-or-nothing: a sub-layer without a previous state (e.g. loaded after
+		// the commit) disables the temporal blend for the whole composite.
+		if (!drawLayers.every((layer) => layer.prevTexture !== undefined)) {
+			for (const layer of drawLayers) layer.prevTexture = undefined;
+			mix = 1;
+		}
+
 		if (this.drawRaster) {
 			renderer.draw({
 				projection,
 				layers: drawLayers,
 				interpolation: frame.interpolation,
+				mix,
 				lut: renderer.getLut(frame.colorScale, frame.colorBlend),
 				// Same convention as the CPU worker: the primary (finest) layer's
 				// quantisation step drives the colour threshold offset.
@@ -419,8 +508,34 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 
 		if (this.arrows) {
 			this.updateSeamlessSampler(frame, drawnData);
-			this.drawArrowPass(gl, projection, frame.sampler, 1, frame.clipBounds);
+			this.drawArrowPass(gl, projection, frame.sampler, mix, frame.clipBounds);
 		}
+	}
+
+	/**
+	 * Previous-timestep values per sub-domain when two composites can blend:
+	 * same seamless domain, same variable, and every loaded sub-layer of the
+	 * new frame has an old counterpart on identical grid geometry.
+	 */
+	private seamlessPrevOf(
+		old: SeamlessFrame | undefined,
+		next: SeamlessFrame
+	): Map<string, { values: Float32Array; nx: number; ny: number }> | undefined {
+		if (!old || this.fadeMs <= 0) return undefined;
+		if (old.domain.value !== next.domain.value) return undefined;
+		if (old.request.dataOptions.variable !== next.request.dataOptions.variable) return undefined;
+
+		const uniformsKey = (g: GpuGridUniforms): string => JSON.stringify({ ...g, quad: undefined });
+		const prev = new Map<string, { values: Float32Array; nx: number; ny: number }>();
+		for (const [domainValue, entry] of next.entries) {
+			if (entry.status !== 'loaded' || !entry.data) continue;
+			const oldEntry = old.entries.get(domainValue);
+			if (oldEntry?.status !== 'loaded' || !oldEntry.data) return undefined;
+			const g = oldEntry.data.gridUniforms;
+			if (uniformsKey(entry.data.gridUniforms) !== uniformsKey(g)) return undefined;
+			prev.set(domainValue, { values: oldEntry.data.values, nx: g.nx, ny: g.ny });
+		}
+		return prev.size > 0 ? prev : undefined;
 	}
 
 	/** Rebuild the blended wind sampler when the drawn sub-layer set changes. */
@@ -474,15 +589,18 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		};
 		const anchors = buildArrowAnchors(view, map.getZoom(), config.spacingPx, clipBounds);
 		const instanceKey = `${anchors.key}#${this.arrowGeneration}#${mix < 1 ? 'blend' : 'still'}`;
+		this.arrowInstances ??= renderer.createArrowInstances();
 		if (instanceKey !== this.arrowInstanceKey) {
 			this.arrowInstanceKey = instanceKey;
 			renderer.setArrowInstances(
+				this.arrowInstances,
 				buildArrowInstances(anchors, sampler, this.arrowPrevSampler, config.levels)
 			);
 		}
 
 		const pixelRatio = map.getPixelRatio();
 		renderer.drawArrows({
+			instances: this.arrowInstances,
 			projection,
 			sizePx: config.sizePx,
 			color: config.color,

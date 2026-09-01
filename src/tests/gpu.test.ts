@@ -55,6 +55,20 @@ describe('gpu shader source', () => {
 		expect(source).not.toContain('u_mix'); // temporal blend is single-layer only
 	});
 
+	it('compiles a temporal variant of the multi-layer seamless shader', () => {
+		const layers: FragmentShaderSpec['layers'] = [
+			{ gridKind: 'regular', blends: true },
+			{ gridKind: 'regular' }
+		];
+		const still = fragmentSource({ layers, interpolation: 'linear' });
+		expect(still).not.toContain('u_mix');
+
+		const temporal = fragmentSource({ layers, interpolation: 'linear', temporal: true });
+		expect(temporal).toContain('u_valuesPrev0');
+		expect(temporal).toContain('u_valuesPrev1');
+		expect(temporal).toContain('u_mix');
+	});
+
 	it('builds the vertex shader around the map projection prelude', () => {
 		const plain = vertexSource();
 		expect(plain).toContain('u_matrix');
