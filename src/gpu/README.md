@@ -69,8 +69,11 @@ dropping the tile/bitmap machinery is worth.
   layers load lazily per zoom level with the same viewport/lead-time gates as
   the CPU handler. Path A (parked) keeps its CPU fallback for seamless.
 - Clipping: bounds only; polygon clipping falls back to CPU (path A).
-- **Globe projection**: path B renders via the mercator fallback matrix and
-  warns; a globe shader variant is a follow-up.
+- **Globe projection**: path B compiles its vertex stage around MapLibre's
+  per-projection `shaderData` prelude (`projectTile`), so mercator, globe and
+  the transition all render natively; the quad is a 128×128 mesh so it curves
+  around the sphere. Data poleward of the mercator clamp (±85.05°) leaves the
+  polar caps empty on the globe.
 - Banded (non-blend) colour scales sample a 2048-texel LUT with NEAREST, so
   band edges are quantised to `range/2048` — visually identical in practice,
   but an exact in-shader breakpoint search is the precise fix.

@@ -54,19 +54,22 @@ export const shaderKey = (spec: FragmentShaderSpec): string =>
 		.join('|') + `|${spec.interpolation}`;
 
 /**
- * Shared vertex shader: a unit quad stretched over the composite's mercator
- * rectangle. The varying carries mercator coordinates of the base world copy
- * (world wrapping only offsets the clip-space position), so the fragment
- * shader always sees continuous longitudes.
+ * MapLibre's per-projection shader chunk for custom layers
+ * (CustomRenderMethodInput['shaderData']): a vertex prelude declaring
+ * `projectTile(vec2 mercator01)` plus the matching defines. Compiled shaders
+ * are cached per `variantName` (it changes whenever the prelude does).
  */
-export const VERTEX_SOURCE = `#version 300 es
-precision highp float;
+export interface ProjectionShaderData {
+	variantName: string;
+	vertexShaderPrelude: string;
+	define: string;
+}
 
+const VERTEX_BODY = `
 in vec2 a_uv;
 
 // Quad corners in mercator [0..1] space: (x0, y0) top-left, (x1, y1) bottom-right.
 uniform vec4 u_quad;
-uniform mat4 u_matrix;
 // Whole-world offset for antimeridian copies (-1, 0, +1 worlds).
 uniform float u_worldOffset;
 
@@ -75,9 +78,41 @@ out vec2 v_mercator;
 void main() {
 	vec2 pos = mix(u_quad.xy, u_quad.zw, a_uv);
 	v_mercator = pos;
-	gl_Position = u_matrix * vec4(pos.x + u_worldOffset, pos.y, 0.0, 1.0);
+	gl_Position = projectTile(vec2(pos.x + u_worldOffset, pos.y));
 }
 `;
+
+/**
+ * Vertex shader over the composite's mercator rectangle. The varying carries
+ * mercator coordinates of the base world copy (world wrapping only offsets the
+ * clip-space position), so the fragment shader always sees continuous
+ * longitudes.
+ *
+ * With MapLibre shaderData, positions go through the map's own `projectTile`
+ * (mercator, globe and the transition between them); the geometry must then be
+ * a subdivided mesh so it can curve around the sphere. Without it, a plain
+ * matrix multiply serves the tile renderer and tests.
+ */
+export const vertexSource = (shaderData?: ProjectionShaderData): string => {
+	if (shaderData) {
+		return `#version 300 es
+${shaderData.vertexShaderPrelude}
+${shaderData.define}
+${VERTEX_BODY}`;
+	}
+	return `#version 300 es
+precision highp float;
+
+uniform mat4 u_matrix;
+
+vec4 projectTile(vec2 pos) {
+	return u_matrix * vec4(pos, 0.0, 1.0);
+}
+${VERTEX_BODY}`;
+};
+
+/** The prelude-free variant (tile renderer, tests). */
+export const VERTEX_SOURCE = vertexSource();
 
 // ─── Shared building blocks ──────────────────────────────────────────────────
 

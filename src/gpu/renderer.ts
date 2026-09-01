@@ -12,12 +12,12 @@ import { buildColorLut, colorLutKey } from './color-lut';
 import type { GpuGridUniforms } from './grid-uniforms';
 import {
 	MISSING_SENTINEL,
-	VERTEX_SOURCE,
 	fragmentSource,
 	layerUniformNames,
-	shaderKey
+	shaderKey,
+	vertexSource
 } from './shader-source';
-import type { FragmentShaderSpec } from './shader-source';
+import type { FragmentShaderSpec, ProjectionShaderData } from './shader-source';
 
 import type { Bounds, InterpolationMethod, RenderableColorScale } from '../types';
 
@@ -28,6 +28,20 @@ interface ProgramInfo {
 	vao: WebGLVertexArrayObject;
 	/** All active uniform locations, by name. */
 	uniforms: Map<string, WebGLUniformLocation>;
+	/** Mesh variants draw indexed triangles; the plain variant a quad strip. */
+	indexCount: number;
+}
+
+/**
+ * The projection uniforms of CustomRenderMethodInput['defaultProjectionData'],
+ * feeding the prelude's `projectTile` (mercator, globe and the transition).
+ */
+export interface GpuProjectionData {
+	mainMatrix: ArrayLike<number>;
+	fallbackMatrix: ArrayLike<number>;
+	tileMercatorCoords: [number, number, number, number];
+	clippingPlane: [number, number, number, number];
+	projectionTransition: number;
 }
 
 export interface LutHandle {
@@ -46,8 +60,19 @@ export interface GpuLayerDraw {
 }
 
 export interface GpuDrawOptions {
-	/** Column-major 4x4 matrix mapping mercator [0..1] coordinates to clip space. */
-	matrix: ArrayLike<number>;
+	/**
+	 * Column-major 4x4 matrix mapping mercator [0..1] coordinates to clip space.
+	 * Ignored when `projection` is set (the map's own projectTile runs instead).
+	 */
+	matrix?: ArrayLike<number>;
+	/**
+	 * MapLibre custom-layer projection support: the per-projection vertex prelude
+	 * and its uniforms. Renders correctly on mercator, globe and the transition.
+	 */
+	projection?: {
+		shaderData: ProjectionShaderData;
+		data: GpuProjectionData;
+	};
 	/** Finest-first; a plain (non-seamless) domain passes exactly one. */
 	layers: GpuLayerDraw[];
 	interpolation: InterpolationMethod;
@@ -92,6 +117,11 @@ export class WeatherGpuRenderer {
 	private gl: WebGL2RenderingContext;
 	private programs = new Map<string, ProgramInfo>();
 	private quadBuffer: WebGLBuffer | null = null;
+	private meshBuffers: {
+		vertices: WebGLBuffer;
+		indices: WebGLBuffer;
+		indexCount: number;
+	} | null = null;
 
 	// Value textures keyed by the source Float32Array identity: the protocol
 	// state caches one array per variable/timestep, so identity is a stable key.
@@ -204,7 +234,7 @@ export class WeatherGpuRenderer {
 			layers: layers.map((layer, i) => layerSpecOf(layer, i === layers.length - 1)),
 			interpolation: opts.interpolation
 		};
-		const info = this.getProgram(spec);
+		const info = this.getProgram(spec, opts.projection?.shaderData);
 		const u = (name: string): WebGLUniformLocation | null => info.uniforms.get(name) ?? null;
 
 		gl.useProgram(info.program);
@@ -268,7 +298,21 @@ export class WeatherGpuRenderer {
 			gl.uniform1f(u('u_mix'), opts.prevTexture ? (opts.mix ?? 1) : 1);
 		}
 
-		gl.uniformMatrix4fv(u('u_matrix'), false, opts.matrix as Float32List);
+		const projection = opts.projection;
+		if (projection) {
+			const p = projection.data;
+			gl.uniformMatrix4fv(u('u_projection_matrix'), false, p.mainMatrix as Float32List);
+			gl.uniformMatrix4fv(
+				u('u_projection_fallback_matrix'),
+				false,
+				p.fallbackMatrix as Float32List
+			);
+			gl.uniform4f(u('u_projection_tile_mercator_coords'), ...p.tileMercatorCoords);
+			gl.uniform4f(u('u_projection_clipping_plane'), ...p.clippingPlane);
+			gl.uniform1f(u('u_projection_transition'), p.projectionTransition);
+		} else {
+			gl.uniformMatrix4fv(u('u_matrix'), false, opts.matrix as Float32List);
+		}
 		const quad = opts.quad ?? unionQuad(layers.map((layer) => layer.gridUniforms.quad));
 		gl.uniform4f(u('u_quad'), quad[0], quad[1], quad[2], quad[3]);
 
@@ -291,7 +335,11 @@ export class WeatherGpuRenderer {
 
 		for (const offset of opts.worldOffsets ?? [0]) {
 			gl.uniform1f(u('u_worldOffset'), offset);
-			gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+			if (info.indexCount > 0) {
+				gl.drawElements(gl.TRIANGLES, info.indexCount, gl.UNSIGNED_INT, 0);
+			} else {
+				gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+			}
 		}
 
 		gl.bindVertexArray(null);
@@ -312,6 +360,11 @@ export class WeatherGpuRenderer {
 			gl.deleteBuffer(this.quadBuffer);
 			this.quadBuffer = null;
 		}
+		if (this.meshBuffers) {
+			gl.deleteBuffer(this.meshBuffers.vertices);
+			gl.deleteBuffer(this.meshBuffers.indices);
+			this.meshBuffers = null;
+		}
 	}
 
 	private getQuadBuffer(): WebGLBuffer {
@@ -325,15 +378,65 @@ export class WeatherGpuRenderer {
 		return buffer;
 	}
 
-	private getProgram(spec: FragmentShaderSpec): ProgramInfo {
-		const key = shaderKey(spec);
+	/**
+	 * Subdivision of the quad for projectTile variants: the globe projection is
+	 * non-linear, so the rectangle must be a mesh to curve around the sphere.
+	 * 128 cells across the whole world keep the silhouette smooth at low zoom.
+	 */
+	private static readonly MESH_N = 128;
+
+	private getMeshBuffers(): { vertices: WebGLBuffer; indices: WebGLBuffer; indexCount: number } {
+		if (this.meshBuffers) return this.meshBuffers;
+		const gl = this.gl;
+		const n = WeatherGpuRenderer.MESH_N;
+
+		const vertices = new Float32Array((n + 1) * (n + 1) * 2);
+		let k = 0;
+		for (let j = 0; j <= n; j++) {
+			for (let i = 0; i <= n; i++) {
+				vertices[k++] = i / n;
+				vertices[k++] = j / n;
+			}
+		}
+		const indices = new Uint32Array(n * n * 6);
+		k = 0;
+		for (let j = 0; j < n; j++) {
+			for (let i = 0; i < n; i++) {
+				const a = j * (n + 1) + i;
+				const b = a + 1;
+				const c = a + n + 1;
+				const d = c + 1;
+				indices[k++] = a;
+				indices[k++] = c;
+				indices[k++] = b;
+				indices[k++] = b;
+				indices[k++] = c;
+				indices[k++] = d;
+			}
+		}
+
+		const vertexBuffer = gl.createBuffer();
+		const indexBuffer = gl.createBuffer();
+		if (!vertexBuffer || !indexBuffer) throw new Error('gpu: could not create mesh buffers');
+		gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+		gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+		gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+		this.meshBuffers = { vertices: vertexBuffer, indices: indexBuffer, indexCount: k };
+		return this.meshBuffers;
+	}
+
+	private getProgram(spec: FragmentShaderSpec, shaderData?: ProjectionShaderData): ProgramInfo {
+		const key = `${shaderKey(spec)}|${shaderData?.variantName ?? 'plain'}`;
 		const cached = this.programs.get(key);
 		if (cached) return cached;
 
 		const gl = this.gl;
 		const program = gl.createProgram();
 		if (!program) throw new Error('gpu: could not create program');
-		gl.attachShader(program, this.compile(gl.VERTEX_SHADER, VERTEX_SOURCE));
+		gl.attachShader(program, this.compile(gl.VERTEX_SHADER, vertexSource(shaderData)));
 		gl.attachShader(program, this.compile(gl.FRAGMENT_SHADER, fragmentSource(spec)));
 		gl.linkProgram(program);
 		if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
@@ -356,13 +459,21 @@ export class WeatherGpuRenderer {
 		const vao = gl.createVertexArray();
 		if (!vao) throw new Error('gpu: could not create VAO');
 		gl.bindVertexArray(vao);
-		gl.bindBuffer(gl.ARRAY_BUFFER, this.getQuadBuffer());
+		let indexCount = 0;
+		if (shaderData) {
+			const mesh = this.getMeshBuffers();
+			gl.bindBuffer(gl.ARRAY_BUFFER, mesh.vertices);
+			gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, mesh.indices);
+			indexCount = mesh.indexCount;
+		} else {
+			gl.bindBuffer(gl.ARRAY_BUFFER, this.getQuadBuffer());
+		}
 		const aUv = gl.getAttribLocation(program, 'a_uv');
 		gl.enableVertexAttribArray(aUv);
 		gl.vertexAttribPointer(aUv, 2, gl.FLOAT, false, 0, 0);
 		gl.bindVertexArray(null);
 
-		const info: ProgramInfo = { program, vao, uniforms };
+		const info: ProgramInfo = { program, vao, uniforms, indexCount };
 		this.programs.set(key, info);
 		return info;
 	}

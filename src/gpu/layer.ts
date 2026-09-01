@@ -34,7 +34,7 @@ import { loadOmUrl } from './data';
 import { computeGridUniforms } from './grid-uniforms';
 import type { GpuGridUniforms } from './grid-uniforms';
 import { WeatherGpuRenderer } from './renderer';
-import type { GpuLayerDraw } from './renderer';
+import type { GpuDrawOptions, GpuLayerDraw } from './renderer';
 import { activeSeamlessLayers, loadSeamlessLayer } from './seamless-data';
 import type { GpuSeamlessLayerData } from './seamless-data';
 
@@ -114,7 +114,6 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 
 	/** Guards against out-of-order setUrl loads; only the latest wins. */
 	private loadSequence = 0;
-	private warnedGlobe = false;
 
 	constructor(options: WeatherGpuLayerOptions = {}) {
 		this.id = options.id ?? 'weather-gpu-layer';
@@ -236,26 +235,21 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 	render(_gl: WebGLRenderingContext | WebGL2RenderingContext, args: CustomRenderMethodInput): void {
 		if (!this.renderer || !this.map) return;
 
-		const projectionData = args.defaultProjectionData;
-		// Globe rendering needs the projection-specific shader prelude; until that
-		// is implemented the mercator fallback matrix keeps the transition usable.
-		let matrix = projectionData.mainMatrix;
-		if (projectionData.projectionTransition > 0) {
-			matrix = projectionData.fallbackMatrix;
-			if (!this.warnedGlobe) {
-				this.warnedGlobe = true;
-				console.warn('WeatherGpuLayer: globe projection is not supported yet, rendering flat');
-			}
-		}
+		// The map's own projectTile prelude renders mercator, globe and the
+		// transition between them; the fragment shader is projection-agnostic.
+		const projection: GpuDrawOptions['projection'] = {
+			shaderData: args.shaderData,
+			data: args.defaultProjectionData
+		};
 
 		if (this.seamless) {
-			this.renderSeamless(matrix, this.seamless);
+			this.renderSeamless(projection, this.seamless);
 		} else if (this.current) {
-			this.renderPlain(matrix, this.current);
+			this.renderPlain(projection, this.current);
 		}
 	}
 
-	private renderPlain(matrix: ArrayLike<number>, frame: PlainFrame): void {
+	private renderPlain(projection: GpuDrawOptions['projection'], frame: PlainFrame): void {
 		const renderer = this.renderer!;
 
 		let mix = 1;
@@ -273,7 +267,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 
 		const g = frame.gridUniforms;
 		renderer.draw({
-			matrix,
+			projection,
 			layers: [
 				{
 					gridUniforms: g,
@@ -287,11 +281,11 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			halfQuantum: frame.halfQuantum,
 			opacity: this.opacity,
 			clipBounds: frame.clipBounds,
-			worldOffsets: this.worldOffsets()
+			worldOffsets: this.worldOffsets(projection)
 		});
 	}
 
-	private renderSeamless(matrix: ArrayLike<number>, frame: SeamlessFrame): void {
+	private renderSeamless(projection: GpuDrawOptions['projection'], frame: SeamlessFrame): void {
 		const renderer = this.renderer!;
 		const zoom = this.map!.getZoom();
 
@@ -318,7 +312,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		if (drawLayers.length === 0) return;
 
 		renderer.draw({
-			matrix,
+			projection,
 			layers: drawLayers,
 			interpolation: frame.interpolation,
 			lut: renderer.getLut(frame.colorScale, frame.colorBlend),
@@ -327,7 +321,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			halfQuantum: computeHalfQuantum(finestScaleFactor),
 			opacity: this.opacity,
 			clipBounds: frame.clipBounds,
-			worldOffsets: this.worldOffsets()
+			worldOffsets: this.worldOffsets(projection)
 		});
 	}
 
@@ -368,7 +362,10 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 	}
 
 	/** World copies needed to cover the viewport across the antimeridian. */
-	private worldOffsets(): number[] {
+	private worldOffsets(projection: GpuDrawOptions['projection']): number[] {
+		// On the globe (and during the transition) x wraps around the sphere, so a
+		// world copy would draw over the base world and double the blended alpha.
+		if (projection && projection.data.projectionTransition > 0) return [0];
 		if (!this.map) return [0];
 		const bounds = this.map.getBounds();
 		const first = Math.floor((bounds.getWest() + 180) / 360);

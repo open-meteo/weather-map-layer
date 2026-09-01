@@ -12,5 +12,5 @@ export type { LoadedOmData } from './data';
 export { computeGridUniforms } from './grid-uniforms';
 export type { GpuGridUniforms } from './grid-uniforms';
 export { buildColorLut, LUT_SIZE } from './color-lut';
-export { fragmentSource, VERTEX_SOURCE, MISSING_SENTINEL } from './shader-source';
+export { fragmentSource, vertexSource, VERTEX_SOURCE, MISSING_SENTINEL } from './shader-source';
 export type { FragmentShaderSpec, LayerShaderSpec } from './shader-source';

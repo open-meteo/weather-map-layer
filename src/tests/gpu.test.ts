@@ -1,6 +1,6 @@
 import { LUT_SIZE, buildColorLut } from '../gpu/color-lut';
 import { computeGridUniforms } from '../gpu/grid-uniforms';
-import { fragmentSource } from '../gpu/shader-source';
+import { fragmentSource, vertexSource } from '../gpu/shader-source';
 import type { FragmentShaderSpec } from '../gpu/shader-source';
 import { getColor } from '../utils/styling';
 import { describe, expect, it } from 'vitest';
@@ -53,6 +53,23 @@ describe('gpu shader source', () => {
 		expect(source).toContain('u_nan1'); // NaN-distance refinement only on layer 1
 		expect(source).not.toContain('u_nan0');
 		expect(source).not.toContain('u_mix'); // temporal blend is single-layer only
+	});
+
+	it('builds the vertex shader around the map projection prelude', () => {
+		const plain = vertexSource();
+		expect(plain).toContain('u_matrix');
+		expect(plain).toContain('projectTile');
+
+		// MapLibre's shaderData prelude replaces the built-in projectTile, so the
+		// same body renders on mercator, globe and the transition between them.
+		const withPrelude = vertexSource({
+			variantName: 'globe',
+			vertexShaderPrelude: 'vec4 projectTile(vec2 p) { return vec4(p, 0.0, 1.0); }',
+			define: '#define GLOBE'
+		});
+		expect(withPrelude).toContain('#define GLOBE');
+		expect(withPrelude).toContain('projectTile(vec2(pos.x + u_worldOffset, pos.y))');
+		expect(withPrelude).not.toContain('u_matrix');
 	});
 
 	it('rejects unknown projections', () => {
