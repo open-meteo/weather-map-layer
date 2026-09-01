@@ -23,7 +23,9 @@ import type { GpuGridUniforms } from './grid-uniforms';
 
 import type {
 	Bounds,
+	Data,
 	DataIdentityOptions,
+	DimensionRange,
 	Domain,
 	OmProtocolSettings,
 	ParsedRequest,
@@ -56,6 +58,9 @@ export interface GpuSeamlessLayerData {
 	layerDef: SeamlessLayer;
 	domain: Domain;
 	values: Float32Array;
+	/** The full protocol data (incl. directions for wind) and its read ranges. */
+	data: Data;
+	ranges: DimensionRange[];
 	scaleFactor?: number;
 	gridUniforms: GpuGridUniforms;
 	blendWidthDeg: number;
@@ -184,6 +189,8 @@ export const loadSeamlessLayer = async (
 			layerDef,
 			domain: concreteDomain,
 			values,
+			data,
+			ranges: state.ranges,
 			scaleFactor: data.scaleFactor,
 			gridUniforms,
 			blendWidthDeg: layerDef.blendWidthDeg,

@@ -68,6 +68,17 @@ dropping the tile/bitmap machinery is worth.
   NaN-distance refinement of `seamless-sampling.ts`) blend finest-first. Sub-
   layers load lazily per zoom level with the same viewport/lead-time gates as
   the CPU handler. Path A (parked) keeps its CPU fallback for seamless.
+- **Wind arrows** (`setArrows`, gpu/arrows.ts): a hybrid pass in the same
+  layer — the CPU samples speed/direction at a sparse screen lattice with the
+  exact tile-worker samplers (incl. the seamless circular vector blend), the
+  GPU draws one instanced arrow per anchor through `projectTile`. Each
+  instance carries its previous and current state, mixed by the raster's
+  temporal u_mix, so arrows rotate/grow/fade smoothly across timesteps. A
+  foreshortening probe fades arrows at the globe's limb and polar
+  convergence. Wind barbs are not ported (discrete glyph alphabet).
+- **prepareUrl/commit**: the load resolves to a commit callback so a host can
+  prepare several layers and commit them in the same frame; `setUrl` is
+  prepare + immediate commit. `drawRaster: false` gives an arrows-only layer.
 - Clipping: bounds only; polygon clipping falls back to CPU (path A).
 - **Globe projection**: path B compiles its vertex stage around MapLibre's
   per-projection `shaderData` prelude (`projectTile`), so mercator, globe and

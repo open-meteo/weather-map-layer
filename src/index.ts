@@ -69,7 +69,13 @@ export {
 	computeGridUniforms,
 	mercatorBoxMatrix
 } from './gpu/index';
-export type { WeatherGpuLayerOptions, LoadedOmData } from './gpu/index';
+export type {
+	WeatherGpuLayerOptions,
+	LoadedOmData,
+	GpuArrowConfig,
+	GpuArrowLevel,
+	ArrowSampler
+} from './gpu/index';
 // Exposed for the GPU parity verification (scripts/verify-gpu.mjs): the exact
 // CPU blend the seamless raster/vector paths use.
 export { sampleBlendedValue } from './utils/seamless-sampling';

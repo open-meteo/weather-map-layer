@@ -8,6 +8,12 @@
  * A draw takes 1..N layers (finest-first); a plain domain is the single-layer
  * case, a seamless composite passes one entry per active sub-domain.
  */
+import {
+	ARROW_FRAGMENT_SOURCE,
+	ARROW_INSTANCE_FLOATS,
+	ARROW_TEMPLATE,
+	arrowVertexSource
+} from './arrows';
 import { buildColorLut, colorLutKey } from './color-lut';
 import type { GpuGridUniforms } from './grid-uniforms';
 import {
@@ -122,6 +128,12 @@ export class WeatherGpuRenderer {
 		indices: WebGLBuffer;
 		indexCount: number;
 	} | null = null;
+
+	private arrowPrograms = new Map<string, Omit<ProgramInfo, 'indexCount'>>();
+	private arrowTemplateBuffer: WebGLBuffer | null = null;
+	private arrowInstanceBuffer: WebGLBuffer | null = null;
+	private arrowInstanceCapacity = 0;
+	private arrowInstanceCount = 0;
 
 	// Value textures keyed by the source Float32Array identity: the protocol
 	// state caches one array per variable/timestep, so identity is a stable key.
@@ -345,6 +357,82 @@ export class WeatherGpuRenderer {
 		gl.bindVertexArray(null);
 	}
 
+	/**
+	 * Upload the instanced arrow states (ARROW_INSTANCE_FLOATS per arrow). The
+	 * buffer persists; call once per data/viewport change, not per frame.
+	 */
+	setArrowInstances(data: Float32Array): void {
+		const gl = this.gl;
+		if (!this.arrowInstanceBuffer) {
+			const buffer = gl.createBuffer();
+			if (!buffer) throw new Error('gpu: could not create arrow instance buffer');
+			this.arrowInstanceBuffer = buffer;
+		}
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.arrowInstanceBuffer);
+		if (data.byteLength > this.arrowInstanceCapacity) {
+			gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+			this.arrowInstanceCapacity = data.byteLength;
+		} else {
+			gl.bufferSubData(gl.ARRAY_BUFFER, 0, data);
+		}
+		this.arrowInstanceCount = data.length / ARROW_INSTANCE_FLOATS;
+	}
+
+	/** Draw the uploaded arrow instances as a screen-space overlay pass. */
+	drawArrows(opts: {
+		projection?: GpuDrawOptions['projection'];
+		matrix?: ArrayLike<number>;
+		/** Icon box size in pixels. */
+		sizePx: number;
+		/** Stroke RGB 0..1. */
+		color: [number, number, number];
+		opacity: number;
+		/** Temporal blend factor between the instances' prev/cur states. */
+		mix: number;
+		/** Drawing buffer size in CSS pixels. */
+		viewport: [number, number];
+		/** Flat-mercator screen length of the shader's foreshortening probe step. */
+		refStepPx: number;
+		worldOffsets?: number[];
+	}): void {
+		if (this.arrowInstanceCount === 0) return;
+		const gl = this.gl;
+		const info = this.getArrowProgram(opts.projection?.shaderData);
+		const u = (name: string): WebGLUniformLocation | null => info.uniforms.get(name) ?? null;
+
+		gl.useProgram(info.program);
+		gl.bindVertexArray(info.vao);
+
+		if (opts.projection) {
+			const p = opts.projection.data;
+			gl.uniformMatrix4fv(u('u_projection_matrix'), false, p.mainMatrix as Float32List);
+			gl.uniformMatrix4fv(
+				u('u_projection_fallback_matrix'),
+				false,
+				p.fallbackMatrix as Float32List
+			);
+			gl.uniform4f(u('u_projection_tile_mercator_coords'), ...p.tileMercatorCoords);
+			gl.uniform4f(u('u_projection_clipping_plane'), ...p.clippingPlane);
+			gl.uniform1f(u('u_projection_transition'), p.projectionTransition);
+		} else {
+			gl.uniformMatrix4fv(u('u_matrix'), false, opts.matrix as Float32List);
+		}
+
+		gl.uniform1f(u('u_mix'), opts.mix);
+		gl.uniform1f(u('u_sizePx'), opts.sizePx);
+		gl.uniform2f(u('u_viewport'), opts.viewport[0], opts.viewport[1]);
+		gl.uniform1f(u('u_refStepPx'), opts.refStepPx);
+		gl.uniform3f(u('u_color'), opts.color[0], opts.color[1], opts.color[2]);
+		gl.uniform1f(u('u_opacity'), opts.opacity);
+
+		for (const offset of opts.worldOffsets ?? [0]) {
+			gl.uniform1f(u('u_worldOffset'), offset);
+			gl.drawArraysInstanced(gl.TRIANGLES, 0, ARROW_TEMPLATE.length / 3, this.arrowInstanceCount);
+		}
+
+		gl.bindVertexArray(null);
+	}
+
 	dispose(): void {
 		const gl = this.gl;
 		for (const { texture } of this.valueTextures.values()) gl.deleteTexture(texture);
@@ -356,6 +444,11 @@ export class WeatherGpuRenderer {
 			gl.deleteVertexArray(vao);
 		}
 		this.programs.clear();
+		for (const { program, vao } of this.arrowPrograms.values()) {
+			gl.deleteProgram(program);
+			gl.deleteVertexArray(vao);
+		}
+		this.arrowPrograms.clear();
 		if (this.quadBuffer) {
 			gl.deleteBuffer(this.quadBuffer);
 			this.quadBuffer = null;
@@ -364,6 +457,16 @@ export class WeatherGpuRenderer {
 			gl.deleteBuffer(this.meshBuffers.vertices);
 			gl.deleteBuffer(this.meshBuffers.indices);
 			this.meshBuffers = null;
+		}
+		if (this.arrowTemplateBuffer) {
+			gl.deleteBuffer(this.arrowTemplateBuffer);
+			this.arrowTemplateBuffer = null;
+		}
+		if (this.arrowInstanceBuffer) {
+			gl.deleteBuffer(this.arrowInstanceBuffer);
+			this.arrowInstanceBuffer = null;
+			this.arrowInstanceCapacity = 0;
+			this.arrowInstanceCount = 0;
 		}
 	}
 
@@ -475,6 +578,74 @@ export class WeatherGpuRenderer {
 
 		const info: ProgramInfo = { program, vao, uniforms, indexCount };
 		this.programs.set(key, info);
+		return info;
+	}
+
+	private getArrowProgram(shaderData?: ProjectionShaderData): Omit<ProgramInfo, 'indexCount'> {
+		const key = shaderData?.variantName ?? 'plain';
+		const cached = this.arrowPrograms.get(key);
+		if (cached) return cached;
+
+		const gl = this.gl;
+		const program = gl.createProgram();
+		if (!program) throw new Error('gpu: could not create arrow program');
+		gl.attachShader(program, this.compile(gl.VERTEX_SHADER, arrowVertexSource(shaderData)));
+		gl.attachShader(program, this.compile(gl.FRAGMENT_SHADER, ARROW_FRAGMENT_SOURCE));
+		gl.linkProgram(program);
+		if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+			const log = gl.getProgramInfoLog(program);
+			gl.deleteProgram(program);
+			throw new Error(`gpu: arrow program link failed: ${log}`);
+		}
+
+		const uniforms = new Map<string, WebGLUniformLocation>();
+		const count = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS) as number;
+		for (let i = 0; i < count; i++) {
+			const active = gl.getActiveUniform(program, i);
+			if (!active) continue;
+			const location = gl.getUniformLocation(program, active.name);
+			if (location) uniforms.set(active.name.replace(/\[0\]$/, ''), location);
+		}
+
+		if (!this.arrowTemplateBuffer) {
+			const buffer = gl.createBuffer();
+			if (!buffer) throw new Error('gpu: could not create arrow template buffer');
+			gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+			gl.bufferData(gl.ARRAY_BUFFER, ARROW_TEMPLATE, gl.STATIC_DRAW);
+			this.arrowTemplateBuffer = buffer;
+		}
+		if (!this.arrowInstanceBuffer) {
+			const buffer = gl.createBuffer();
+			if (!buffer) throw new Error('gpu: could not create arrow instance buffer');
+			this.arrowInstanceBuffer = buffer;
+		}
+
+		const vao = gl.createVertexArray();
+		if (!vao) throw new Error('gpu: could not create arrow VAO');
+		gl.bindVertexArray(vao);
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.arrowTemplateBuffer);
+		const aTemplate = gl.getAttribLocation(program, 'a_template');
+		gl.enableVertexAttribArray(aTemplate);
+		gl.vertexAttribPointer(aTemplate, 3, gl.FLOAT, false, 0, 0);
+
+		// Per-instance state: anchor + previous/current samples + alphas.
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.arrowInstanceBuffer);
+		const stride = ARROW_INSTANCE_FLOATS * 4;
+		const instanceAttribute = (name: string, size: number, offsetFloats: number): void => {
+			const location = gl.getAttribLocation(program, name);
+			if (location < 0) return;
+			gl.enableVertexAttribArray(location);
+			gl.vertexAttribPointer(location, size, gl.FLOAT, false, stride, offsetFloats * 4);
+			gl.vertexAttribDivisor(location, 1);
+		};
+		instanceAttribute('a_anchor', 2, 0);
+		instanceAttribute('a_prev', 4, 2);
+		instanceAttribute('a_cur', 4, 6);
+		instanceAttribute('a_alpha', 2, 10);
+		gl.bindVertexArray(null);
+
+		const info = { program, vao, uniforms };
+		this.arrowPrograms.set(key, info);
 		return info;
 	}
 

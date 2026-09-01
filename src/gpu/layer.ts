@@ -12,24 +12,36 @@
  *   two timesteps in-shader (true temporal interpolation, not an alpha fade);
  * - zooming/panning never shows resampled stale tiles;
  * - a seamless composite renders as one multi-layer pass, blending sub-domains
- *   per pixel with the same smooth-step edge weights as the CPU worker.
+ *   per pixel with the same smooth-step edge weights as the CPU worker;
+ * - wind arrows (`setArrows`) draw as an instanced overlay pass in the same
+ *   layer, sampled on the CPU with the exact tile-worker samplers and morphed
+ *   in-shader together with the raster blend.
  *
  * Data loading reuses the om protocol's URL grammar and state cache, so the
  * layer accepts the same om:// URLs as the CPU raster path. Call `setUrl`
  * again (same URL is fine) after significant viewport changes so viewport-
  * cropped data and seamless viewport gates can follow the map.
+ *
+ * `prepareUrl` splits the load from the visual swap: it resolves to a commit
+ * callback once the data is ready, so a host showing several layers can load
+ * them all first and commit them in the same frame (synchronised animation).
+ * `setUrl` is prepare + immediate commit.
  */
 import { isSeamlessDomain } from '../domain-helpers';
+import { GridFactory } from '../grids/index';
 import { defaultOmProtocolSettings } from '../om-protocol';
-import { halfQuantum as computeHalfQuantum } from '../utils/math';
+import { halfQuantum as computeHalfQuantum, lat2tile } from '../utils/math';
 import { parseRequest } from '../utils/parse-request';
 import { normalizeUrl } from '../utils/parse-url';
+import { sampleBlendedVector } from '../utils/seamless-sampling';
 import type {
 	CustomLayerInterface,
 	CustomRenderMethodInput,
 	Map as MapLibreMap
 } from 'maplibre-gl';
 
+import { buildArrowAnchors, buildArrowInstances } from './arrows';
+import type { ArrowSampler, GpuArrowConfig } from './arrows';
 import { loadOmUrl } from './data';
 import { computeGridUniforms } from './grid-uniforms';
 import type { GpuGridUniforms } from './grid-uniforms';
@@ -45,7 +57,8 @@ import type {
 	ParsedRequest,
 	RenderableColorScale,
 	SeamlessDomain,
-	SeamlessLayer
+	SeamlessLayer,
+	SeamlessLayerRenderData
 } from '../types';
 
 export interface WeatherGpuLayerOptions {
@@ -58,6 +71,8 @@ export interface WeatherGpuLayerOptions {
 	 * new timestep on the same grid. 0 disables blending. @default 250
 	 */
 	fadeMs?: number;
+	/** Draw the colour-mapped raster field. Disable for an arrows-only layer. @default true */
+	drawRaster?: boolean;
 }
 
 interface RenderStyle {
@@ -73,6 +88,8 @@ interface PlainFrame extends RenderStyle {
 	/** Identity of the grid geometry; temporal blending requires equal signatures. */
 	gridSignature: string;
 	halfQuantum: number;
+	/** Wind sampler for the arrow pass; only set when the data has directions. */
+	sampler?: ArrowSampler;
 }
 
 interface SeamlessEntry {
@@ -85,6 +102,9 @@ interface SeamlessFrame extends RenderStyle {
 	request: ParsedRequest;
 	/** Per sub-domain load state, keyed by the layer's domainValue. */
 	entries: Map<string, SeamlessEntry>;
+	/** Blended wind sampler over the currently drawn sub-layers. */
+	sampler?: ArrowSampler;
+	samplerKey?: string;
 }
 
 export class WeatherGpuLayer implements CustomLayerInterface {
@@ -95,6 +115,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 	private settings: OmProtocolSettings;
 	private opacity: number;
 	private fadeMs: number;
+	private drawRaster: boolean;
 
 	private map: MapLibreMap | undefined;
 	private renderer: WeatherGpuRenderer | undefined;
@@ -112,6 +133,13 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 	 */
 	private pendingSeamless: SeamlessFrame | undefined;
 
+	private arrows: GpuArrowConfig | undefined;
+	/** Sampler of the outgoing frame, for rebuilding instances mid-blend. */
+	private arrowPrevSampler: ArrowSampler | undefined;
+	/** Bumped whenever the arrow data changes; part of the instance identity. */
+	private arrowGeneration = 0;
+	private arrowInstanceKey = '';
+
 	/** Guards against out-of-order setUrl loads; only the latest wins. */
 	private loadSequence = 0;
 
@@ -120,20 +148,32 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		this.settings = options.settings ?? defaultOmProtocolSettings;
 		this.opacity = options.opacity ?? 1;
 		this.fadeMs = options.fadeMs ?? 250;
+		this.drawRaster = options.drawRaster ?? true;
 	}
 
 	/**
 	 * Points the layer at an om:// URL (meta-JSON forms like latest.json are
 	 * resolved exactly like the tile protocol does). Seamless composite domains
 	 * are supported: their sub-layers load lazily per zoom level. Resolves once
-	 * the (first) data is loaded; the next frame will show it.
+	 * the data is loaded and shown; the next frame will draw it.
 	 */
 	async setUrl(omUrl: string, signal?: AbortSignal): Promise<void> {
+		const commit = await this.prepareUrl(omUrl, signal);
+		commit?.();
+	}
+
+	/**
+	 * Loads the URL without showing it. Resolves to a commit callback that
+	 * performs the visual swap (or null when a newer load superseded this one).
+	 * Committing is cheap and synchronous, so several layers can be prepared
+	 * concurrently and committed in the same frame.
+	 */
+	async prepareUrl(omUrl: string, signal?: AbortSignal): Promise<(() => void) | null> {
 		const sequence = ++this.loadSequence;
 
 		const url = await normalizeUrl(omUrl, this.settings.domainOptions);
 		const request = parseRequest(url, this.settings);
-		if (sequence !== this.loadSequence) return; // superseded by a newer setUrl
+		if (sequence !== this.loadSequence) return null; // superseded by a newer setUrl
 
 		if (isSeamlessDomain(request.dataOptions.domain)) {
 			const renderOptions = request.renderOptions;
@@ -157,17 +197,21 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			// Load the layers active at the current zoom right away; render() keeps
 			// them in sync when the zoom changes later.
 			await this.ensureSeamlessLoads(frame, this.map?.getZoom() ?? 0);
-			if (sequence !== this.loadSequence) return;
-			this.current = undefined;
-			this.previous = undefined;
-			this.seamless = frame;
-			if (this.pendingSeamless === frame) this.pendingSeamless = undefined;
-			this.map?.triggerRepaint();
-			return;
+			if (sequence !== this.loadSequence) return null;
+			return () => {
+				if (sequence !== this.loadSequence) return;
+				this.current = undefined;
+				this.previous = undefined;
+				this.arrowPrevSampler = undefined;
+				this.seamless = frame;
+				if (this.pendingSeamless === frame) this.pendingSeamless = undefined;
+				this.arrowGeneration++;
+				this.map?.triggerRepaint();
+			};
 		}
 
 		const loaded = await loadOmUrl(omUrl, this.settings, signal);
-		if (sequence !== this.loadSequence) return;
+		if (sequence !== this.loadSequence) return null;
 
 		const values = loaded.data.values;
 		if (!values) {
@@ -186,21 +230,20 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		});
 		const renderOptions = loaded.request.renderOptions;
 
-		// Same variable + grid geometry -> blend the data values of old and new
-		// frame in the shader. Anything else swaps instantly.
-		if (this.current && this.fadeMs > 0 && this.current.gridSignature === gridSignature) {
-			this.previous = {
-				values: this.current.values,
-				gridUniforms: this.current.gridUniforms
-			};
-			this.fadeStart = performance.now();
-		} else {
-			this.previous = undefined;
+		// The same per-point sampling the tile worker uses: magnitude with the
+		// selected method, direction blended circularly.
+		const directions = loaded.data.directions;
+		let sampler: ArrowSampler | undefined;
+		if (directions) {
+			const grid = GridFactory.create(loaded.domain.grid, loaded.ranges);
+			const interpolation = renderOptions.interpolation;
+			sampler = (lat, lon) => ({
+				value: grid.getInterpolatedValue(values, lat, lon, interpolation),
+				direction: grid.getLinearInterpolatedDirection(directions, lat, lon)
+			});
 		}
 
-		this.seamless = undefined;
-		this.pendingSeamless = undefined;
-		this.current = {
+		const frame: PlainFrame = {
 			values,
 			gridUniforms,
 			gridSignature,
@@ -208,13 +251,46 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			colorScale: renderOptions.colorScale,
 			colorBlend: renderOptions.colorBlend,
 			halfQuantum: computeHalfQuantum(loaded.data.scaleFactor),
-			clipBounds: loaded.request.clippingOptions?.bounds
+			clipBounds: loaded.request.clippingOptions?.bounds,
+			sampler
 		};
-		this.map?.triggerRepaint();
+
+		// Warm the value texture so the commit itself never uploads mid-frame.
+		this.renderer?.getValueTexture(values, gridUniforms.nx, gridUniforms.ny);
+
+		return () => {
+			if (sequence !== this.loadSequence) return;
+			// Same variable + grid geometry -> blend the data values of old and new
+			// frame in the shader. Anything else swaps instantly.
+			if (this.current && this.fadeMs > 0 && this.current.gridSignature === frame.gridSignature) {
+				this.previous = {
+					values: this.current.values,
+					gridUniforms: this.current.gridUniforms
+				};
+				this.arrowPrevSampler = this.current.sampler;
+				this.fadeStart = performance.now();
+			} else {
+				this.previous = undefined;
+				this.arrowPrevSampler = undefined;
+			}
+
+			this.seamless = undefined;
+			this.pendingSeamless = undefined;
+			this.current = frame;
+			this.arrowGeneration++;
+			this.map?.triggerRepaint();
+		};
 	}
 
 	setOpacity(opacity: number): void {
 		this.opacity = opacity;
+		this.map?.triggerRepaint();
+	}
+
+	/** Configure (or remove) the instanced wind-arrow overlay pass. */
+	setArrows(config: GpuArrowConfig | undefined): void {
+		this.arrows = config;
+		this.arrowGeneration++;
 		this.map?.triggerRepaint();
 	}
 
@@ -232,7 +308,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		this.map = undefined;
 	}
 
-	render(_gl: WebGLRenderingContext | WebGL2RenderingContext, args: CustomRenderMethodInput): void {
+	render(gl: WebGLRenderingContext | WebGL2RenderingContext, args: CustomRenderMethodInput): void {
 		if (!this.renderer || !this.map) return;
 
 		// The map's own projectTile prelude renders mercator, globe and the
@@ -243,13 +319,17 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		};
 
 		if (this.seamless) {
-			this.renderSeamless(projection, this.seamless);
+			this.renderSeamless(gl as WebGL2RenderingContext, projection, this.seamless);
 		} else if (this.current) {
-			this.renderPlain(projection, this.current);
+			this.renderPlain(gl as WebGL2RenderingContext, projection, this.current);
 		}
 	}
 
-	private renderPlain(projection: GpuDrawOptions['projection'], frame: PlainFrame): void {
+	private renderPlain(
+		gl: WebGL2RenderingContext,
+		projection: GpuDrawOptions['projection'],
+		frame: PlainFrame
+	): void {
 		const renderer = this.renderer!;
 
 		let mix = 1;
@@ -262,30 +342,39 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 				this.map!.triggerRepaint(); // keep animating the blend
 			} else {
 				this.previous = undefined;
+				this.arrowPrevSampler = undefined;
 			}
 		}
 
-		const g = frame.gridUniforms;
-		renderer.draw({
-			projection,
-			layers: [
-				{
-					gridUniforms: g,
-					valuesTexture: renderer.getValueTexture(frame.values, g.nx, g.ny)
-				}
-			],
-			interpolation: frame.interpolation,
-			prevTexture,
-			mix,
-			lut: renderer.getLut(frame.colorScale, frame.colorBlend),
-			halfQuantum: frame.halfQuantum,
-			opacity: this.opacity,
-			clipBounds: frame.clipBounds,
-			worldOffsets: this.worldOffsets(projection)
-		});
+		if (this.drawRaster) {
+			const g = frame.gridUniforms;
+			renderer.draw({
+				projection,
+				layers: [
+					{
+						gridUniforms: g,
+						valuesTexture: renderer.getValueTexture(frame.values, g.nx, g.ny)
+					}
+				],
+				interpolation: frame.interpolation,
+				prevTexture,
+				mix,
+				lut: renderer.getLut(frame.colorScale, frame.colorBlend),
+				halfQuantum: frame.halfQuantum,
+				opacity: this.opacity,
+				clipBounds: frame.clipBounds,
+				worldOffsets: this.worldOffsets(projection)
+			});
+		}
+
+		this.drawArrowPass(gl, projection, frame.sampler, mix, frame.clipBounds);
 	}
 
-	private renderSeamless(projection: GpuDrawOptions['projection'], frame: SeamlessFrame): void {
+	private renderSeamless(
+		gl: WebGL2RenderingContext,
+		projection: GpuDrawOptions['projection'],
+		frame: SeamlessFrame
+	): void {
 		const renderer = this.renderer!;
 		const zoom = this.map!.getZoom();
 
@@ -295,6 +384,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 
 		const active = activeSeamlessLayers(frame.domain, zoom);
 		const drawLayers: GpuLayerDraw[] = [];
+		const drawnData: GpuSeamlessLayerData[] = [];
 		let finestScaleFactor: number | undefined;
 		for (const layerDef of active) {
 			const entry = frame.entries.get(layerDef.domainValue);
@@ -307,20 +397,101 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 				blendWidthDeg: data.blendWidthDeg,
 				nanTexture: data.nanField ? renderer.getValueTexture(data.nanField, g.nx, g.ny) : undefined
 			});
+			drawnData.push(data);
 			finestScaleFactor ??= data.scaleFactor;
 		}
 		if (drawLayers.length === 0) return;
 
-		renderer.draw({
+		if (this.drawRaster) {
+			renderer.draw({
+				projection,
+				layers: drawLayers,
+				interpolation: frame.interpolation,
+				lut: renderer.getLut(frame.colorScale, frame.colorBlend),
+				// Same convention as the CPU worker: the primary (finest) layer's
+				// quantisation step drives the colour threshold offset.
+				halfQuantum: computeHalfQuantum(finestScaleFactor),
+				opacity: this.opacity,
+				clipBounds: frame.clipBounds,
+				worldOffsets: this.worldOffsets(projection)
+			});
+		}
+
+		if (this.arrows) {
+			this.updateSeamlessSampler(frame, drawnData);
+			this.drawArrowPass(gl, projection, frame.sampler, 1, frame.clipBounds);
+		}
+	}
+
+	/** Rebuild the blended wind sampler when the drawn sub-layer set changes. */
+	private updateSeamlessSampler(frame: SeamlessFrame, drawn: GpuSeamlessLayerData[]): void {
+		const key = drawn.map((data) => data.domain.value).join('|');
+		if (frame.samplerKey === key) return;
+		frame.samplerKey = key;
+		this.arrowGeneration++;
+
+		if (drawn.length === 0 || !drawn.some((data) => data.data.directions)) {
+			frame.sampler = undefined;
+			return;
+		}
+		// The exact structures the tile worker feeds sampleBlendedVector, so
+		// arrows blend across sub-domain edges identically to the CPU path.
+		const renderData: SeamlessLayerRenderData[] = drawn.map((data) => ({
+			domain: data.domain,
+			data: data.data,
+			ranges: data.ranges,
+			domainBounds: data.domainBounds,
+			blendWidthDeg: data.blendWidthDeg
+		}));
+		const layerGrids = renderData.map((l) => GridFactory.create(l.domain.grid, l.ranges));
+		const fullGrids = renderData.map((l) => GridFactory.create(l.domain.grid, null));
+		frame.sampler = sampleBlendedVector(layerGrids, renderData, fullGrids, frame.interpolation);
+	}
+
+	/**
+	 * The instanced arrow overlay. Anchors live on a screen-space lattice; the
+	 * instance buffer is resampled only when the lattice, the data or the
+	 * outgoing blend state changes — the per-frame cost is one instanced draw.
+	 */
+	private drawArrowPass(
+		gl: WebGL2RenderingContext,
+		projection: GpuDrawOptions['projection'],
+		sampler: ArrowSampler | undefined,
+		mix: number,
+		clipBounds?: Bounds
+	): void {
+		const config = this.arrows;
+		if (!config || !sampler) return;
+		const renderer = this.renderer!;
+		const map = this.map!;
+
+		const bounds = map.getBounds();
+		const view = {
+			minX: (bounds.getWest() + 180) / 360,
+			maxX: (bounds.getEast() + 180) / 360,
+			minY: lat2tile(Math.min(85.051129, bounds.getNorth()), 0),
+			maxY: lat2tile(Math.max(-85.051129, bounds.getSouth()), 0)
+		};
+		const anchors = buildArrowAnchors(view, map.getZoom(), config.spacingPx, clipBounds);
+		const instanceKey = `${anchors.key}#${this.arrowGeneration}#${mix < 1 ? 'blend' : 'still'}`;
+		if (instanceKey !== this.arrowInstanceKey) {
+			this.arrowInstanceKey = instanceKey;
+			renderer.setArrowInstances(
+				buildArrowInstances(anchors, sampler, this.arrowPrevSampler, config.levels)
+			);
+		}
+
+		const pixelRatio = map.getPixelRatio();
+		renderer.drawArrows({
 			projection,
-			layers: drawLayers,
-			interpolation: frame.interpolation,
-			lut: renderer.getLut(frame.colorScale, frame.colorBlend),
-			// Same convention as the CPU worker: the primary (finest) layer's
-			// quantisation step drives the colour threshold offset.
-			halfQuantum: computeHalfQuantum(finestScaleFactor),
+			sizePx: config.sizePx,
+			color: config.color,
 			opacity: this.opacity,
-			clipBounds: frame.clipBounds,
+			mix,
+			viewport: [gl.drawingBufferWidth / pixelRatio, gl.drawingBufferHeight / pixelRatio],
+			// The shader probes a 0.0005 mercator-y step; on flat mercator that
+			// spans this many screen pixels (512px world tiles at fractional zoom).
+			refStepPx: 0.0005 * 512 * Math.pow(2, map.getZoom()),
 			worldOffsets: this.worldOffsets(projection)
 		});
 	}

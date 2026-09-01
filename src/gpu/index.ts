@@ -1,5 +1,7 @@
 export { WeatherGpuLayer } from './layer';
 export type { WeatherGpuLayerOptions } from './layer';
+export { buildArrowAnchors, buildArrowInstances, arrowLengthFor } from './arrows';
+export type { GpuArrowConfig, GpuArrowLevel, ArrowSampler } from './arrows';
 export { omProtocolGpu } from './om-protocol-gpu';
 export { GpuTileRenderer, getSharedTileRenderer } from './tile-renderer';
 export type { GpuTileRequest } from './tile-renderer';
