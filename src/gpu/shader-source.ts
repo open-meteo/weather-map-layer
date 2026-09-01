@@ -49,6 +49,13 @@ export interface FragmentShaderSpec {
 	 * layers always compile the temporal path.
 	 */
 	temporal?: boolean;
+	/**
+	 * Screen-space isolines over the (temporally blended) value field:
+	 * `fwidth`-antialiased lines at every multiple of a step, or at explicit
+	 * levels. They morph with the value blend, follow the globe and have no
+	 * tile seams; labels stay on the CPU contour pipeline.
+	 */
+	contours?: boolean;
 }
 
 export const shaderKey = (spec: FragmentShaderSpec): string =>
@@ -57,7 +64,7 @@ export const shaderKey = (spec: FragmentShaderSpec): string =>
 			(l) =>
 				`${l.gridKind}:${l.projectionName ?? ''}:${l.blends ? 'b' : ''}${l.hasNanField ? 'n' : ''}`
 		)
-		.join('|') + `|${spec.interpolation}${spec.temporal ? '|t' : ''}`;
+		.join('|') + `|${spec.interpolation}${spec.temporal ? '|t' : ''}${spec.contours ? '|ct' : ''}`;
 
 /**
  * MapLibre's per-projection shader chunk for custom layers
@@ -776,8 +783,70 @@ ${blendLines.join('\n')}
 				'\nuniform float u_mix; // 0 = previous, 1 = current'
 			: '';
 
+	// Contour isolines over the composite value: uniforms + the fragment chunk.
+	// The modulo classes mirror the CPU contour style (heavier lines at values
+	// divisible by 10/50/100); crowding fades lines out before they alias.
+	const contourUniforms = spec.contours
+		? `
+uniform float u_contourStep;        // > 0: lines at every multiple of it
+uniform float u_contourLevels[48];  // explicit levels when count > 0
+uniform int u_contourCount;
+uniform float u_contourMinGap;      // smallest level spacing, for crowding fade
+uniform vec3 u_contourColor;
+uniform vec4 u_contourAlpha;        // per class: other, xmod0, xmod1, xmod2
+uniform vec4 u_contourWidth;        // line width in px per class
+uniform vec3 u_contourMods;
+uniform float u_contourOpacity;
+
+bool isLevelMultiple(float level, float modulo) {
+	return abs(level - modulo * floor(level / modulo + 0.5)) < 0.01;
+}`
+		: '';
+
+	const contourApply = spec.contours
+		? `
+	if (u_contourOpacity > 0.0) {
+		float cv = value + u_halfQuantum;
+		float level;
+		float dist;
+		if (u_contourCount > 0) {
+			dist = 1.0e30;
+			level = 0.0;
+			for (int i = 0; i < 48; i++) {
+				if (i >= u_contourCount) break;
+				float d = abs(cv - u_contourLevels[i]);
+				if (d < dist) { dist = d; level = u_contourLevels[i]; }
+			}
+		} else {
+			level = u_contourStep * floor(cv / u_contourStep + 0.5);
+			dist = abs(cv - level);
+		}
+		float lineAlpha = u_contourAlpha.x;
+		float widthPx = u_contourWidth.x;
+		if (isLevelMultiple(level, u_contourMods.z)) {
+			lineAlpha = u_contourAlpha.w; widthPx = u_contourWidth.w;
+		} else if (isLevelMultiple(level, u_contourMods.y)) {
+			lineAlpha = u_contourAlpha.z; widthPx = u_contourWidth.z;
+		} else if (isLevelMultiple(level, u_contourMods.x)) {
+			lineAlpha = u_contourAlpha.y; widthPx = u_contourWidth.y;
+		}
+		float vw = max(contourVW, 1.0e-12);
+		float coverage = clamp(widthPx * 0.5 + 0.75 - dist / vw, 0.0, 1.0);
+		// Fade out as neighbouring lines crowd below ~7px apart (this also
+		// suppresses the huge derivatives at missing-data edges, and rough
+		// fields — e.g. orographic noise — where per-pixel gradients flicker).
+		coverage *= smoothstep(3.0, 7.0, u_contourMinGap / vw);
+		float lineA = coverage * lineAlpha * u_contourOpacity;
+		fragColor = vec4(
+			u_contourColor * lineA + fragColor.rgb * (1.0 - lineA),
+			lineA + fragColor.a * (1.0 - lineA)
+		);
+	}`
+		: '';
+
 	parts.push(`
 ${prevUniforms}
+${contourUniforms}
 ${blendFunction}
 
 uniform sampler2D u_lut;
@@ -806,6 +875,7 @@ void main() {
 
 	float value = blendedValue(lat, lon${currentArgs});
 ${temporal}
+${spec.contours ? '	// Sampled before the divergent return below, so quad derivatives are valid\n	float contourVW = fwidth(value);' : ''}
 	if (isMissing(value)) {
 		fragColor = vec4(0.0);
 		return;
@@ -817,6 +887,7 @@ ${temporal}
 	// Premultiplied output: matches both MapLibre's custom layer blend state and
 	// the default premultiplied WebGL canvas compositing of the tile renderer.
 	fragColor = vec4(color.rgb * a, a);
+${contourApply}
 }`);
 
 	return parts.join('\n');

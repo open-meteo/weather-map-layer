@@ -75,7 +75,8 @@ export type {
 	LoadedOmData,
 	GpuArrowConfig,
 	GpuArrowLevel,
-	ArrowSampler
+	ArrowSampler,
+	GpuContourStyle
 } from './gpu/index';
 // Exposed for the GPU parity verification (scripts/verify-gpu.mjs): the exact
 // CPU blend the seamless raster/vector paths use.

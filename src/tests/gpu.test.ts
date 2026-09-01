@@ -69,6 +69,20 @@ describe('gpu shader source', () => {
 		expect(temporal).toContain('u_mix');
 	});
 
+	it('compiles a contour isoline variant', () => {
+		const plain = fragmentSource({ layers: [{ gridKind: 'regular' }], interpolation: 'linear' });
+		expect(plain).not.toContain('u_contourLevels');
+
+		const contours = fragmentSource({
+			layers: [{ gridKind: 'regular' }],
+			interpolation: 'linear',
+			contours: true
+		});
+		expect(contours).toContain('u_contourLevels');
+		expect(contours).toContain('fwidth(value)');
+		expect(contours).toContain('u_contourOpacity');
+	});
+
 	it('builds the vertex shader around the map projection prelude', () => {
 		const plain = vertexSource();
 		expect(plain).toContain('u_matrix');

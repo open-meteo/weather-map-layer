@@ -34,6 +34,10 @@ export interface GpuArrowConfig {
 	color: [number, number, number];
 	/** Speed ramp, sorted by minSpeed ascending. */
 	levels: GpuArrowLevel[];
+	/** Arrows fade in below this zoom and stay hidden 1 level under it. */
+	minZoom?: number;
+	/** Arrows fade out above this zoom. */
+	maxZoom?: number;
 }
 
 export type ArrowSampler = (lat: number, lon: number) => { value: number; direction: number };
@@ -83,12 +87,25 @@ export const buildArrowAnchors = (
 ): ArrowAnchors => {
 	const zInt = Math.max(0, Math.round(zoom));
 	// World pixels at the integer zoom (512px tiles).
-	const spacing = spacingPx / (512 * Math.pow(2, zInt));
+	let spacing = spacingPx / (512 * Math.pow(2, zInt));
+	// The world tiles draw much larger than nominal at the lowest zooms; densify
+	// like the CPU lattice (generateWindPoints' z0/z1 multipliers).
+	if (zInt === 0) spacing /= 2;
+	else if (zInt === 1) spacing /= 1.55;
 
 	const minY = Math.max(0, view.minY);
 	const maxY = Math.min(1, view.maxY);
-	const firstX = Math.floor(view.minX / spacing);
-	const lastX = Math.ceil(view.maxX / spacing);
+	let firstX = Math.floor(view.minX / spacing);
+	let lastX = Math.ceil(view.maxX / spacing);
+	// The lattice period rarely divides the world exactly, so generating columns
+	// across more than one world would interleave two offset copies of the
+	// lattice after wrapping (pairs and uneven gaps) — and the world-offset
+	// draws already repeat the instances. Clamp to a single world of columns.
+	const worldCols = Math.max(1, Math.floor(1 / spacing));
+	if (lastX - firstX >= worldCols) {
+		firstX = 0;
+		lastX = worldCols - 1;
+	}
 	const firstY = Math.floor(minY / spacing);
 	const lastY = Math.ceil(maxY / spacing);
 

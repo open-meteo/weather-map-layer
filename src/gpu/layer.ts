@@ -46,7 +46,13 @@ import { loadOmUrl } from './data';
 import { computeGridUniforms } from './grid-uniforms';
 import type { GpuGridUniforms } from './grid-uniforms';
 import { WeatherGpuRenderer } from './renderer';
-import type { ArrowInstances, GpuDrawOptions, GpuLayerDraw } from './renderer';
+import type {
+	ArrowInstances,
+	GpuContourDraw,
+	GpuContourStyle,
+	GpuDrawOptions,
+	GpuLayerDraw
+} from './renderer';
 import { activeSeamlessLayers, loadSeamlessLayer } from './seamless-data';
 import type { GpuSeamlessLayerData } from './seamless-data';
 
@@ -98,6 +104,8 @@ interface PlainFrame extends RenderStyle {
 	sampler?: ArrowSampler;
 	/** URL-state key, labelling the texture for residency queries. */
 	stateKey: string;
+	/** Contour levels of the request (a single entry means a step interval). */
+	intervals: number[];
 }
 
 interface SeamlessEntry {
@@ -113,6 +121,8 @@ interface SeamlessFrame extends RenderStyle {
 	/** Blended wind sampler over the currently drawn sub-layers. */
 	sampler?: ArrowSampler;
 	samplerKey?: string;
+	/** Contour levels of the request (a single entry means a step interval). */
+	intervals: number[];
 }
 
 /**
@@ -195,6 +205,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 	private crossfadeStart = 0;
 
 	private arrows: GpuArrowConfig | undefined;
+	private contours: GpuContourStyle | undefined;
 	/** Sampler of the outgoing frame, for rebuilding instances mid-blend. */
 	private arrowPrevSampler: ArrowSampler | undefined;
 	/** Bumped whenever the arrow data changes; part of the instance identity. */
@@ -278,7 +289,8 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 				interpolation: renderOptions.interpolation,
 				colorScale: renderOptions.colorScale,
 				colorBlend: renderOptions.colorBlend,
-				clipBounds: request.clippingOptions?.bounds
+				clipBounds: request.clippingOptions?.bounds,
+				intervals: renderOptions.intervals
 			};
 			if (this.seamless || this.current) {
 				// Something is already on screen: load the new frame behind it and
@@ -354,7 +366,8 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			halfQuantum: computeHalfQuantum(loaded.data.scaleFactor),
 			clipBounds: loaded.request.clippingOptions?.bounds,
 			sampler,
-			stateKey: loaded.request.fileAndVariableKey
+			stateKey: loaded.request.fileAndVariableKey,
+			intervals: renderOptions.intervals
 		};
 
 		// Warm the value texture so the commit itself never uploads mid-frame.
@@ -402,6 +415,80 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		this.arrows = config;
 		this.arrowGeneration++;
 		this.map?.triggerRepaint();
+	}
+
+	/**
+	 * Configure (or remove) the in-shader contour isolines. The levels come
+	 * from the URL's render options (like the CPU tile contours); this sets the
+	 * line styling. With `drawRaster: false` the layer draws lines only.
+	 */
+	setContours(style: GpuContourStyle | undefined): void {
+		this.contours = style;
+		this.map?.triggerRepaint();
+	}
+
+	/**
+	 * Longitudinal cell size in degrees — the resolution the isolines can
+	 * trust. Below ~2px per cell the bilinear derivative jitters per pixel and
+	 * the lines speckle, so they fade out with the resolution.
+	 */
+	private static cellSizeDeg(g: GpuGridUniforms): number {
+		if (g.gridKind === 'gaussian') return 360 / (4 * g.gauss[0] + 16);
+		if (g.gridKind === 'projected') return g.dx / 111_000;
+		return g.dx;
+	}
+
+	/** The draw-ready contour pass for a frame's levels, if configured. */
+	private contourDrawOf(
+		intervals: number[],
+		opacity: number,
+		gridUniforms: GpuGridUniforms
+	): GpuContourDraw | undefined {
+		const style = this.contours;
+		if (!style || intervals.length === 0) return undefined;
+
+		// The bilinear derivative only settles once a grid cell spans several
+		// screen pixels; below that isolines crumble into speckle.
+		const cellPx =
+			(WeatherGpuLayer.cellSizeDeg(gridUniforms) / 360) *
+			512 *
+			Math.pow(2, this.map?.getZoom() ?? 0);
+		const t = Math.min(1, Math.max(0, (cellPx - 3) / 2));
+		const resolutionFade = t * t * (3 - 2 * t);
+		if (resolutionFade <= 0) return undefined;
+		opacity *= resolutionFade;
+
+		// Style widths are CSS pixels; the shader works in device pixels.
+		const ratio = this.map?.getPixelRatio() ?? 1;
+		const classWidths = style.classWidths.map((width) => width * ratio) as [
+			number,
+			number,
+			number,
+			number
+		];
+		if (intervals.length === 1) {
+			return {
+				...style,
+				classWidths,
+				step: intervals[0],
+				levels: [],
+				minGap: intervals[0],
+				opacity
+			};
+		}
+		const levels = [...intervals].sort((a, b) => a - b).slice(0, 48);
+		let minGap = Infinity;
+		for (let i = 1; i < levels.length; i++) {
+			minGap = Math.min(minGap, levels[i] - levels[i - 1]);
+		}
+		return {
+			...style,
+			classWidths,
+			step: 0,
+			levels,
+			minGap: isFinite(minGap) ? minGap : 1,
+			opacity
+		};
 	}
 
 	onAdd(map: MapLibreMap, gl: WebGLRenderingContext | WebGL2RenderingContext): void {
@@ -491,7 +578,8 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			}
 		}
 
-		if (this.drawRaster) {
+		const contours = this.contourDrawOf(frame.intervals, opacity, frame.gridUniforms);
+		if (this.drawRaster || contours) {
 			const g = frame.gridUniforms;
 			renderer.draw({
 				projection,
@@ -506,9 +594,10 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 				mix,
 				lut: renderer.getLut(frame.colorScale, frame.colorBlend),
 				halfQuantum: frame.halfQuantum,
-				opacity,
+				opacity: this.drawRaster ? opacity : 0,
 				clipBounds: frame.clipBounds,
-				worldOffsets: this.worldOffsets(projection)
+				worldOffsets: this.worldOffsets(projection),
+				contours
 			});
 		}
 
@@ -572,7 +661,8 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			mix = 1;
 		}
 
-		if (this.drawRaster) {
+		const contours = this.contourDrawOf(frame.intervals, opacity, drawLayers[0].gridUniforms);
+		if (this.drawRaster || contours) {
 			renderer.draw({
 				projection,
 				layers: drawLayers,
@@ -582,9 +672,10 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 				// Same convention as the CPU worker: the primary (finest) layer's
 				// quantisation step drives the colour threshold offset.
 				halfQuantum: computeHalfQuantum(finestScaleFactor),
-				opacity,
+				opacity: this.drawRaster ? opacity : 0,
 				clipBounds: frame.clipBounds,
-				worldOffsets: this.worldOffsets(projection)
+				worldOffsets: this.worldOffsets(projection),
+				contours
 			});
 		}
 
@@ -662,6 +753,16 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		if (!config || !sampler) return;
 		const renderer = this.renderer!;
 		const map = this.map!;
+
+		// Zoom gate with a one-level fade-in (and half-level fade-out above).
+		const zoom = map.getZoom();
+		const minZoom = config.minZoom ?? 0;
+		const maxZoom = config.maxZoom ?? 24;
+		const zoomFade =
+			Math.min(1, Math.max(0, zoom - (minZoom - 1))) *
+			Math.min(1, Math.max(0, maxZoom + 0.5 - zoom));
+		if (zoomFade <= 0) return;
+		opacity *= zoomFade;
 
 		const bounds = map.getBounds();
 		const view = {

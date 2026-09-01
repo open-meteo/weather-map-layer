@@ -50,6 +50,29 @@ export interface ArrowInstances {
 	vaos: Map<string, WebGLVertexArrayObject>;
 }
 
+/** Host styling for the in-shader contour isolines. */
+export interface GpuContourStyle {
+	/** Line RGB 0..1 (plain black or white in practice). */
+	color: [number, number, number];
+	/** Alpha per modulo class: other, ×moduli[0], ×moduli[1], ×moduli[2]. */
+	classAlphas: [number, number, number, number];
+	/** Line width in px per modulo class. */
+	classWidths: [number, number, number, number];
+	/** Level divisors that upgrade a line's class (ascending), e.g. 10/50/100. */
+	moduli: [number, number, number];
+}
+
+/** A draw's contour pass: the style plus the levels of this request. */
+export interface GpuContourDraw extends GpuContourStyle {
+	/** Lines at every multiple of this step; 0 when `levels` is explicit. */
+	step: number;
+	/** Explicit levels (at most 48), e.g. the colour-scale breakpoints. */
+	levels: number[];
+	/** Smallest level spacing, for the crowding fade. */
+	minGap: number;
+	opacity: number;
+}
+
 /**
  * The projection uniforms of CustomRenderMethodInput['defaultProjectionData'],
  * feeding the prelude's `projectTile` (mercator, globe and the transition).
@@ -113,6 +136,8 @@ export interface GpuDrawOptions {
 	worldOffsets?: number[];
 	/** Quad in mercator space; defaults to the union of the layer quads. */
 	quad?: [number, number, number, number];
+	/** Isoline pass over the value field (set opacity 0 for a lines-only draw). */
+	contours?: GpuContourDraw;
 }
 
 /** Feature check for both GPU paths. */
@@ -170,6 +195,8 @@ export class WeatherGpuRenderer {
 
 	private lutTextures = new Map<string, LutHandle>();
 	private static readonly LUT_CACHE_MAX = 8;
+
+	private contourLevelScratch = new Float32Array(48);
 
 	constructor(gl: WebGL2RenderingContext, options: { textureCacheMb?: number } = {}) {
 		this.gl = gl;
@@ -354,7 +381,8 @@ export class WeatherGpuRenderer {
 		const spec: FragmentShaderSpec = {
 			layers: layers.map((layer, i) => layerSpecOf(layer, i === layers.length - 1)),
 			interpolation: opts.interpolation,
-			temporal: multiTemporal
+			temporal: multiTemporal,
+			contours: opts.contours !== undefined
 		};
 		const info = this.getProgram(spec, opts.projection?.shaderData);
 		const u = (name: string): WebGLUniformLocation | null => info.uniforms.get(name) ?? null;
@@ -452,6 +480,21 @@ export class WeatherGpuRenderer {
 		);
 		gl.uniform1f(u('u_halfQuantum'), opts.halfQuantum);
 		gl.uniform1f(u('u_opacity'), opts.opacity);
+
+		const contours = opts.contours;
+		if (contours) {
+			this.contourLevelScratch.fill(0);
+			this.contourLevelScratch.set(contours.levels.slice(0, 48));
+			gl.uniform1fv(u('u_contourLevels'), this.contourLevelScratch);
+			gl.uniform1i(u('u_contourCount'), Math.min(contours.levels.length, 48));
+			gl.uniform1f(u('u_contourStep'), contours.step);
+			gl.uniform1f(u('u_contourMinGap'), contours.minGap);
+			gl.uniform3f(u('u_contourColor'), ...contours.color);
+			gl.uniform4f(u('u_contourAlpha'), ...contours.classAlphas);
+			gl.uniform4f(u('u_contourWidth'), ...contours.classWidths);
+			gl.uniform3f(u('u_contourMods'), ...contours.moduli);
+			gl.uniform1f(u('u_contourOpacity'), contours.opacity);
+		}
 
 		const clip = opts.clipBounds;
 		if (clip) {

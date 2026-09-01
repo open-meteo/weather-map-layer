@@ -79,6 +79,14 @@ dropping the tile/bitmap machinery is worth.
 - **prepareUrl/commit**: the load resolves to a commit callback so a host can
   prepare several layers and commit them in the same frame; `setUrl` is
   prepare + immediate commit. `drawRaster: false` gives an arrows-only layer.
+- **Contour isolines** (`setContours`): `fwidth`-antialiased screen-space
+  lines over the composite value in the same fragment pass — at every multiple
+  of a step or at explicit levels (the URL's `intervals` / colour-scale
+  breakpoints), with the CPU contour style's modulo classes (heavier ×10/×50/
+  ×100 lines). They morph with the temporal blend, follow the globe and have
+  no tile seams; they fade out where the grid resolution drops below ~2px per
+  cell (the bilinear derivative speckles there). Labels stay on the CPU
+  contour tiles.
 - Clipping: bounds only; polygon clipping falls back to CPU (path A).
 - **Globe projection**: path B compiles its vertex stage around MapLibre's
   per-projection `shaderData` prelude (`projectTile`), so mercator, globe and
