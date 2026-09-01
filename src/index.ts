@@ -19,6 +19,7 @@ export {
 	getValueFromLatLong,
 	clearBlockCache,
 	getDataState,
+	getStateValues,
 	clearBackends,
 	getRanges,
 	getProtocolInstance

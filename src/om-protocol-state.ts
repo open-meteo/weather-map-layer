@@ -243,6 +243,22 @@ export const getDataState = (omUrl: string): OmDataState => {
 	}
 };
 
+/**
+ * The loaded value array of a URL's state, if any — the identity key of the
+ * GPU renderer's texture cache, so hosts can tell RAM residency (values
+ * present) from VRAM residency (a texture exists for these values).
+ */
+export const getStateValues = (omUrl: string): Float32Array | undefined => {
+	if (!omProtocolInstance) return undefined;
+	try {
+		const url = omUrl.startsWith('om://') ? omUrl : 'om://' + omUrl;
+		const { fileAndVariableKey } = parseUrlComponents(url);
+		return omProtocolInstance.stateByKey.get(fileAndVariableKey)?.data?.values ?? undefined;
+	} catch {
+		return undefined;
+	}
+};
+
 export const getValueFromLatLong = async (
 	lat: number,
 	lon: number,

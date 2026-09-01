@@ -160,8 +160,10 @@ export class WeatherGpuRenderer {
 	// (failed allocations sample as uninitialised-memory noise on real drivers).
 	private valueTextures = new Map<
 		Float32Array,
-		{ texture: WebGLTexture; nx: number; ny: number; bytes: number }
+		{ texture: WebGLTexture; nx: number; ny: number; bytes: number; label?: string }
 	>();
+	/** URL-state key -> value array, for residency queries that outlive the RAM state. */
+	private textureLabels = new Map<string, Float32Array>();
 	private valueTextureBytes = 0;
 	private valueTextureBudget: number;
 	static readonly DEFAULT_TEXTURE_CACHE_MB = 256;
@@ -189,13 +191,25 @@ export class WeatherGpuRenderer {
 		this.valueTextureBudget = Math.max(this.valueTextureBudget, mb * 1024 * 1024);
 	}
 
+	/** True when a texture for this value array is resident in VRAM. */
+	hasValueTexture(values: Float32Array): boolean {
+		return this.valueTextures.has(values);
+	}
+
+	/** True when a texture labelled with this URL-state key is resident. */
+	hasTextureForLabel(label: string): boolean {
+		const values = this.textureLabels.get(label);
+		return values !== undefined && this.valueTextures.has(values);
+	}
+
 	/** Upload (or reuse) the R32F value texture for a data array. */
-	getValueTexture(values: Float32Array, nx: number, ny: number): WebGLTexture {
+	getValueTexture(values: Float32Array, nx: number, ny: number, label?: string): WebGLTexture {
 		const cached = this.valueTextures.get(values);
 		if (cached && cached.nx === nx && cached.ny === ny) {
 			// Re-insert to keep insertion order as LRU order
 			this.valueTextures.delete(values);
 			this.valueTextures.set(values, cached);
+			this.labelTexture(cached, values, label);
 			return cached.texture;
 		}
 
@@ -232,9 +246,21 @@ export class WeatherGpuRenderer {
 			if (!texture) throw new Error(`gpu: value texture allocation failed (${nx}x${ny})`);
 		}
 
-		this.valueTextures.set(values, { texture, nx, ny, bytes });
+		const entry = { texture, nx, ny, bytes, label: undefined as string | undefined };
+		this.valueTextures.set(values, entry);
 		this.valueTextureBytes += bytes;
+		this.labelTexture(entry, values, label);
 		return texture;
+	}
+
+	private labelTexture(
+		entry: { label?: string },
+		values: Float32Array,
+		label: string | undefined
+	): void {
+		if (!label || entry.label === label) return;
+		entry.label = label;
+		this.textureLabels.set(label, values);
 	}
 
 	private uploadValueTexture(nx: number, ny: number, data: Float32Array): WebGLTexture | null {
@@ -273,6 +299,9 @@ export class WeatherGpuRenderer {
 			gl.deleteTexture(entry.texture);
 			this.valueTextureBytes -= entry.bytes;
 			this.valueTextures.delete(key);
+			if (entry.label && this.textureLabels.get(entry.label) === key) {
+				this.textureLabels.delete(entry.label);
+			}
 		}
 	}
 
@@ -539,6 +568,7 @@ export class WeatherGpuRenderer {
 		const gl = this.gl;
 		for (const { texture } of this.valueTextures.values()) gl.deleteTexture(texture);
 		this.valueTextures.clear();
+		this.textureLabels.clear();
 		this.valueTextureBytes = 0;
 		for (const { texture } of this.lutTextures.values()) gl.deleteTexture(texture);
 		this.lutTextures.clear();

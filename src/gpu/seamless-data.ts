@@ -61,6 +61,8 @@ export interface GpuSeamlessLayerData {
 	/** The full protocol data (incl. directions for wind) and its read ranges. */
 	data: Data;
 	ranges: DimensionRange[];
+	/** Concrete URL-state key, labelling the texture for residency queries. */
+	stateKey: string;
 	scaleFactor?: number;
 	gridUniforms: GpuGridUniforms;
 	blendWidthDeg: number;
@@ -191,6 +193,7 @@ export const loadSeamlessLayer = async (
 			values,
 			data,
 			ranges: state.ranges,
+			stateKey: concreteKey,
 			scaleFactor: data.scaleFactor,
 			gridUniforms,
 			blendWidthDeg: layerDef.blendWidthDeg,
