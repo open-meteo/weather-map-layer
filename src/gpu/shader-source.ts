@@ -368,8 +368,12 @@ float gaussRead(sampler2D tex, ivec4 g, int idx) {
 	return texelFetch(tex, ivec2(idx % g.z, idx / g.z), 0).r;
 }
 
+// Floored modulo without the % operator: GLSL ES leaves % undefined for
+// negative operands, and some drivers return garbage for them (western
+// hemisphere turned into per-row streaks on reduced-gaussian grids). The
+// float round-trip is exact for the index magnitudes used here (< 2^24).
 int modInt(int a, int b) {
-	return ((a % b) + b) % b;
+	return a - b * int(floor(float(a) / float(b)));
 }
 
 float gaussSampleLinear(sampler2D tex, ivec4 g, float lat, float lon) {
