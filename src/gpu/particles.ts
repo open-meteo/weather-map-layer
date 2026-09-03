@@ -211,15 +211,28 @@ ${temporal ? 'uniform sampler2D u_uPrev0;\nuniform sampler2D u_vPrev0;\nuniform 
 
 uniform sampler2D u_state;
 uniform float u_dt;        // seconds of this step
-uniform float u_seed;      // fresh randomness per frame
+uniform uint u_frame;      // frame counter, fresh randomness per step
 uniform float u_speedMerc; // mercator displacement per (m/s) this step
 uniform float u_maxAge;    // mean lifetime in seconds
 uniform vec4 u_bounds;     // respawn window (x0, y0, x1, y1); x0 may be negative
+// Shed probability this step: when the window grows (zoom-out) the surplus
+// redistributes immediately instead of lingering as a dense cluster of the
+// old viewport. 1 - oldArea/newArea keeps the density per screen constant.
+uniform float u_shed;
 
 out vec4 outState;
 
-float rand(vec2 co) {
-	return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
+// Integer hash (lowbias32). NOT the classic fract(sin(dot)) hash: that one
+// derives every draw from a single scalar, so a respawn's x and y were two
+// offsets of the same 1-parameter curve — particles were literally born in
+// collinear chains that then advected together as beaded streams.
+uint hashU(uint x) {
+	x ^= x >> 16u;
+	x *= 0x7feb352du;
+	x ^= x >> 15u;
+	x *= 0x846ca68bu;
+	x ^= x >> 16u;
+	return x;
 }
 
 void main() {
@@ -244,13 +257,18 @@ void main() {
 	float offX = fract(pos.x - u_bounds.x);
 	bool outside = offX > spanX || pos.y < u_bounds.y || pos.y > u_bounds.w;
 
-	vec2 seed = gl_FragCoord.xy + vec2(u_seed * 1024.0, u_seed * 517.0);
-	float life = u_maxAge * (0.3 + 1.4 * rand(seed + 3.7));
-	if (missing || outside || age > life) {
-		pos = vec2(
-			u_bounds.x + spanX * rand(seed + 1.3),
-			mix(u_bounds.y, u_bounds.w, rand(seed + 2.1))
-		);
+	// Independent draws from a per-particle, per-frame RNG stream.
+	uint rng = hashU((uint(gl_FragCoord.y) * 8192u + uint(gl_FragCoord.x)) ^ hashU(u_frame));
+	rng = hashU(rng);
+	float life = u_maxAge * (0.3 + 1.4 * float(rng) * (1.0 / 4294967296.0));
+	rng = hashU(rng);
+	bool shed = float(rng) * (1.0 / 4294967296.0) < u_shed;
+	if (missing || outside || shed || age > life) {
+		rng = hashU(rng);
+		float rx = float(rng) * (1.0 / 4294967296.0);
+		rng = hashU(rng);
+		float ry = float(rng) * (1.0 / 4294967296.0);
+		pos = vec2(u_bounds.x + spanX * rx, mix(u_bounds.y, u_bounds.w, ry));
 		// Age 0 marks a fresh spawn; the draw pass hides it for one frame so a
 		// particle respawning on missing data never flashes anywhere.
 		age = 0.0;
@@ -434,6 +452,10 @@ export class ParticleSystem {
 	private compositeProgram: ProgramInfo | undefined;
 	private emptyVao: WebGLVertexArrayObject | null = null;
 
+	/** Update-step counter seeding the per-frame RNG stream. */
+	private frame = 0;
+	/** Mercator area of the last respawn window, for the zoom-out shed. */
+	private prevBoundsArea = 0;
 	/** Previous frame's mercator-plane homography, for trail reprojection. */
 	private prevHomography: Float64Array | undefined;
 	/** Camera identity of the last globe-mode frame (globe trails cannot reproject). */
@@ -656,10 +678,22 @@ export class ParticleSystem {
 		}
 
 		gl.uniform1f(u('u_dt'), opts.dtSeconds);
-		gl.uniform1f(u('u_seed'), Math.random());
+		this.frame = (this.frame + 1) >>> 0;
+		gl.uniform1ui(u('u_frame'), this.frame);
 		gl.uniform1f(u('u_speedMerc'), opts.mercPerMps);
 		gl.uniform1f(u('u_maxAge'), opts.config.maxAgeSec ?? 5);
 		gl.uniform4f(u('u_bounds'), ...opts.bounds);
+
+		// Zoom-out shed: a grown window keeps every old particle inside it, so
+		// without this the old viewport's population lingers as a dense block
+		// until natural deaths thin it (~a lifetime). Killing the area surplus
+		// keeps density per screen; an animated zoom sheds a little per frame,
+		// an instant jump redistributes in one.
+		const area = (opts.bounds[2] - opts.bounds[0]) * (opts.bounds[3] - opts.bounds[1]);
+		const shed =
+			this.prevBoundsArea > 0 && area > this.prevBoundsArea ? 1 - this.prevBoundsArea / area : 0;
+		this.prevBoundsArea = area;
+		gl.uniform1f(u('u_shed'), shed);
 
 		gl.drawArrays(gl.TRIANGLES, 0, 3);
 		state.head = 1 - state.head;
