@@ -28,4 +28,3 @@ vite.config.ts.timestamp-*
 scripts/all_variables.json
 scripts/check_variables.js
 scripts/compare_variables.py
-scripts/generate-domain-footprints.ts
