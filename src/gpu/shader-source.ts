@@ -56,6 +56,12 @@ export interface FragmentShaderSpec {
 	 * tile seams; labels stay on the CPU contour pipeline.
 	 */
 	contours?: boolean;
+	/**
+	 * Polygon clipping: an alpha mask texture rasterised from the clip polygons
+	 * in mercator space (see clip-mask.ts), multiplied into the output. The
+	 * rectangular u_clipBounds clip stays independent of this.
+	 */
+	clipMask?: boolean;
 }
 
 export const shaderKey = (spec: FragmentShaderSpec): string =>
@@ -64,7 +70,8 @@ export const shaderKey = (spec: FragmentShaderSpec): string =>
 			(l) =>
 				`${l.gridKind}:${l.projectionName ?? ''}:${l.blends ? 'b' : ''}${l.hasNanField ? 'n' : ''}`
 		)
-		.join('|') + `|${spec.interpolation}${spec.temporal ? '|t' : ''}${spec.contours ? '|ct' : ''}`;
+		.join('|') +
+	`|${spec.interpolation}${spec.temporal ? '|t' : ''}${spec.contours ? '|ct' : ''}${spec.clipMask ? '|cm' : ''}`;
 
 /**
  * MapLibre's per-projection shader chunk for custom layers
@@ -844,9 +851,34 @@ bool isLevelMultiple(float level, float modulo) {
 	}`
 		: '';
 
+	// Polygon clip mask: alpha rasterised in mercator space over the clip
+	// bounds (clip-mask.ts). The x delta wraps along the world so quads with
+	// natural-direction longitudes beyond 180° still look up correctly.
+	const clipMaskUniforms = spec.clipMask
+		? `
+uniform sampler2D u_clipMask;
+// (x0, y0, 1/w, 1/h) of the mask rectangle in mercator [0..1] space.
+uniform vec4 u_clipMaskRect;`
+		: '';
+	const clipMaskCheck = spec.clipMask
+		? `
+	float clipDx = v_mercator.x - u_clipMaskRect.x;
+	clipDx -= floor(clipDx);
+	vec2 clipUv = vec2(clipDx * u_clipMaskRect.z, (v_mercator.y - u_clipMaskRect.y) * u_clipMaskRect.w);
+	float clipMaskA = (clipUv.x > 1.0 || clipUv.y < 0.0 || clipUv.y > 1.0)
+		? 0.0
+		: texture(u_clipMask, clipUv).a;
+	if (clipMaskA <= 0.004) {
+		fragColor = vec4(0.0);
+		return;
+	}`
+		: '';
+	const clipMaskApply = spec.clipMask ? '\n	fragColor *= clipMaskA;' : '';
+
 	parts.push(`
 ${prevUniforms}
 ${contourUniforms}
+${clipMaskUniforms}
 ${blendFunction}
 
 uniform sampler2D u_lut;
@@ -872,7 +904,7 @@ void main() {
 		fragColor = vec4(0.0);
 		return;
 	}
-
+${clipMaskCheck}
 	float value = blendedValue(lat, lon${currentArgs});
 ${temporal}
 ${spec.contours ? '	// Sampled before the divergent return below, so quad derivatives are valid\n	float contourVW = fwidth(value);' : ''}
@@ -887,7 +919,7 @@ ${spec.contours ? '	// Sampled before the divergent return below, so quad deriva
 	// Premultiplied output: matches both MapLibre's custom layer blend state and
 	// the default premultiplied WebGL canvas compositing of the tile renderer.
 	fragColor = vec4(color.rgb * a, a);
-${contourApply}
+${contourApply}${clipMaskApply}
 }`);
 
 	return parts.join('\n');

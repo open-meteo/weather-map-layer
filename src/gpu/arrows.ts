@@ -83,7 +83,9 @@ export const buildArrowAnchors = (
 	view: { minX: number; minY: number; maxX: number; maxY: number },
 	zoom: number,
 	spacingPx: number,
-	clipBounds?: [number, number, number, number]
+	clipBounds?: [number, number, number, number],
+	/** Polygon clip: anchors outside are dropped (createClippingTester). */
+	insideClip?: (lon: number, lat: number) => boolean
 ): ArrowAnchors => {
 	const zInt = Math.max(0, Math.round(zoom));
 	// World pixels at the integer zoom (512px tiles).
@@ -123,16 +125,15 @@ export const buildArrowAnchors = (
 			// Wrap into the base world; world copies re-draw the same instances.
 			let x = (col * spacing) % 1;
 			if (x < 0) x += 1;
-			if (clipBounds) {
+			if (clipBounds || insideClip) {
 				const lon = x * 360 - 180;
 				if (
-					lon < clipBounds[0] ||
-					lat < clipBounds[1] ||
-					lon > clipBounds[2] ||
-					lat > clipBounds[3]
+					clipBounds &&
+					(lon < clipBounds[0] || lat < clipBounds[1] || lon > clipBounds[2] || lat > clipBounds[3])
 				) {
 					continue;
 				}
+				if (insideClip && !insideClip(lon, lat)) continue;
 			}
 			if (count >= capacity) break outer;
 			positions[count * 2] = x;
@@ -144,7 +145,7 @@ export const buildArrowAnchors = (
 	return {
 		positions,
 		count,
-		key: `${zInt}|${spacing}|${firstX}|${lastX}|${firstY}|${lastY}|${clipBounds?.join(',') ?? ''}`
+		key: `${zInt}|${spacing}|${firstX}|${lastX}|${firstY}|${lastY}|${clipBounds?.join(',') ?? ''}${insideClip ? '|p' : ''}`
 	};
 };
 

@@ -8,12 +8,15 @@
  * A draw takes 1..N layers (finest-first); a plain domain is the single-layer
  * case, a seamless composite passes one entry per active sub-domain.
  */
+import type { ResolvedClippingOptions } from '../utils/clipping';
+
 import {
 	ARROW_FRAGMENT_SOURCE,
 	ARROW_INSTANCE_FLOATS,
 	ARROW_TEMPLATE,
 	arrowVertexSource
 } from './arrows';
+import { rasterizeClipMask } from './clip-mask';
 import { buildColorLut, colorLutKey } from './color-lut';
 import type { GpuGridUniforms } from './grid-uniforms';
 import {
@@ -91,6 +94,13 @@ export interface LutHandle {
 	max: number;
 }
 
+/** An uploaded polygon clip mask (see clip-mask.ts). */
+export interface GpuClipMask {
+	texture: WebGLTexture;
+	/** (x0, y0, 1/w, 1/h) of the mask rectangle in mercator [0..1] space. */
+	rect: [number, number, number, number];
+}
+
 export interface GpuLayerDraw {
 	gridUniforms: GpuGridUniforms;
 	valuesTexture: WebGLTexture;
@@ -132,6 +142,8 @@ export interface GpuDrawOptions {
 	opacity: number;
 	/** Optional geographic clip bounds [west, south, east, north]. */
 	clipBounds?: Bounds;
+	/** Optional polygon clip mask multiplied into the output. */
+	clipMask?: GpuClipMask;
 	/** Whole-world x offsets to draw (antimeridian copies). Default [0]. */
 	worldOffsets?: number[];
 	/** Quad in mercator space; defaults to the union of the layer quads. */
@@ -195,6 +207,11 @@ export class WeatherGpuRenderer {
 
 	private lutTextures = new Map<string, LutHandle>();
 	private static readonly LUT_CACHE_MAX = 8;
+
+	// Clip masks keyed by the resolved clipping identity (parse-request caches
+	// one resolution per options object, so identity is stable across frames).
+	private clipMasks = new Map<ResolvedClippingOptions, GpuClipMask | undefined>();
+	private static readonly CLIP_MASK_CACHE_MAX = 2;
 
 	private contourLevelScratch = new Float32Array(48);
 
@@ -332,6 +349,39 @@ export class WeatherGpuRenderer {
 		}
 	}
 
+	/**
+	 * Rasterise (or reuse) the polygon clip mask for resolved clipping options.
+	 * Returns undefined when the options carry no polygons.
+	 */
+	getClipMask(clipping: ResolvedClippingOptions): GpuClipMask | undefined {
+		if (this.clipMasks.has(clipping)) return this.clipMasks.get(clipping);
+
+		const gl = this.gl;
+		let mask: GpuClipMask | undefined;
+		const source = rasterizeClipMask(clipping);
+		if (source) {
+			const texture = gl.createTexture();
+			if (texture) {
+				gl.bindTexture(gl.TEXTURE_2D, texture);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+				gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source.canvas);
+				mask = { texture, rect: source.rect };
+			}
+		}
+
+		this.clipMasks.set(clipping, mask);
+		while (this.clipMasks.size > WeatherGpuRenderer.CLIP_MASK_CACHE_MAX) {
+			const oldest = this.clipMasks.keys().next().value!;
+			const evicted = this.clipMasks.get(oldest);
+			if (evicted) gl.deleteTexture(evicted.texture);
+			this.clipMasks.delete(oldest);
+		}
+		return mask;
+	}
+
 	/** Bake (or reuse) the colour LUT texture for a scale. */
 	getLut(scale: RenderableColorScale, blend: boolean): LutHandle {
 		const key = colorLutKey(scale, blend);
@@ -382,7 +432,8 @@ export class WeatherGpuRenderer {
 			layers: layers.map((layer, i) => layerSpecOf(layer, i === layers.length - 1)),
 			interpolation: opts.interpolation,
 			temporal: multiTemporal,
-			contours: opts.contours !== undefined
+			contours: opts.contours !== undefined,
+			clipMask: opts.clipMask !== undefined
 		};
 		const info = this.getProgram(spec, opts.projection?.shaderData);
 		const u = (name: string): WebGLUniformLocation | null => info.uniforms.get(name) ?? null;
@@ -444,8 +495,10 @@ export class WeatherGpuRenderer {
 
 		bindTexture('u_lut', opts.lut.texture);
 		if (layers.length === 1) {
-			bindTexture('u_valuesPrev', opts.prevTexture ?? layers[0].valuesTexture);
-			gl.uniform1f(u('u_mix'), opts.prevTexture ? (opts.mix ?? 1) : 1);
+			// A one-layer seamless composite carries its blend state per layer.
+			const prevTexture = opts.prevTexture ?? layers[0].prevTexture;
+			bindTexture('u_valuesPrev', prevTexture ?? layers[0].valuesTexture);
+			gl.uniform1f(u('u_mix'), prevTexture ? (opts.mix ?? 1) : 1);
 		} else if (multiTemporal) {
 			for (let i = 0; i < layers.length; i++) {
 				bindTexture(`u_valuesPrev${i}`, layers[i].prevTexture!);
@@ -501,6 +554,10 @@ export class WeatherGpuRenderer {
 			gl.uniform4f(u('u_clipBounds'), clip[0], clip[1], clip[2], clip[3]);
 		} else {
 			gl.uniform4f(u('u_clipBounds'), -1e9, -1e9, 1e9, 1e9);
+		}
+		if (opts.clipMask) {
+			bindTexture('u_clipMask', opts.clipMask.texture);
+			gl.uniform4f(u('u_clipMaskRect'), ...opts.clipMask.rect);
 		}
 
 		for (const offset of opts.worldOffsets ?? [0]) {
@@ -615,6 +672,10 @@ export class WeatherGpuRenderer {
 		this.valueTextureBytes = 0;
 		for (const { texture } of this.lutTextures.values()) gl.deleteTexture(texture);
 		this.lutTextures.clear();
+		for (const mask of this.clipMasks.values()) {
+			if (mask) gl.deleteTexture(mask.texture);
+		}
+		this.clipMasks.clear();
 		for (const { program, vao } of this.programs.values()) {
 			gl.deleteProgram(program);
 			gl.deleteVertexArray(vao);

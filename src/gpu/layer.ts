@@ -30,6 +30,8 @@
 import { isSeamlessDomain } from '../domain-helpers';
 import { GridFactory } from '../grids/index';
 import { defaultOmProtocolSettings } from '../om-protocol';
+import { createClippingTester } from '../utils/clipping';
+import type { ResolvedClippingOptions } from '../utils/clipping';
 import { halfQuantum as computeHalfQuantum, lat2tile } from '../utils/math';
 import { parseRequest } from '../utils/parse-request';
 import { normalizeUrl, parseUrlComponents } from '../utils/parse-url';
@@ -43,6 +45,7 @@ import type {
 import { buildArrowAnchors, buildArrowInstances } from './arrows';
 import type { ArrowSampler, GpuArrowConfig } from './arrows';
 import { loadOmUrl } from './data';
+import { downsampleRegular } from './downsample';
 import { computeGridUniforms } from './grid-uniforms';
 import type { GpuGridUniforms } from './grid-uniforms';
 import { WeatherGpuRenderer } from './renderer';
@@ -58,6 +61,7 @@ import type { GpuSeamlessLayerData } from './seamless-data';
 
 import type {
 	Bounds,
+	GridData,
 	InterpolationMethod,
 	OmProtocolSettings,
 	ParsedRequest,
@@ -92,6 +96,10 @@ interface RenderStyle {
 	colorScale: RenderableColorScale;
 	colorBlend: boolean;
 	clipBounds?: Bounds;
+	/** Resolved clipping of the request; polygons render via the GPU clip mask. */
+	clipping?: ResolvedClippingOptions;
+	/** Lazily built polygon tester for the arrow anchors (null = none needed). */
+	clipTester?: ((lon: number, lat: number) => boolean) | null;
 }
 
 interface PlainFrame extends RenderStyle {
@@ -257,6 +265,16 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 	}
 
 	/**
+	 * Replace the protocol settings (colour scales, clipping, …) at runtime.
+	 * Hosts keep these in a store the CPU protocol reads live per request; the
+	 * GPU layer must follow the same object or it parses against stale options.
+	 * Takes effect on the next prepareUrl/setUrl.
+	 */
+	setSettings(settings: OmProtocolSettings): void {
+		this.settings = settings;
+	}
+
+	/**
 	 * Points the layer at an om:// URL (meta-JSON forms like latest.json are
 	 * resolved exactly like the tile protocol does). Seamless composite domains
 	 * are supported: their sub-layers load lazily per zoom level. Resolves once
@@ -290,6 +308,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 				colorScale: renderOptions.colorScale,
 				colorBlend: renderOptions.colorBlend,
 				clipBounds: request.clippingOptions?.bounds,
+				clipping: request.clippingOptions,
 				intervals: renderOptions.intervals
 			};
 			if (this.seamless || this.current) {
@@ -307,7 +326,17 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			return () => {
 				if (sequence !== this.loadSequence) return;
 				const old = this.seamless;
-				this.seamlessPrev = this.seamlessPrevOf(old, frame);
+				if (old && this.sameSeamlessData(old, frame)) {
+					// Same data re-committed (e.g. a viewport refresh after moveend):
+					// keep the in-flight blend state instead of snapping the morph.
+					this.seamless = frame;
+					if (this.pendingSeamless === frame) this.pendingSeamless = undefined;
+					this.map?.triggerRepaint();
+					return;
+				}
+				// A commit landing mid-blend continues from the values on screen.
+				const snapshot = this.seamlessBlendSnapshot(old);
+				this.seamlessPrev = this.seamlessPrevOf(old, frame, snapshot);
 				this.arrowPrevSampler = this.seamlessPrev ? old?.sampler : undefined;
 				if (this.seamlessPrev) {
 					this.fadeStart = performance.now();
@@ -365,6 +394,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			colorBlend: renderOptions.colorBlend,
 			halfQuantum: computeHalfQuantum(loaded.data.scaleFactor),
 			clipBounds: loaded.request.clippingOptions?.bounds,
+			clipping: loaded.request.clippingOptions,
 			sampler,
 			stateKey: loaded.request.fileAndVariableKey,
 			intervals: renderOptions.intervals
@@ -378,8 +408,21 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			// Same variable + grid geometry -> blend the data values of old and new
 			// frame in the shader. Anything else swaps instantly.
 			if (this.current && this.fadeMs > 0 && this.current.gridSignature === frame.gridSignature) {
+				if (frame.values === this.current.values) {
+					// Same data re-committed (e.g. a viewport refresh after moveend):
+					// keep the in-flight blend state instead of snapping the morph,
+					// and still adopt the frame's fresh render options.
+					this.seamless = undefined;
+					this.pendingSeamless = undefined;
+					this.current = frame;
+					this.map?.triggerRepaint();
+					return;
+				}
+				// A commit landing mid-blend continues from the values on screen:
+				// the half-blended field becomes the new morph origin instead of
+				// jumping to the old target first.
 				this.previous = {
-					values: this.current.values,
+					values: this.blendSnapshot() ?? this.current.values,
 					gridUniforms: this.current.gridUniforms
 				};
 				this.arrowPrevSampler = this.current.sampler;
@@ -396,6 +439,63 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			this.arrowGeneration++;
 			this.map?.triggerRepaint();
 		};
+	}
+
+	/**
+	 * The field currently on screen mid-blend (CPU lerp of previous into
+	 * current), or undefined when no blend is in flight. A commit landing
+	 * mid-blend morphs from this snapshot, so the visual never jumps.
+	 */
+	private blendSnapshot(): Float32Array | undefined {
+		if (!this.previous || !this.current || this.fadeMs <= 0) return undefined;
+		const mix = (performance.now() - this.fadeStart) / this.fadeMs;
+		if (mix <= 0 || mix >= 1) return undefined;
+		const from = this.previous.values;
+		const to = this.current.values;
+		if (from.length !== to.length) return undefined;
+		const out = new Float32Array(from.length);
+		for (let i = 0; i < from.length; i++) {
+			out[i] = from[i] + (to[i] - from[i]) * mix;
+		}
+		return out;
+	}
+
+	/** True when every loaded sub-layer of `next` carries the same value arrays as `old`. */
+	private sameSeamlessData(old: SeamlessFrame, next: SeamlessFrame): boolean {
+		if (old.domain.value !== next.domain.value) return false;
+		if (old.request.dataOptions.variable !== next.request.dataOptions.variable) return false;
+		let loaded = 0;
+		for (const [domainValue, entry] of next.entries) {
+			if (entry.status !== 'loaded' || !entry.data) continue;
+			loaded++;
+			const oldEntry = old.entries.get(domainValue);
+			if (oldEntry?.status !== 'loaded' || oldEntry.data?.values !== entry.data.values) {
+				return false;
+			}
+		}
+		return loaded > 0;
+	}
+
+	/** Mid-blend CPU lerp per sub-domain, the seamless counterpart of blendSnapshot. */
+	private seamlessBlendSnapshot(
+		old: SeamlessFrame | undefined
+	): Map<string, Float32Array> | undefined {
+		if (!old || !this.seamlessPrev || this.fadeMs <= 0) return undefined;
+		const mix = (performance.now() - this.fadeStart) / this.fadeMs;
+		if (mix <= 0 || mix >= 1) return undefined;
+		const out = new Map<string, Float32Array>();
+		for (const [domainValue, prev] of this.seamlessPrev) {
+			const entry = old.entries.get(domainValue);
+			const to = entry?.status === 'loaded' ? entry.data?.values : undefined;
+			if (!to || to.length !== prev.values.length) continue;
+			const from = prev.values;
+			const lerped = new Float32Array(to.length);
+			for (let i = 0; i < to.length; i++) {
+				lerped[i] = from[i] + (to[i] - from[i]) * mix;
+			}
+			out.set(domainValue, lerped);
+		}
+		return out.size > 0 ? out : undefined;
 	}
 
 	/** Keep the visual being replaced for a dissolve (variable/domain switch). */
@@ -438,25 +538,19 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		return g.dx;
 	}
 
-	/** The draw-ready contour pass for a frame's levels, if configured. */
-	private contourDrawOf(
-		intervals: number[],
-		opacity: number,
-		gridUniforms: GpuGridUniforms
-	): GpuContourDraw | undefined {
-		const style = this.contours;
-		if (!style || intervals.length === 0) return undefined;
-
-		// The bilinear derivative only settles once a grid cell spans several
-		// screen pixels; below that isolines crumble into speckle.
-		const cellPx =
+	/** Screen pixels one grid cell spans at the current zoom. */
+	private cellPxOf(gridUniforms: GpuGridUniforms): number {
+		return (
 			(WeatherGpuLayer.cellSizeDeg(gridUniforms) / 360) *
 			512 *
-			Math.pow(2, this.map?.getZoom() ?? 0);
-		const t = Math.min(1, Math.max(0, (cellPx - 3) / 2));
-		const resolutionFade = t * t * (3 - 2 * t);
-		if (resolutionFade <= 0) return undefined;
-		opacity *= resolutionFade;
+			Math.pow(2, this.map?.getZoom() ?? 0)
+		);
+	}
+
+	/** The draw-ready contour styling for a frame's levels, if configured. */
+	private contourStyleDraw(intervals: number[], opacity: number): GpuContourDraw | undefined {
+		const style = this.contours;
+		if (!style || intervals.length === 0 || opacity <= 0) return undefined;
 
 		// Style widths are CSS pixels; the shader works in device pixels.
 		const ratio = this.map?.getPixelRatio() ?? 1;
@@ -489,6 +583,92 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			minGap: isFinite(minGap) ? minGap : 1,
 			opacity
 		};
+	}
+
+	/**
+	 * Contour pass with a resolution fade: the bilinear derivative only settles
+	 * once a cell spans several pixels, below that isolines crumble into
+	 * speckle. Used where the downsampled pass (regular grids) is unavailable.
+	 */
+	private contourDrawOf(
+		intervals: number[],
+		opacity: number,
+		gridUniforms: GpuGridUniforms
+	): GpuContourDraw | undefined {
+		const t = Math.min(1, Math.max(0, (this.cellPxOf(gridUniforms) - 3) / 2));
+		const resolutionFade = t * t * (3 - 2 * t);
+		if (resolutionFade <= 0) return undefined;
+		return this.contourStyleDraw(intervals, opacity * resolutionFade);
+	}
+
+	/** Target cell size for the isolines; downsample the field below it. */
+	private static readonly CONTOUR_TARGET_CELL_PX = 4;
+
+	/**
+	 * Contours of a downsampled copy of a regular-grid frame: at low zoom the
+	 * full-resolution field speckles, so the isolines sample a coarser copy
+	 * whose cells stay comfortably above a pixel — smooth world-view isobars
+	 * instead of hiding them. Returns the extra lines-only draw, or undefined
+	 * when the frame should render its contours in the main pass instead.
+	 */
+	private contourDownsampledDraw(
+		frame: PlainFrame,
+		opacity: number,
+		mix: number
+	): { layer: GpuLayerDraw; draw: GpuContourDraw; prevTexture?: WebGLTexture } | undefined {
+		const g = frame.gridUniforms;
+		if (g.gridKind !== 'regular') return undefined;
+		const cellPx = this.cellPxOf(g);
+		if (cellPx >= WeatherGpuLayer.CONTOUR_TARGET_CELL_PX) return undefined;
+
+		const draw = this.contourStyleDraw(frame.intervals, opacity);
+		if (!draw) return undefined;
+		// The box-averaged field is smooth by construction, so the anti-speckle
+		// crowding fade only tears here: its 3..7px band sits exactly where the
+		// coarse cells put dense isobars, and cell-scale fwidth variation flips
+		// it per pixel. Scale minGap to move the band down to ~1.2..2.8px, where
+		// lines genuinely stop resolving.
+		draw.minGap *= 2.5;
+
+		const factor = Math.min(
+			32,
+			Math.pow(2, Math.ceil(Math.log2(WeatherGpuLayer.CONTOUR_TARGET_CELL_PX / cellPx)))
+		);
+		const ds = downsampleRegular(frame.values, g.nx, g.ny, factor);
+		if (!ds) return undefined;
+
+		// Box averaging over factor×factor cells: the coarse cell centre sits
+		// half a block further in than the original origin.
+		const grid: GridData = {
+			type: 'regular',
+			nx: ds.nx,
+			ny: ds.ny,
+			lonMin: g.originX + (g.dx * (factor - 1)) / 2,
+			latMin: g.originY + (g.dy * (factor - 1)) / 2,
+			dx: g.dx * factor,
+			dy: g.dy * factor
+		};
+		const renderer = this.renderer!;
+		const gridUniforms = computeGridUniforms(grid, null);
+		const layer: GpuLayerDraw = {
+			gridUniforms,
+			valuesTexture: renderer.getValueTexture(
+				ds.values,
+				gridUniforms.nx,
+				gridUniforms.ny,
+				`${frame.stateKey}#ds${factor}`
+			)
+		};
+
+		// Morph the coarse isolines with the temporal blend, like the raster.
+		let prevTexture: WebGLTexture | undefined;
+		if (mix < 1 && this.previous) {
+			const prevDs = downsampleRegular(this.previous.values, g.nx, g.ny, factor);
+			if (prevDs) {
+				prevTexture = renderer.getValueTexture(prevDs.values, gridUniforms.nx, gridUniforms.ny);
+			}
+		}
+		return { layer, draw, prevTexture };
 	}
 
 	onAdd(map: MapLibreMap, gl: WebGLRenderingContext | WebGL2RenderingContext): void {
@@ -578,7 +758,21 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			}
 		}
 
-		const contours = this.contourDrawOf(frame.intervals, opacity, frame.gridUniforms);
+		// At full resolution the isolines share the main pass; at low zoom they
+		// come from a downsampled copy of the field in an extra lines-only pass.
+		let contours: GpuContourDraw | undefined;
+		let extraContours: ReturnType<WeatherGpuLayer['contourDownsampledDraw']>;
+		if (this.cellPxOf(frame.gridUniforms) >= WeatherGpuLayer.CONTOUR_TARGET_CELL_PX) {
+			contours = this.contourStyleDraw(frame.intervals, opacity);
+		} else {
+			extraContours = this.contourDownsampledDraw(frame, opacity, mix);
+			if (!extraContours) {
+				contours = this.contourDrawOf(frame.intervals, opacity, frame.gridUniforms);
+			}
+		}
+
+		const clipMask = frame.clipping?.polygons ? renderer.getClipMask(frame.clipping) : undefined;
+
 		if (this.drawRaster || contours) {
 			const g = frame.gridUniforms;
 			renderer.draw({
@@ -596,13 +790,33 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 				halfQuantum: frame.halfQuantum,
 				opacity: this.drawRaster ? opacity : 0,
 				clipBounds: frame.clipBounds,
+				clipMask,
 				worldOffsets: this.worldOffsets(projection),
 				contours
 			});
 		}
 
+		if (extraContours) {
+			renderer.draw({
+				projection,
+				layers: [extraContours.layer],
+				// Monotone (C1) sampling: bilinear isolines kink at every coarse
+				// cell and their jumping derivative makes the crowding fade tear.
+				interpolation: 'monotone',
+				prevTexture: extraContours.prevTexture,
+				mix: extraContours.prevTexture ? mix : 1,
+				lut: renderer.getLut(frame.colorScale, frame.colorBlend),
+				halfQuantum: frame.halfQuantum,
+				opacity: 0,
+				clipBounds: frame.clipBounds,
+				clipMask,
+				worldOffsets: this.worldOffsets(projection),
+				contours: extraContours.draw
+			});
+		}
+
 		if (!still) {
-			this.drawArrowPass(gl, projection, frame.sampler, mix, opacity, frame.clipBounds);
+			this.drawArrowPass(gl, projection, frame.sampler, mix, opacity, frame.clipBounds, frame);
 		}
 	}
 
@@ -654,11 +868,11 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		}
 		if (drawLayers.length === 0) return;
 
-		// All-or-nothing: a sub-layer without a previous state (e.g. loaded after
-		// the commit) disables the temporal blend for the whole composite.
-		if (!drawLayers.every((layer) => layer.prevTexture !== undefined)) {
-			for (const layer of drawLayers) layer.prevTexture = undefined;
-			mix = 1;
+		// A sub-layer without a previous state (e.g. loaded after the commit)
+		// blends from its own values — identity for that layer, so a late join
+		// no longer snaps the whole composite's morph.
+		if (mix < 1) {
+			for (const layer of drawLayers) layer.prevTexture ??= layer.valuesTexture;
 		}
 
 		const contours = this.contourDrawOf(frame.intervals, opacity, drawLayers[0].gridUniforms);
@@ -674,6 +888,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 				halfQuantum: computeHalfQuantum(finestScaleFactor),
 				opacity: this.drawRaster ? opacity : 0,
 				clipBounds: frame.clipBounds,
+				clipMask: frame.clipping?.polygons ? renderer.getClipMask(frame.clipping) : undefined,
 				worldOffsets: this.worldOffsets(projection),
 				contours
 			});
@@ -681,18 +896,21 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 
 		if (!still && this.arrows) {
 			this.updateSeamlessSampler(frame, drawnData);
-			this.drawArrowPass(gl, projection, frame.sampler, mix, opacity, frame.clipBounds);
+			this.drawArrowPass(gl, projection, frame.sampler, mix, opacity, frame.clipBounds, frame);
 		}
 	}
 
 	/**
 	 * Previous-timestep values per sub-domain when two composites can blend:
-	 * same seamless domain, same variable, and every loaded sub-layer of the
-	 * new frame has an old counterpart on identical grid geometry.
+	 * same seamless domain, same variable, and matching sub-layers on identical
+	 * grid geometry. Sub-layers without a usable counterpart just get no entry
+	 * (they render with themselves as previous, so the rest still morphs).
 	 */
 	private seamlessPrevOf(
 		old: SeamlessFrame | undefined,
-		next: SeamlessFrame
+		next: SeamlessFrame,
+		/** Mid-blend snapshot values overriding the old frame's, per sub-domain. */
+		snapshot?: Map<string, Float32Array>
 	): Map<string, { values: Float32Array; nx: number; ny: number }> | undefined {
 		if (!old || this.fadeMs <= 0) return undefined;
 		if (old.domain.value !== next.domain.value) return undefined;
@@ -703,10 +921,14 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		for (const [domainValue, entry] of next.entries) {
 			if (entry.status !== 'loaded' || !entry.data) continue;
 			const oldEntry = old.entries.get(domainValue);
-			if (oldEntry?.status !== 'loaded' || !oldEntry.data) return undefined;
+			if (oldEntry?.status !== 'loaded' || !oldEntry.data) continue;
 			const g = oldEntry.data.gridUniforms;
-			if (uniformsKey(entry.data.gridUniforms) !== uniformsKey(g)) return undefined;
-			prev.set(domainValue, { values: oldEntry.data.values, nx: g.nx, ny: g.ny });
+			if (uniformsKey(entry.data.gridUniforms) !== uniformsKey(g)) continue;
+			prev.set(domainValue, {
+				values: snapshot?.get(domainValue) ?? oldEntry.data.values,
+				nx: g.nx,
+				ny: g.ny
+			});
 		}
 		return prev.size > 0 ? prev : undefined;
 	}
@@ -747,7 +969,8 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		sampler: ArrowSampler | undefined,
 		mix: number,
 		opacity: number,
-		clipBounds?: Bounds
+		clipBounds: Bounds | undefined,
+		style: RenderStyle
 	): void {
 		const config = this.arrows;
 		if (!config || !sampler) return;
@@ -771,7 +994,16 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			minY: lat2tile(Math.min(85.051129, bounds.getNorth()), 0),
 			maxY: lat2tile(Math.max(-85.051129, bounds.getSouth()), 0)
 		};
-		const anchors = buildArrowAnchors(view, map.getZoom(), config.spacingPx, clipBounds);
+		// Anchors outside the clip polygons are dropped like the rect clip drops
+		// them — arrows over a masked-out raster would look detached.
+		style.clipTester ??= createClippingTester(style.clipping) ?? null;
+		const anchors = buildArrowAnchors(
+			view,
+			map.getZoom(),
+			config.spacingPx,
+			clipBounds,
+			style.clipTester ?? undefined
+		);
 		const instanceKey = `${anchors.key}#${this.arrowGeneration}#${mix < 1 ? 'blend' : 'still'}`;
 		this.arrowInstances ??= renderer.createArrowInstances();
 		if (instanceKey !== this.arrowInstanceKey) {
