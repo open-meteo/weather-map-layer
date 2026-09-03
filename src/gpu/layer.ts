@@ -487,7 +487,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		grid: GridData,
 		gridUniforms: GpuGridUniforms
 	): [number, number] | undefined {
-		if (gridUniforms.gridKind !== 'regular') return undefined;
+		if (gridUniforms.gridKind === 'gaussian') return undefined;
 		const full = computeGridUniforms(grid, null);
 		return [full.originX, full.originY];
 	}
@@ -682,7 +682,10 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		mix: number
 	): { layer: GpuLayerDraw; draw: GpuContourDraw; prevTexture?: WebGLTexture } | undefined {
 		const g = frame.gridUniforms;
-		if (g.gridKind !== 'regular') return undefined;
+		// Regular and projected grids are both rectangular lattices over their
+		// own axes, so one box downsample covers them; gaussian rows differ in
+		// length and keep the resolution-faded full-res pass instead.
+		if (g.gridKind === 'gaussian') return undefined;
 		const cellPx = this.cellPxOf(g);
 		if (cellPx >= WeatherGpuLayer.CONTOUR_TARGET_CELL_PX) return undefined;
 
@@ -712,19 +715,22 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		const ds = downsampleRegular(frame.values, g.nx, g.ny, factor, skipX, skipY);
 		if (!ds) return undefined;
 
-		// Box averaging over factor×factor cells: the coarse cell centre sits
-		// half a block further in than the (alignment-shifted) origin.
-		const grid: GridData = {
-			type: 'regular',
+		// The coarse grid lives on the same axes (and projection) as the fine
+		// one: box averaging over factor×factor cells puts the coarse cell
+		// centre half a block further in than the (alignment-shifted) origin.
+		// The quad and wrap flags carry over — the leftover wrap gap folds into
+		// the double-width wrap cell.
+		const renderer = this.renderer!;
+		const gridUniforms: GpuGridUniforms = {
+			...g,
 			nx: ds.nx,
 			ny: ds.ny,
-			lonMin: g.originX + g.dx * skipX + (g.dx * (factor - 1)) / 2,
-			latMin: g.originY + g.dy * skipY + (g.dy * (factor - 1)) / 2,
+			originX: g.originX + g.dx * (skipX + (factor - 1) / 2),
+			originY: g.originY + g.dy * (skipY + (factor - 1) / 2),
 			dx: g.dx * factor,
-			dy: g.dy * factor
+			dy: g.dy * factor,
+			wrapLastCellDouble: g.lonWrap
 		};
-		const renderer = this.renderer!;
-		const gridUniforms = computeGridUniforms(grid, null);
 		const layer: GpuLayerDraw = {
 			gridUniforms,
 			valuesTexture: renderer.getValueTexture(

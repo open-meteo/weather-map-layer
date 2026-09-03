@@ -152,8 +152,14 @@ const regularUniforms = (
 	const lonSpan = nx * absDx;
 	const lonWrap = lonSpan >= 360 - 1.5 * absDx;
 
+	// A wrapping grid tiles the whole circle: extend the quad to exactly one
+	// world so adjacent world copies meet without a gap. Grids whose data span
+	// is short of 360° (double-width wrap cell, e.g. ICON) would otherwise
+	// leave a bare strip at the antimeridian.
+	const quadFull: typeof quad = lonWrap ? [quad[0], quad[1], quad[0] + 1, quad[3]] : quad;
+
 	return {
-		...baseUniforms(fullBounds, quad),
+		...baseUniforms(fullBounds, quadFull),
 		gridKind: 'regular',
 		nx,
 		ny,
