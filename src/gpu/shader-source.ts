@@ -726,17 +726,28 @@ float edgeWeight${i}(float lat, float lon) {
 	return parts.join('\n');
 };
 
-// ─── Fragment shader assembly ────────────────────────────────────────────────
+// ─── Sampling library (shared with the particle-update pass) ─────────────────
 
-export const fragmentSource = (spec: FragmentShaderSpec): string => {
+/** The layer stack + interpolation subset of a spec that samplingSource needs. */
+export interface SamplingShaderSpec {
+	layers: LayerShaderSpec[];
+	interpolation: InterpolationMethod;
+}
+
+/**
+ * The sampling library for a layer stack: common helpers, one specialised
+ * sampler per layer and the texture-parameterised composite
+ * `blendedValue(lat, lon, tex0…)`. The fragment shader and the particle-update
+ * pass share this, so particles advect through exactly the field the raster
+ * shows (including seamless edge blending).
+ */
+export const samplingSource = (spec: SamplingShaderSpec): string => {
 	const layers = spec.layers;
 	if (layers.length === 0) {
 		throw new Error('gpu: at least one layer required');
 	}
-	const single = layers.length === 1;
 
-	const parts: string[] = ['#version 300 es', 'precision highp float;', 'precision highp int;'];
-	parts.push(COMMON, BILINEAR_NAN_AWARE, SPLINES);
+	const parts: string[] = [COMMON, BILINEAR_NAN_AWARE, SPLINES];
 
 	if (layers.some((l) => l.gridKind !== 'gaussian')) {
 		parts.push(RECT_INTERPOLATORS);
@@ -766,12 +777,24 @@ export const fragmentSource = (spec: FragmentShaderSpec): string => {
 		}
 	}`);
 	}
-	const blendFunction = `
+	parts.push(`
 float blendedValue(float lat, float lon${texParams}) {
 	float value = MISSING;
 ${blendLines.join('\n')}
 	return value;
-}`;
+}`);
+
+	return parts.join('\n');
+};
+
+// ─── Fragment shader assembly ────────────────────────────────────────────────
+
+export const fragmentSource = (spec: FragmentShaderSpec): string => {
+	const layers = spec.layers;
+	const single = layers.length === 1;
+
+	const parts: string[] = ['#version 300 es', 'precision highp float;', 'precision highp int;'];
+	parts.push(samplingSource(spec));
 
 	// In-shader temporal blend between two timesteps on the same grids.
 	const multiTemporal = !single && spec.temporal === true;
@@ -886,7 +909,6 @@ uniform vec4 u_clipMaskRect;`
 ${prevUniforms}
 ${contourUniforms}
 ${clipMaskUniforms}
-${blendFunction}
 
 uniform sampler2D u_lut;
 // (min, 1 / (max - min), texcoord offset, texcoord scale) — the last two map

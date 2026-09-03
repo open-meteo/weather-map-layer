@@ -1,5 +1,6 @@
 import { LUT_SIZE, buildColorLut } from '../gpu/color-lut';
 import { computeGridUniforms } from '../gpu/grid-uniforms';
+import { updateFragmentSource, windComponentsOf } from '../gpu/particles';
 import { fragmentSource, vertexSource } from '../gpu/shader-source';
 import type { FragmentShaderSpec } from '../gpu/shader-source';
 import { getColor } from '../utils/styling';
@@ -107,6 +108,59 @@ describe('gpu shader source', () => {
 				interpolation: 'linear'
 			})
 		).toThrow(/unsupported projection/);
+	});
+});
+
+describe('gpu wind particles', () => {
+	it('assembles the particle update shader for plain and temporal variants', () => {
+		const still = updateFragmentSource(
+			{ layers: [{ gridKind: 'regular' }], interpolation: 'linear' },
+			false
+		);
+		expect(still).toContain('blendedValue(lat, lon, u_u0)');
+		expect(still).toContain('blendedValue(lat, lon, u_v0)');
+		expect(still).not.toContain('u_uPrev0');
+
+		const temporal = updateFragmentSource(
+			{ layers: [{ gridKind: 'regular' }], interpolation: 'linear' },
+			true
+		);
+		expect(temporal).toContain('uniform sampler2D u_uPrev0;');
+		expect(temporal).toContain('u = mix(uPrev, u, u_mix);');
+	});
+
+	it('assembles a seamless multi-layer particle update shader', () => {
+		const source = updateFragmentSource(
+			{
+				layers: [
+					{ gridKind: 'projected', projectionName: 'RotatedLatLonProjection', blends: true },
+					{ gridKind: 'regular', blends: true, hasNanField: true },
+					{ gridKind: 'gaussian' }
+				],
+				interpolation: 'linear'
+			},
+			false
+		);
+		expect(source).toContain('blendedValue(lat, lon, u_u0, u_u1, u_u2)');
+		expect(source).toContain('blendedValue(lat, lon, u_v0, u_v1, u_v2)');
+		expect(source).toContain('edgeWeight0');
+		expect(source).toContain('uniform sampler2D u_nan1;');
+	});
+
+	it('derives eastward/northward flow components from speed + direction', () => {
+		const values = new Float32Array([10, 5, NaN, 4]);
+		// direction = where the wind comes FROM: 0° is a northerly (flows south).
+		const directions = new Float32Array([0, 270, 90, NaN]);
+		const { u, v } = windComponentsOf(values, directions);
+		expect(u[0]).toBeCloseTo(0, 5);
+		expect(v[0]).toBeCloseTo(-10, 5);
+		// A westerly flows east: +u, no v.
+		expect(u[1]).toBeCloseTo(5, 5);
+		expect(v[1]).toBeCloseTo(0, 5);
+		expect(u[2]).toBeNaN();
+		expect(v[3]).toBeNaN();
+		// Cached per source-array identity.
+		expect(windComponentsOf(values, directions).u).toBe(u);
 	});
 });
 

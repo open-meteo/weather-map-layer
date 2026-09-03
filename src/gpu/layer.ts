@@ -48,6 +48,8 @@ import { loadOmUrl } from './data';
 import { downsampleRegular } from './downsample';
 import { computeGridUniforms } from './grid-uniforms';
 import type { GpuGridUniforms } from './grid-uniforms';
+import { ParticleSystem, windComponentsOf } from './particles';
+import type { GpuParticleConfig, ParticleFieldLayer } from './particles';
 import { WeatherGpuRenderer } from './renderer';
 import type {
 	ArrowInstances,
@@ -104,6 +106,8 @@ interface RenderStyle {
 
 interface PlainFrame extends RenderStyle {
 	values: Float32Array;
+	/** Wind directions of the data, for the particle pass's u/v derivation. */
+	directions?: Float32Array;
 	gridUniforms: GpuGridUniforms;
 	/** Identity of the grid geometry; temporal blending requires equal signatures. */
 	gridSignature: string;
@@ -218,6 +222,12 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 
 	private arrows: GpuArrowConfig | undefined;
 	private contours: GpuContourStyle | undefined;
+	private particles: GpuParticleConfig | undefined;
+	private particleSystem: ParticleSystem | undefined;
+	/** Last particle-update timestamp; 0 restarts the step clock. */
+	private particleLastTime = 0;
+	/** Previous-timestep wind of a blendable commit, for the particle morph. */
+	private particlePrev: { values: Float32Array; directions: Float32Array } | undefined;
 	/** Sampler of the outgoing frame, for rebuilding instances mid-blend. */
 	private arrowPrevSampler: ArrowSampler | undefined;
 	/** Bumped whenever the arrow data changes; part of the instance identity. */
@@ -342,6 +352,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 				const snapshot = this.seamlessBlendSnapshot(old);
 				this.seamlessPrev = this.seamlessPrevOf(old, frame, snapshot);
 				this.arrowPrevSampler = this.seamlessPrev ? old?.sampler : undefined;
+				this.particlePrev = undefined; // seamless particles sample the target field
 				if (this.seamlessPrev) {
 					this.fadeStart = performance.now();
 				} else {
@@ -390,6 +401,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 
 		const frame: PlainFrame = {
 			values,
+			directions,
 			gridUniforms,
 			gridSignature,
 			interpolation: renderOptions.interpolation,
@@ -456,8 +468,14 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 					gridUniforms: this.current.gridUniforms
 				};
 				this.arrowPrevSampler = this.current.sampler;
+				// Same grid geometry, so the particle pass can morph the wind
+				// components from the replaced frame's own arrays.
+				this.particlePrev = this.current.directions
+					? { values: this.current.values, directions: this.current.directions }
+					: undefined;
 				this.fadeStart = performance.now();
 			} else if (this.current && this.fadeMs > 0 && recropped) {
+				this.particlePrev = undefined;
 				if (recropped === frame.values) {
 					// Same field re-cropped (a moveend refresh): swap silently.
 					this.previous = undefined;
@@ -471,6 +489,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			} else {
 				this.previous = undefined;
 				this.arrowPrevSampler = undefined;
+				this.particlePrev = undefined;
 				this.beginCrossfade();
 			}
 
@@ -579,6 +598,21 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 	setArrows(config: GpuArrowConfig | undefined): void {
 		this.arrows = config;
 		this.arrowGeneration++;
+		this.map?.triggerRepaint();
+	}
+
+	/**
+	 * Configure (or remove) the animated wind-particle pass: particles advect
+	 * through the wind field and leave fading trails. Requires data with
+	 * directions (wind variables); renders continuously while configured.
+	 */
+	setParticles(config: GpuParticleConfig | undefined): void {
+		this.particles = config;
+		if (!config) {
+			this.particleSystem?.dispose();
+			this.particleSystem = undefined;
+			this.particleLastTime = 0;
+		}
 		this.map?.triggerRepaint();
 	}
 
@@ -762,6 +796,8 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 	}
 
 	onRemove(): void {
+		this.particleSystem?.dispose();
+		this.particleSystem = undefined;
 		if (this.renderer && this.arrowInstances) {
 			this.renderer.deleteArrowInstances(this.arrowInstances);
 			this.arrowInstances = undefined;
@@ -836,6 +872,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			} else {
 				this.previous = undefined;
 				this.arrowPrevSampler = undefined;
+				this.particlePrev = undefined;
 			}
 		}
 
@@ -898,7 +935,47 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 
 		if (!still) {
 			this.drawArrowPass(gl, projection, frame.sampler, mix, opacity, frame.clipBounds, frame);
+			this.drawParticlePass(
+				projection,
+				this.plainParticleLayers(frame),
+				this.plainParticlePrev(frame, mix),
+				mix,
+				opacity,
+				frame.clipBounds
+			);
 		}
+	}
+
+	/** The particle pass's wind-component layer for a plain frame, if wind data. */
+	private plainParticleLayers(frame: PlainFrame): ParticleFieldLayer[] {
+		if (!frame.directions || !this.particles) return [];
+		const uv = windComponentsOf(frame.values, frame.directions);
+		const g = frame.gridUniforms;
+		const renderer = this.renderer!;
+		return [
+			{
+				gridUniforms: g,
+				uTexture: renderer.getValueTexture(uv.u, g.nx, g.ny),
+				vTexture: renderer.getValueTexture(uv.v, g.nx, g.ny)
+			}
+		];
+	}
+
+	/** Previous-timestep component textures while a blendable morph is in flight. */
+	private plainParticlePrev(
+		frame: PlainFrame,
+		mix: number
+	): { uTexture: WebGLTexture; vTexture: WebGLTexture } | undefined {
+		if (mix >= 1 || !this.particlePrev || !this.particles) return undefined;
+		// particlePrev is only set for same-geometry commits, so the previous
+		// arrays share the current frame's texture dimensions.
+		const uv = windComponentsOf(this.particlePrev.values, this.particlePrev.directions);
+		const g = frame.gridUniforms;
+		const renderer = this.renderer!;
+		return {
+			uTexture: renderer.getValueTexture(uv.u, g.nx, g.ny),
+			vTexture: renderer.getValueTexture(uv.v, g.nx, g.ny)
+		};
 	}
 
 	private renderSeamless(
@@ -979,6 +1056,39 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			this.updateSeamlessSampler(frame, drawnData);
 			this.drawArrowPass(gl, projection, frame.sampler, mix, opacity, frame.clipBounds, frame);
 		}
+		if (!still) {
+			this.drawParticlePass(
+				projection,
+				this.seamlessParticleLayers(drawnData),
+				undefined,
+				1,
+				opacity,
+				frame.clipBounds
+			);
+		}
+	}
+
+	/**
+	 * The particle pass's component layers for a seamless composite: the same
+	 * finest-first stack (and edge-blend state) as the raster draw, sampled on
+	 * the wind components. All drawn sub-layers must carry directions, or the
+	 * composite would blend against missing layers differently than the raster.
+	 */
+	private seamlessParticleLayers(drawn: GpuSeamlessLayerData[]): ParticleFieldLayer[] {
+		if (!this.particles || drawn.length === 0) return [];
+		if (drawn.some((data) => !data.data.directions)) return [];
+		const renderer = this.renderer!;
+		return drawn.map((data) => {
+			const uv = windComponentsOf(data.values, data.data.directions!);
+			const g = data.gridUniforms;
+			return {
+				gridUniforms: g,
+				uTexture: renderer.getValueTexture(uv.u, g.nx, g.ny),
+				vTexture: renderer.getValueTexture(uv.v, g.nx, g.ny),
+				blendWidthDeg: data.blendWidthDeg,
+				nanTexture: data.nanField ? renderer.getValueTexture(data.nanField, g.nx, g.ny) : undefined
+			};
+		});
 	}
 
 	/**
@@ -1109,6 +1219,88 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			refStepPx: 0.0005 * 512 * Math.pow(2, map.getZoom()),
 			worldOffsets: this.worldOffsets(projection)
 		});
+	}
+
+	/**
+	 * The animated wind-particle pass: advance the GPU particle state by one
+	 * step and composite the fading trail image. Requests a repaint every frame
+	 * while active — the animation is the reason the map keeps rendering.
+	 */
+	private drawParticlePass(
+		projection: GpuDrawOptions['projection'],
+		layers: ParticleFieldLayer[],
+		prev: { uTexture: WebGLTexture; vTexture: WebGLTexture } | undefined,
+		mix: number,
+		opacity: number,
+		clipBounds: Bounds | undefined
+	): void {
+		const config = this.particles;
+		if (!config || layers.length === 0 || !this.rendererGl) return;
+		const map = this.map!;
+
+		// Zoom gate with a one-level fade-in (and half-level fade-out above).
+		const zoom = map.getZoom();
+		const minZoom = config.minZoom ?? 0;
+		const maxZoom = config.maxZoom ?? 24;
+		const zoomFade =
+			Math.min(1, Math.max(0, zoom - (minZoom - 1))) *
+			Math.min(1, Math.max(0, maxZoom + 0.5 - zoom));
+		if (zoomFade <= 0) {
+			this.particleLastTime = 0;
+			return;
+		}
+
+		this.particleSystem ??= new ParticleSystem(this.rendererGl);
+		if (!this.particleSystem.supported) return;
+
+		// Live/respawn window: the viewport in mercator coordinates, expanded a
+		// little so particles drift in from just outside, intersected with the
+		// rectangular clip (particles over a clipped-away raster look detached).
+		const bounds = map.getBounds();
+		let minX = (bounds.getWest() + 180) / 360;
+		let maxX = (bounds.getEast() + 180) / 360;
+		let minY = lat2tile(Math.min(85.051129, bounds.getNorth()), 0);
+		let maxY = lat2tile(Math.max(-85.051129, bounds.getSouth()), 0);
+		const margin = 0.02 * Math.max(maxX - minX, maxY - minY);
+		minX -= margin;
+		maxX += margin;
+		minY = Math.max(0, minY - margin);
+		maxY = Math.min(1, maxY + margin);
+		if (clipBounds) {
+			minX = Math.max(minX, (clipBounds[0] + 180) / 360);
+			maxX = Math.min(maxX, (clipBounds[2] + 180) / 360);
+			minY = Math.max(minY, lat2tile(Math.min(85.051129, clipBounds[3]), 0));
+			maxY = Math.min(maxY, lat2tile(Math.max(-85.051129, clipBounds[1]), 0));
+		}
+		if (maxX - minX >= 1) {
+			minX = 0;
+			maxX = 1;
+		}
+		if (maxX <= minX || maxY <= minY) return;
+
+		const now = performance.now();
+		const dt = this.particleLastTime > 0 ? Math.min(0.05, (now - this.particleLastTime) / 1000) : 0;
+		this.particleLastTime = now;
+
+		// A fixed screen speed per m/s at every zoom: physically the flow slows
+		// hugely on screen when zooming in, visually it should just keep flowing.
+		const speedPxPerSec = config.speedPxPerSec ?? 1.4;
+		const mercPerMps = (speedPxPerSec * dt) / (512 * Math.pow(2, zoom));
+
+		this.particleSystem.render({
+			layers,
+			prev,
+			mix,
+			projection,
+			config,
+			dtSeconds: dt,
+			mercPerMps,
+			bounds: [minX, minY, maxX, maxY],
+			opacity: opacity * (config.opacity ?? 0.8) * zoomFade,
+			sizeDevicePx: config.sizePx * map.getPixelRatio(),
+			worldOffsets: this.worldOffsets(projection)
+		});
+		map.triggerRepaint();
 	}
 
 	/** Kick loads for all zoom-active sub-layers that have no entry yet. */

@@ -75,6 +75,7 @@ export type {
 	LoadedOmData,
 	GpuArrowConfig,
 	GpuArrowLevel,
+	GpuParticleConfig,
 	ArrowSampler,
 	GpuContourStyle
 } from './gpu/index';

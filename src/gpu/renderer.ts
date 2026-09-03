@@ -26,7 +26,7 @@ import {
 	shaderKey,
 	vertexSource
 } from './shader-source';
-import type { FragmentShaderSpec, ProjectionShaderData } from './shader-source';
+import type { FragmentShaderSpec, LayerShaderSpec, ProjectionShaderData } from './shader-source';
 
 import type { Bounds, InterpolationMethod, RenderableColorScale } from '../types';
 
@@ -165,7 +165,7 @@ export const isGpuSupported = (): boolean => {
 };
 
 export const layerSpecOf = (
-	layer: GpuLayerDraw,
+	layer: Pick<GpuLayerDraw, 'gridUniforms' | 'blendWidthDeg' | 'nanTexture'>,
 	isLast: boolean
 ): FragmentShaderSpec['layers'][number] => ({
 	gridKind: layer.gridUniforms.gridKind,
@@ -173,6 +173,58 @@ export const layerSpecOf = (
 	blends: !isLast && (layer.blendWidthDeg ?? 0) > 0,
 	hasNanField: !isLast && (layer.blendWidthDeg ?? 0) > 0 && layer.nanTexture !== undefined
 });
+
+/**
+ * Upload one layer's grid-geometry and edge-blend uniforms (everything the
+ * generated sampling functions read except the value texture itself, which the
+ * caller binds under its own name). Shared by the raster draw and the
+ * particle-update pass.
+ */
+export const uploadGridLayerUniforms = (
+	gl: WebGL2RenderingContext,
+	u: (name: string) => WebGLUniformLocation | null,
+	i: number,
+	spec: LayerShaderSpec,
+	layer: Pick<GpuLayerDraw, 'gridUniforms' | 'blendWidthDeg' | 'nanTexture'>,
+	bindTexture: (name: string, texture: WebGLTexture) => void
+): void => {
+	const g = layer.gridUniforms;
+	const names = layerUniformNames(i);
+
+	if (g.gridKind === 'gaussian') {
+		gl.uniform4i(u(names.gauss), g.gauss[0], g.gauss[1], g.gauss[2], g.gauss[3]);
+	} else {
+		gl.uniform2i(u(names.n), g.nx, g.ny);
+		gl.uniform2f(u(names.origin), g.originX, g.originY);
+		gl.uniform2f(u(names.delta), g.dx, g.dy);
+		if (g.gridKind === 'projected') {
+			gl.uniform4f(u(names.projA), g.projA[0], g.projA[1], g.projA[2], g.projA[3]);
+			gl.uniform4f(u(names.projB), g.projB[0], g.projB[1], g.projB[2], g.projB[3]);
+		} else {
+			gl.uniform2i(u(names.flags), g.lonWrap ? 1 : 0, g.wrapLastCellDouble ? 1 : 0);
+		}
+	}
+
+	if (spec.blends) {
+		gl.uniform1f(u(names.blendWidth), layer.blendWidthDeg ?? 0);
+		if (g.gridKind === 'projected' && g.edgeProj) {
+			gl.uniform4f(
+				u(names.edgeProj),
+				g.edgeProj.minX,
+				g.edgeProj.minY,
+				g.edgeProj.nxM1,
+				g.edgeProj.nyM1
+			);
+			gl.uniform2f(u(names.edgeDeg), g.edgeProj.degPerCol, g.edgeProj.degPerRow);
+		} else {
+			const [west, south, east, north] = g.fullBounds;
+			gl.uniform4f(u(names.fullBounds), west, south, east, north);
+		}
+		if (spec.hasNanField && layer.nanTexture) {
+			bindTexture(names.nan, layer.nanTexture);
+		}
+	}
+};
 
 export class WeatherGpuRenderer {
 	private gl: WebGL2RenderingContext;
@@ -452,45 +504,8 @@ export class WeatherGpuRenderer {
 		};
 
 		for (let i = 0; i < layers.length; i++) {
-			const layer = layers[i];
-			const g = layer.gridUniforms;
-			const names = layerUniformNames(i);
-
-			bindTexture(names.values, layer.valuesTexture);
-
-			if (g.gridKind === 'gaussian') {
-				gl.uniform4i(u(names.gauss), g.gauss[0], g.gauss[1], g.gauss[2], g.gauss[3]);
-			} else {
-				gl.uniform2i(u(names.n), g.nx, g.ny);
-				gl.uniform2f(u(names.origin), g.originX, g.originY);
-				gl.uniform2f(u(names.delta), g.dx, g.dy);
-				if (g.gridKind === 'projected') {
-					gl.uniform4f(u(names.projA), g.projA[0], g.projA[1], g.projA[2], g.projA[3]);
-					gl.uniform4f(u(names.projB), g.projB[0], g.projB[1], g.projB[2], g.projB[3]);
-				} else {
-					gl.uniform2i(u(names.flags), g.lonWrap ? 1 : 0, g.wrapLastCellDouble ? 1 : 0);
-				}
-			}
-
-			if (spec.layers[i].blends) {
-				gl.uniform1f(u(names.blendWidth), layer.blendWidthDeg ?? 0);
-				if (g.gridKind === 'projected' && g.edgeProj) {
-					gl.uniform4f(
-						u(names.edgeProj),
-						g.edgeProj.minX,
-						g.edgeProj.minY,
-						g.edgeProj.nxM1,
-						g.edgeProj.nyM1
-					);
-					gl.uniform2f(u(names.edgeDeg), g.edgeProj.degPerCol, g.edgeProj.degPerRow);
-				} else {
-					const [west, south, east, north] = g.fullBounds;
-					gl.uniform4f(u(names.fullBounds), west, south, east, north);
-				}
-				if (spec.layers[i].hasNanField && layer.nanTexture) {
-					bindTexture(names.nan, layer.nanTexture);
-				}
-			}
+			bindTexture(layerUniformNames(i).values, layers[i].valuesTexture);
+			uploadGridLayerUniforms(gl, u, i, spec.layers[i], layers[i], bindTexture);
 		}
 
 		bindTexture('u_lut', opts.lut.texture);

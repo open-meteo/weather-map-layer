@@ -76,6 +76,18 @@ dropping the tile/bitmap machinery is worth.
   temporal u_mix, so arrows rotate/grow/fade smoothly across timesteps. A
   foreshortening probe fades arrows at the globe's limb and polar
   convergence. Wind barbs are not ported (discrete glyph alphabet).
+- **Wind particle animation** (`setParticles`, gpu/particles.ts): particles
+  advect through the wind field and leave fading trails. Particle state lives
+  in ping-pong RGBA32F textures; the update pass samples u/v component
+  textures (derived on the CPU from speed + direction, cached per array) with
+  the same generated grid samplers as the raster — all grid kinds and seamless
+  composites work, and plain grids mix prev/current components by the raster's
+  temporal u_mix. Trails accumulate in screen-space RGBA8 buffers with a
+  quantised per-frame decay; on flat mercator a camera move _reprojects_ the
+  history through the plane homography of the view matrix (trails follow the
+  map through pan/zoom/rotate/pitch), on the globe it clears and rebuilds.
+  Points draw through `projectTile`, so the animation follows the globe.
+  Requires `EXT_color_buffer_float` (else the pass is a no-op).
 - **prepareUrl/commit**: the load resolves to a commit callback so a host can
   prepare several layers and commit them in the same frame; `setUrl` is
   prepare + immediate commit. `drawRaster: false` gives an arrows-only layer.
