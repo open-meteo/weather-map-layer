@@ -24,7 +24,7 @@ export { GridFactory } from './grids/index';
 export { currentBounds } from './utils/bounds';
 export { defaultOmProtocolSettings } from './om-protocol';
 export { domainOptions, domainGroups } from './domains';
-export { DOMAIN_FOOTPRINTS, getDomainFootprint } from './domain-footprints';
+export { getDomainBoundary } from './domain-footprints';
 export { variableOptions, levelGroupVariables } from './utils/variables';
 export { VARIABLE_PREFIX, LEVEL_PREFIX, LEVEL_REGEX, LEVEL_UNIT_REGEX } from './utils/constants';
 

@@ -39,27 +39,16 @@ export class GaussianGrid implements GridInterface {
 	}
 
 	getBoundaryPolygon(): Array<[number, number]> {
-		// The grid wraps globally in longitude, but its northern/southern-most data
-		// rows are the Gaussian latitudes just inside ±90 (the ±90 in `getBounds` is a
-		// coarse placeholder). Outline the real outer rows so the border hugs the data
-		// instead of overshooting the poles — consistent with the regular/projected
-		// grids, which outline their actual outermost data points too.
-		const [minLon, , maxLon] = this.getBounds();
-		const dy = 180 / (2 * this.latitudeLines + 0.5);
-		const north = (this.latitudeLines - 1) * dy + dy / 2; // row y = 0
-		const south = -this.latitudeLines * dy + dy / 2; // row y = 2·latitudeLines − 1
-		return [
-			[minLon, south],
-			[maxLon, south],
-			[maxLon, north],
-			[minLon, north],
-			[minLon, south]
-		];
-	}
-
-	edgeDistanceDeg(lat: number, lon: number): number {
+		// All gaussian grids are global, so the outline is just the nominal world
+		// rectangle (it is never drawn as a domain border).
 		const [minLon, minLat, maxLon, maxLat] = this.getBounds();
-		return Math.min(lon - minLon, maxLon - lon, lat - minLat, maxLat - lat);
+		return [
+			[minLon, minLat],
+			[maxLon, minLat],
+			[maxLon, maxLat],
+			[minLon, maxLat],
+			[minLon, minLat]
+		];
 	}
 
 	getCenter(): { lng: number; lat: number } {

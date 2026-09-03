@@ -2,8 +2,11 @@
 // Approximate non-NULL data footprints (closed [lon, lat] rings) for reprojected
 // regular-grid domains, so seamless borders follow the real data shape instead of
 // the rectangular grid box. Regenerate with: npm run generate:footprints
+import { GridFactory } from './grids/index';
 
-export const DOMAIN_FOOTPRINTS: Record<string, Array<[number, number]>> = {
+import type { Domain } from './types';
+
+const DOMAIN_FOOTPRINTS: Record<string, Array<[number, number]>> = {
 	dwd_icon_d2: [
 		[-0.32, 43.141],
 		[0.428, 43.204],
@@ -212,6 +215,11 @@ export const DOMAIN_FOOTPRINTS: Record<string, Array<[number, number]>> = {
 	]
 };
 
-/** Returns the precomputed data-shape outline for a domain, if one exists. */
-export const getDomainFootprint = (domainValue: string): Array<[number, number]> | undefined =>
-	DOMAIN_FOOTPRINTS[domainValue];
+/**
+ * Returns the domain's outline as a closed `[lon, lat]` ring: the precomputed
+ * data-shape footprint when one exists (NULL-padded reprojected grids whose real
+ * data region is smaller than the grid box), otherwise the grid's boundary
+ * polygon (`getBoundaryPolygon`).
+ */
+export const getDomainBoundary = (domain: Domain): Array<[number, number]> =>
+	DOMAIN_FOOTPRINTS[domain.value] ?? GridFactory.create(domain.grid, null).getBoundaryPolygon();

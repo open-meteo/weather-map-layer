@@ -256,24 +256,6 @@ export class ProjectionGrid implements GridInterface {
 		return ring;
 	}
 
-	edgeDistanceDeg(lat: number, lon: number): number {
-		// In projection space the grid is an axis-aligned rectangle, so distance to
-		// the nearest edge — measured in grid cells — traces the true curved boundary
-		// when mapped back to lon/lat. Convert that cell distance to an approximate
-		// degree distance using the grid's mean cell size so it stays comparable to
-		// `blendWidthDeg`.
-		const [px, py] = this.projection.forward(lat, lon);
-		const x = (px - this.minX) / this.dx; // fractional column, 0..nx-1 inside
-		const y = (py - this.minY) / this.dy; // fractional row, 0..ny-1 inside
-		const colDist = Math.min(x, this.nx - 1 - x);
-		const rowDist = Math.min(y, this.ny - 1 - y);
-
-		const [minLon, minLat, maxLon, maxLat] = this.getBounds();
-		const degPerCol = (maxLon - minLon) / (this.nx - 1);
-		const degPerRow = (maxLat - minLat) / (this.ny - 1);
-		return Math.min(colDist * degPerCol, rowDist * degPerRow);
-	}
-
 	private getProjectedBorderPoints(): number[][] {
 		const points = [];
 		for (let i = 0; i < this.ny; i++) {

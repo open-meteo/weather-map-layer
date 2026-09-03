@@ -54,26 +54,18 @@ describe('getBoundaryPolygon', () => {
 		]);
 	});
 
-	it('outlines the real outer rows for a gaussian grid (inside the poles)', () => {
+	it('returns the nominal world rectangle for a gaussian grid (always global)', () => {
 		const domain = domainOptions.find((d) => d.value === 'ecmwf_ifs') as Domain; // type: 'gaussian'
 		const grid = GridFactory.create(domain.grid, null);
-		const ring = grid.getBoundaryPolygon();
 		const [minLon, minLat, maxLon, maxLat] = grid.getBounds();
 
-		expect(ring).toHaveLength(5);
-		expect(ring[0]).toEqual(ring[ring.length - 1]); // closed ring
-
-		// Global in longitude, but the north/south edges are the outermost Gaussian
-		// rows just inside ±90 — not the ±90 bounds (so the border hugs the data).
-		const south = ring[0][1];
-		const north = ring[2][1];
-		expect(ring.map(([lon]) => lon)).toEqual([minLon, maxLon, maxLon, minLon, minLon]);
-		expect(north).toBeGreaterThan(minLat); // strictly inside the pole
-		expect(north).toBeLessThan(maxLat);
-		expect(south).toBeGreaterThan(minLat);
-		expect(south).toBeLessThan(maxLat);
-		expect(north).toBeCloseTo(-south, 6); // symmetric about the equator
-		expect(90 - north).toBeLessThan(1); // but only just inside ±90
+		expect(grid.getBoundaryPolygon()).toEqual([
+			[minLon, minLat],
+			[maxLon, minLat],
+			[maxLon, maxLat],
+			[minLon, maxLat],
+			[minLon, minLat]
+		]);
 	});
 
 	it('keeps longitudes continuous across the antimeridian for a pole-enclosing grid', () => {
@@ -124,33 +116,5 @@ describe('getBoundaryPolygon', () => {
 		);
 		expect(Math.max(...lats) - Math.min(...lats)).toBeGreaterThan(0);
 		expect(distinctLatsAtExtremeLon.size).toBeGreaterThan(0);
-	});
-});
-
-describe('edgeDistanceDeg', () => {
-	it('is ~0 on the boundary and clearly positive deep inside (projected grid)', () => {
-		const grid = gridOf('ncep_hrrr_conus');
-		for (const [lon, lat] of grid.getBoundaryPolygon()) {
-			expect(Math.abs(grid.edgeDistanceDeg(lat, lon))).toBeLessThan(0.2);
-		}
-		const c = grid.getCenter();
-		expect(grid.edgeDistanceDeg(c.lat, c.lng)).toBeGreaterThan(1);
-	});
-
-	it('follows the curved boundary, not the bounding box', () => {
-		const grid = gridOf('ncep_hrrr_conus');
-		const [minLon, minLat, maxLon, maxLat] = grid.getBounds();
-		const boxDist = (lon: number, lat: number) =>
-			Math.min(lon - minLon, maxLon - lon, lat - minLat, maxLat - lat);
-
-		// A boundary vertex that sits far from every bbox edge lives on the curved
-		// part of the perimeter. The old rectangular blend would see it as deep
-		// inside (large box distance → no blend → hard seam); the projection-aware
-		// distance correctly reports it as on the edge (~0).
-		const onCurve = grid.getBoundaryPolygon().find(([lon, lat]) => boxDist(lon, lat) > 1);
-		expect(onCurve).toBeDefined();
-		const [lon, lat] = onCurve!;
-		expect(boxDist(lon, lat)).toBeGreaterThan(1);
-		expect(grid.edgeDistanceDeg(lat, lon)).toBeLessThan(0.3);
 	});
 });
