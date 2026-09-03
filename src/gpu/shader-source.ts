@@ -640,6 +640,9 @@ Cell locate${i}(float lat, float lon) {
 
 	if (yRaw < 0.0 || yRaw >= float(${u.n}.y)) return c;
 	if (${u.flags}.x == 0 && (xRaw < 0.0 || xRaw >= float(${u.n}.x))) return c;
+	// Wrap grids: longitudes just west of the origin (e.g. the half-block
+	// shifted origin of the downsampled contour grid) land at negative xRaw.
+	if (${u.flags}.x == 1) xRaw = mod(xRaw, float(${u.n}.x));
 
 	float yFloor = floor(yRaw);
 	c.y = int(yFloor);

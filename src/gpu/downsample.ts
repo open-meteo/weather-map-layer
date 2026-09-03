@@ -12,20 +12,24 @@ export interface DownsampledGrid {
 	ny: number;
 }
 
-const cache = new WeakMap<Float32Array, Map<number, DownsampledGrid>>();
+const cache = new WeakMap<Float32Array, Map<string, DownsampledGrid>>();
 
 export const downsampleRegular = (
 	values: Float32Array,
 	nx: number,
 	ny: number,
-	factor: number
+	factor: number,
+	/** Cells skipped at the start of each axis, aligning blocks across crops. */
+	skipX = 0,
+	skipY = 0
 ): DownsampledGrid | undefined => {
-	const outNx = Math.floor(nx / factor);
-	const outNy = Math.floor(ny / factor);
+	const outNx = Math.floor((nx - skipX) / factor);
+	const outNy = Math.floor((ny - skipY) / factor);
 	if (outNx < 2 || outNy < 2) return undefined;
 
 	let byFactor = cache.get(values);
-	const cached = byFactor?.get(factor);
+	const key = `${factor}:${skipX}:${skipY}`;
+	const cached = byFactor?.get(key);
 	if (cached) return cached;
 
 	const out = new Float32Array(outNx * outNy);
@@ -33,8 +37,8 @@ export const downsampleRegular = (
 		for (let i = 0; i < outNx; i++) {
 			let sum = 0;
 			let count = 0;
-			const j0 = j * factor;
-			const i0 = i * factor;
+			const j0 = skipY + j * factor;
+			const i0 = skipX + i * factor;
 			for (let dj = 0; dj < factor; dj++) {
 				const row = (j0 + dj) * nx + i0;
 				for (let di = 0; di < factor; di++) {
@@ -54,6 +58,6 @@ export const downsampleRegular = (
 		byFactor = new Map();
 		cache.set(values, byFactor);
 	}
-	byFactor.set(factor, result);
+	byFactor.set(key, result);
 	return result;
 };

@@ -114,6 +114,10 @@ interface PlainFrame extends RenderStyle {
 	stateKey: string;
 	/** Contour levels of the request (a single entry means a step interval). */
 	intervals: number[];
+	/** Normalized om:// URL of this frame, for re-resolving on a new crop. */
+	url: string;
+	/** Full-grid origin of regular grids, anchoring the downsampled contours. */
+	fullOrigin?: [number, number];
 }
 
 interface SeamlessEntry {
@@ -364,12 +368,11 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		// Temporal blending mixes raw data values, so it is only meaningful across
 		// timesteps of the *same* variable on the same grid — a variable or domain
 		// switch must swap instantly, not morph temperatures into cloud cover.
-		const gridSignature = JSON.stringify({
-			...gridUniforms,
-			quad: undefined,
-			variable: loaded.request.dataOptions.variable,
-			domain: loaded.domain.value
-		});
+		const gridSignature = WeatherGpuLayer.frameSignature(
+			gridUniforms,
+			loaded.request.dataOptions.variable,
+			loaded.domain.value
+		);
 		const renderOptions = loaded.request.renderOptions;
 
 		// The same per-point sampling the tile worker uses: magnitude with the
@@ -397,11 +400,38 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			clipping: loaded.request.clippingOptions,
 			sampler,
 			stateKey: loaded.request.fileAndVariableKey,
-			intervals: renderOptions.intervals
+			intervals: renderOptions.intervals,
+			url,
+			fullOrigin: WeatherGpuLayer.fullOriginOf(loaded.domain.grid, gridUniforms)
 		};
 
 		// Warm the value texture so the commit itself never uploads mid-frame.
 		this.renderer?.getValueTexture(values, gridUniforms.nx, gridUniforms.ny, frame.stateKey);
+
+		// A viewport-crop change cannot blend against the shown frame directly:
+		// it lives on different grid geometry. Re-resolve the shown URL — the
+		// protocol crops against the *current* viewport, mostly from cache — so
+		// the commit can morph values on the new geometry instead of dissolving.
+		let recropped: Float32Array | undefined;
+		const shown = this.current;
+		if (shown && this.fadeMs > 0 && shown.gridSignature !== frame.gridSignature) {
+			try {
+				const prev = await loadOmUrl(shown.url, this.settings, signal);
+				if (sequence !== this.loadSequence) return null;
+				const prevUniforms = computeGridUniforms(prev.domain.grid, prev.ranges);
+				const prevSignature = WeatherGpuLayer.frameSignature(
+					prevUniforms,
+					prev.request.dataOptions.variable,
+					prev.domain.value
+				);
+				if (prevSignature === frame.gridSignature && prev.data.values) {
+					recropped = prev.data.values;
+					this.renderer?.getValueTexture(recropped, prevUniforms.nx, prevUniforms.ny);
+				}
+			} catch {
+				// Fall back to the dissolve.
+			}
+		}
 
 		return () => {
 			if (sequence !== this.loadSequence) return;
@@ -427,6 +457,17 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 				};
 				this.arrowPrevSampler = this.current.sampler;
 				this.fadeStart = performance.now();
+			} else if (this.current && this.fadeMs > 0 && recropped) {
+				if (recropped === frame.values) {
+					// Same field re-cropped (a moveend refresh): swap silently.
+					this.previous = undefined;
+					this.arrowPrevSampler = undefined;
+				} else {
+					// Morph from the shown field re-resolved on the new geometry.
+					this.previous = { values: recropped, gridUniforms: frame.gridUniforms };
+					this.arrowPrevSampler = this.current.sampler;
+					this.fadeStart = performance.now();
+				}
 			} else {
 				this.previous = undefined;
 				this.arrowPrevSampler = undefined;
@@ -439,6 +480,30 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			this.arrowGeneration++;
 			this.map?.triggerRepaint();
 		};
+	}
+
+	/** Origin of the uncropped grid; anchors the downsampled contour blocks. */
+	private static fullOriginOf(
+		grid: GridData,
+		gridUniforms: GpuGridUniforms
+	): [number, number] | undefined {
+		if (gridUniforms.gridKind !== 'regular') return undefined;
+		const full = computeGridUniforms(grid, null);
+		return [full.originX, full.originY];
+	}
+
+	/** Blend-compatibility identity: grid geometry plus variable and domain. */
+	private static frameSignature(
+		gridUniforms: GpuGridUniforms,
+		variable: unknown,
+		domainValue: string
+	): string {
+		return JSON.stringify({
+			...gridUniforms,
+			quad: undefined,
+			variable,
+			domain: domainValue
+		});
 	}
 
 	/**
@@ -634,17 +699,27 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			32,
 			Math.pow(2, Math.ceil(Math.log2(WeatherGpuLayer.CONTOUR_TARGET_CELL_PX / cellPx)))
 		);
-		const ds = downsampleRegular(frame.values, g.nx, g.ny, factor);
+		// Anchor the coarse blocks to the full grid, not the viewport crop, so
+		// the isolines stay put when panning re-crops the data.
+		let skipX = 0;
+		let skipY = 0;
+		if (frame.fullOrigin) {
+			const kx = Math.round((g.originX - frame.fullOrigin[0]) / g.dx);
+			const ky = Math.round((g.originY - frame.fullOrigin[1]) / g.dy);
+			skipX = ((-kx % factor) + factor) % factor;
+			skipY = ((-ky % factor) + factor) % factor;
+		}
+		const ds = downsampleRegular(frame.values, g.nx, g.ny, factor, skipX, skipY);
 		if (!ds) return undefined;
 
 		// Box averaging over factor×factor cells: the coarse cell centre sits
-		// half a block further in than the original origin.
+		// half a block further in than the (alignment-shifted) origin.
 		const grid: GridData = {
 			type: 'regular',
 			nx: ds.nx,
 			ny: ds.ny,
-			lonMin: g.originX + (g.dx * (factor - 1)) / 2,
-			latMin: g.originY + (g.dy * (factor - 1)) / 2,
+			lonMin: g.originX + g.dx * skipX + (g.dx * (factor - 1)) / 2,
+			latMin: g.originY + g.dy * skipY + (g.dy * (factor - 1)) / 2,
 			dx: g.dx * factor,
 			dy: g.dy * factor
 		};
@@ -663,7 +738,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		// Morph the coarse isolines with the temporal blend, like the raster.
 		let prevTexture: WebGLTexture | undefined;
 		if (mix < 1 && this.previous) {
-			const prevDs = downsampleRegular(this.previous.values, g.nx, g.ny, factor);
+			const prevDs = downsampleRegular(this.previous.values, g.nx, g.ny, factor, skipX, skipY);
 			if (prevDs) {
 				prevTexture = renderer.getValueTexture(prevDs.values, gridUniforms.nx, gridUniforms.ny);
 			}
