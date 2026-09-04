@@ -29,7 +29,7 @@
  * uploaded through the renderer's budgeted value-texture cache.
  */
 import type { GpuGridUniforms } from './grid-uniforms';
-import type { GpuDrawOptions } from './renderer';
+import type { GpuDrawOptions, GpuProjectionData } from './renderer';
 import { layerSpecOf, uploadGridLayerUniforms } from './renderer';
 import { samplingSource, shaderKey } from './shader-source';
 import type { ProjectionShaderData, SamplingShaderSpec } from './shader-source';
@@ -84,6 +84,13 @@ export interface ParticleRenderOptions {
 	mercPerMps: number;
 	/** Respawn window in mercator coords (x0, y0, x1, y1); x span <= 1. */
 	bounds: [number, number, number, number];
+	/**
+	 * Globe amount (the map's projection transition, 0 = flat mercator). On the
+	 * globe the respawn distribution turns equal-area and the advection step is
+	 * cos(lat)-compensated — a mercator-uniform lattice would pile slow-frozen
+	 * particles onto the poles.
+	 */
+	globe: number;
 	/** Composited trail opacity 0..1 (layer opacity, zoom fade included). */
 	opacity: number;
 	/** Point diameter in device pixels. */
@@ -178,6 +185,116 @@ void main() {
 }
 `;
 
+// ─── Globe trail reprojection (two-pass warp through mercator space) ─────────
+//
+// The globe's mercator -> screen mapping is not a homography, but the map's
+// own `projectTile` prelude is available and its uniforms are plain values:
+// evaluating it once with the PREVIOUS frame's values and once with the
+// current ones reprojects the trail history exactly, for any projection
+// variant (globe, mercator and the transition between them).
+//
+// Pass 1 (unwarp): a world mesh drawn flat over the mercator window; each
+// vertex samples the previous trail image at the previous frame's screen
+// position of its mercator point. Pass 2 (rewarp): the same mesh drawn
+// through the current projectTile, sampling the mercator-space image and
+// applying the trail decay.
+
+/** Vertex shader body appended to the projection prelude for pass 1. */
+const UNWARP_VERTEX_BODY = `
+layout(location = 0) in vec2 a_uv;
+// Mercator window of the intermediate texture: (x0, y0, x1, y1).
+uniform vec4 u_window;
+out vec4 v_prevClip;
+void main() {
+	vec2 merc = mix(u_window.xy, u_window.zw, a_uv);
+	v_prevClip = projectTile(merc);
+	gl_Position = vec4(a_uv * 2.0 - 1.0, 0.0, 1.0);
+}
+`;
+
+const UNWARP_FRAGMENT = `#version 300 es
+precision highp float;
+in vec4 v_prevClip;
+uniform sampler2D u_trail;
+out vec4 outColor;
+void main() {
+	// Behind the camera or beyond the far plane (the globe's back side is
+	// pushed there by the prelude's clipping plane): no usable history.
+	if (v_prevClip.w <= 0.0 || abs(v_prevClip.z) > v_prevClip.w) {
+		outColor = vec4(0.0);
+		return;
+	}
+	vec2 uv = (v_prevClip.xy / v_prevClip.w) * 0.5 + 0.5;
+	if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+		outColor = vec4(0.0);
+		return;
+	}
+	outColor = texture(u_trail, uv);
+}
+`;
+
+/** Vertex shader body appended to the projection prelude for pass 2. */
+const REWARP_VERTEX_BODY = `
+layout(location = 0) in vec2 a_uv;
+uniform vec4 u_window;
+out vec2 v_wuv;
+void main() {
+	vec2 merc = mix(u_window.xy, u_window.zw, a_uv);
+	v_wuv = a_uv;
+	gl_Position = projectTile(merc);
+}
+`;
+
+const REWARP_FRAGMENT = `#version 300 es
+precision highp float;
+in vec2 v_wuv;
+uniform sampler2D u_warp;
+uniform float u_fade;
+out vec4 outColor;
+void main() {
+	// Same quantised decay as the flat fade pass.
+	outColor = floor(texture(u_warp, v_wuv) * 255.0 * u_fade) / 255.0;
+}
+`;
+
+/** Subdivision of the warp mesh; the globe surface curves within the window. */
+const WARP_MESH_N = 96;
+
+/** Deep copy of a frame's projection uniforms (MapLibre reuses the arrays). */
+interface ProjectionSnapshot {
+	mainMatrix: Float32Array;
+	fallbackMatrix: Float32Array;
+	tileMercatorCoords: [number, number, number, number];
+	clippingPlane: [number, number, number, number];
+	projectionTransition: number;
+}
+
+const snapshotProjection = (p: GpuProjectionData): ProjectionSnapshot => ({
+	mainMatrix: Float32Array.from(p.mainMatrix),
+	fallbackMatrix: Float32Array.from(p.fallbackMatrix),
+	tileMercatorCoords: [...p.tileMercatorCoords],
+	clippingPlane: [...p.clippingPlane],
+	projectionTransition: p.projectionTransition
+});
+
+const sameProjection = (a: ProjectionSnapshot, b: ProjectionSnapshot): boolean => {
+	if (a.projectionTransition !== b.projectionTransition) return false;
+	for (let i = 0; i < 16; i++) {
+		if (a.mainMatrix[i] !== b.mainMatrix[i] || a.fallbackMatrix[i] !== b.fallbackMatrix[i]) {
+			return false;
+		}
+	}
+	for (let i = 0; i < 4; i++) {
+		if (
+			a.tileMercatorCoords[i] !== b.tileMercatorCoords[i] ||
+			a.clippingPlane[i] !== b.clippingPlane[i]
+		) {
+			return false;
+		}
+	}
+	return true;
+};
+
 /**
  * The update pass: one fragment per particle, sampling the wind components
  * through the generated grid samplers and writing the next state.
@@ -219,6 +336,7 @@ uniform vec4 u_bounds;     // respawn window (x0, y0, x1, y1); x0 may be negativ
 // redistributes immediately instead of lingering as a dense cluster of the
 // old viewport. 1 - oldArea/newArea keeps the density per screen constant.
 uniform float u_shed;
+uniform float u_globe;     // projection transition: 0 flat mercator, 1 globe
 
 out vec4 outState;
 
@@ -235,6 +353,11 @@ uint hashU(uint x) {
 	return x;
 }
 
+// Inverse of mercToLat; input stays within the mercator latitude clamp.
+float latToMerc(float latDeg) {
+	return 0.5 - log(tan(PI * 0.25 + radians(latDeg) * 0.5)) / (2.0 * PI);
+}
+
 void main() {
 	vec4 s = texelFetch(u_state, ivec2(gl_FragCoord.xy), 0);
 	vec2 pos = s.xy;
@@ -247,8 +370,11 @@ void main() {
 
 	bool missing = isMissing(u) || isMissing(v);
 	if (!missing) {
-		// +u is east (+x); +v is north, which decreases mercator y.
-		pos += vec2(u, -v) * u_speedMerc;
+		// +u is east (+x); +v is north, which decreases mercator y. The globe
+		// shows a mercator step cos(lat) smaller: compensate so high-latitude
+		// particles keep their screen speed instead of freezing near the poles.
+		float boost = mix(1.0, 1.0 / max(cos(radians(lat)), 0.05), u_globe);
+		pos += vec2(u, -v) * (u_speedMerc * boost);
 	}
 
 	// Inside test, wrap-aware in x: the offset from the window's west edge,
@@ -268,7 +394,17 @@ void main() {
 		float rx = float(rng) * (1.0 / 4294967296.0);
 		rng = hashU(rng);
 		float ry = float(rng) * (1.0 / 4294967296.0);
-		pos = vec2(u_bounds.x + spanX * rx, mix(u_bounds.y, u_bounds.w, ry));
+		float y = mix(u_bounds.y, u_bounds.w, ry);
+		if (u_globe > 0.0) {
+			// Equal-area vertical draw (uniform in sin lat): a mercator-uniform
+			// draw over-samples high latitudes and piles spawns onto the poles
+			// when the globe shows true angular distances.
+			float sinNorth = sin(radians(mercToLat(u_bounds.y)));
+			float sinSouth = sin(radians(mercToLat(u_bounds.w)));
+			float yArea = latToMerc(degrees(asin(mix(sinSouth, sinNorth, ry))));
+			y = mix(y, yArea, u_globe);
+		}
+		pos = vec2(u_bounds.x + spanX * rx, y);
 		// Age 0 marks a fresh spawn; the draw pass hides it for one frame so a
 		// particle respawning on missing data never flashes anywhere.
 		age = 0.0;
@@ -452,14 +588,25 @@ export class ParticleSystem {
 	private compositeProgram: ProgramInfo | undefined;
 	private emptyVao: WebGLVertexArrayObject | null = null;
 
+	/** Two-pass globe reprojection: programs per projection variant + mesh. */
+	private unwarpPrograms = new Map<string, ProgramInfo>();
+	private rewarpPrograms = new Map<string, ProgramInfo>();
+	private warp: { texture: WebGLTexture; fbo: WebGLFramebuffer } | undefined;
+	private warpMesh: {
+		vao: WebGLVertexArrayObject;
+		vertices: WebGLBuffer;
+		indices: WebGLBuffer;
+		indexCount: number;
+	} | null = null;
+	/** Previous frame's projection uniforms, for the globe trail warp. */
+	private prevProjection: { variant: string; data: ProjectionSnapshot } | undefined;
+
 	/** Update-step counter seeding the per-frame RNG stream. */
 	private frame = 0;
 	/** Mercator area of the last respawn window, for the zoom-out shed. */
 	private prevBoundsArea = 0;
 	/** Previous frame's mercator-plane homography, for trail reprojection. */
 	private prevHomography: Float64Array | undefined;
-	/** Camera identity of the last globe-mode frame (globe trails cannot reproject). */
-	private globeCameraKey = '';
 
 	constructor(gl: WebGL2RenderingContext) {
 		this.gl = gl;
@@ -527,6 +674,22 @@ export class ParticleSystem {
 		this.updatePrograms.clear();
 		for (const { program } of this.pointPrograms.values()) gl.deleteProgram(program);
 		this.pointPrograms.clear();
+		for (const { program } of this.unwarpPrograms.values()) gl.deleteProgram(program);
+		this.unwarpPrograms.clear();
+		for (const { program } of this.rewarpPrograms.values()) gl.deleteProgram(program);
+		this.rewarpPrograms.clear();
+		if (this.warp) {
+			gl.deleteTexture(this.warp.texture);
+			gl.deleteFramebuffer(this.warp.fbo);
+			this.warp = undefined;
+		}
+		if (this.warpMesh) {
+			gl.deleteVertexArray(this.warpMesh.vao);
+			gl.deleteBuffer(this.warpMesh.vertices);
+			gl.deleteBuffer(this.warpMesh.indices);
+			this.warpMesh = null;
+		}
+		this.prevProjection = undefined;
 		if (this.fadeProgram) gl.deleteProgram(this.fadeProgram.program);
 		this.fadeProgram = undefined;
 		if (this.compositeProgram) gl.deleteProgram(this.compositeProgram.program);
@@ -577,14 +740,24 @@ export class ParticleSystem {
 		this.stateW = w;
 
 		// Seed uniformly across the respawn window with staggered ages, so the
-		// animation starts dense instead of trickling in over one lifetime.
+		// animation starts dense instead of trickling in over one lifetime. On
+		// the globe the vertical draw is equal-area, like the shader's respawn.
 		const [x0, y0, x1, y1] = opts.bounds;
 		const maxAge = opts.config.maxAgeSec ?? 5;
+		const mercLat = (y: number): number =>
+			(Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180) / Math.PI;
+		const latMerc = (lat: number): number =>
+			0.5 - Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360)) / (2 * Math.PI);
+		const sinNorth = Math.sin((mercLat(y0) * Math.PI) / 180);
+		const sinSouth = Math.sin((mercLat(y1) * Math.PI) / 180);
 		const seed = new Float32Array(w * w * 4);
 		for (let i = 0; i < w * w; i++) {
 			const x = x0 + (x1 - x0) * Math.random();
+			const ry = Math.random();
+			const yFlat = y0 + (y1 - y0) * ry;
+			const yArea = latMerc((Math.asin(sinSouth + (sinNorth - sinSouth) * ry) * 180) / Math.PI);
 			seed[i * 4] = x - Math.floor(x);
-			seed[i * 4 + 1] = Math.min(1, Math.max(0, y0 + (y1 - y0) * Math.random()));
+			seed[i * 4 + 1] = Math.min(1, Math.max(0, yFlat + (yArea - yFlat) * opts.globe));
 			seed[i * 4 + 2] = maxAge * Math.random();
 		}
 
@@ -606,7 +779,154 @@ export class ParticleSystem {
 		const a = this.createTarget(w, h, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, null, gl.LINEAR);
 		const b = this.createTarget(w, h, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, null, gl.LINEAR);
 		this.trail = { textures: [a.texture, b.texture], fbos: [a.fbo, b.fbo], head: 0 };
+		if (this.warp) {
+			gl.deleteTexture(this.warp.texture);
+			gl.deleteFramebuffer(this.warp.fbo);
+		}
+		this.warp = this.createTarget(w, h, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, null, gl.LINEAR);
 		this.trailDirty = true;
+	}
+
+	/** Lazily built subdivided unit-square mesh for the globe warp passes. */
+	private getWarpMesh(): NonNullable<ParticleSystem['warpMesh']> {
+		if (this.warpMesh) return this.warpMesh;
+		const gl = this.gl;
+		const n = WARP_MESH_N;
+		const vertices = new Float32Array((n + 1) * (n + 1) * 2);
+		let k = 0;
+		for (let j = 0; j <= n; j++) {
+			for (let i = 0; i <= n; i++) {
+				vertices[k++] = i / n;
+				vertices[k++] = j / n;
+			}
+		}
+		const indices = new Uint16Array(n * n * 6);
+		k = 0;
+		for (let j = 0; j < n; j++) {
+			for (let i = 0; i < n; i++) {
+				const a = j * (n + 1) + i;
+				const b = a + 1;
+				const c = a + n + 1;
+				const d = c + 1;
+				indices[k++] = a;
+				indices[k++] = c;
+				indices[k++] = b;
+				indices[k++] = b;
+				indices[k++] = c;
+				indices[k++] = d;
+			}
+		}
+		const vertexBuffer = gl.createBuffer();
+		const indexBuffer = gl.createBuffer();
+		const vao = gl.createVertexArray();
+		if (!vertexBuffer || !indexBuffer || !vao) {
+			throw new Error('gpu: could not create warp mesh');
+		}
+		gl.bindVertexArray(vao);
+		gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+		gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+		gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+		// Both warp shaders pin a_uv to location 0, so one VAO serves them all.
+		gl.enableVertexAttribArray(0);
+		gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+		gl.bindVertexArray(null);
+		this.warpMesh = { vao, vertices: vertexBuffer, indices: indexBuffer, indexCount: k };
+		return this.warpMesh;
+	}
+
+	private getWarpProgram(
+		cache: Map<string, ProgramInfo>,
+		shaderData: ProjectionShaderData,
+		body: string,
+		fragment: string
+	): ProgramInfo {
+		let info = cache.get(shaderData.variantName);
+		if (!info) {
+			const vertex = `#version 300 es
+${shaderData.vertexShaderPrelude}
+${shaderData.define}
+${body}`;
+			info = buildProgram(this.gl, vertex, fragment);
+			cache.set(shaderData.variantName, info);
+		}
+		return info;
+	}
+
+	/** Upload the projection prelude's uniforms from a snapshot or live data. */
+	private uploadProjectionUniforms(
+		u: (name: string) => WebGLUniformLocation | null,
+		data: ProjectionSnapshot | GpuProjectionData
+	): void {
+		const gl = this.gl;
+		gl.uniformMatrix4fv(u('u_projection_matrix'), false, data.mainMatrix as Float32List);
+		gl.uniformMatrix4fv(
+			u('u_projection_fallback_matrix'),
+			false,
+			data.fallbackMatrix as Float32List
+		);
+		gl.uniform4f(u('u_projection_tile_mercator_coords'), ...data.tileMercatorCoords);
+		gl.uniform4f(u('u_projection_clipping_plane'), ...data.clippingPlane);
+		gl.uniform1f(u('u_projection_transition'), data.projectionTransition);
+	}
+
+	/**
+	 * Reproject the previous trail image through mercator space: unwarp it with
+	 * the previous frame's projectTile, then rewarp (and decay) with the
+	 * current one — the globe counterpart of the flat homography fade. Leaves
+	 * the target framebuffer/viewport bound like the plain fade pass does.
+	 */
+	private warpTrail(
+		opts: ParticleRenderOptions,
+		prevData: ProjectionSnapshot,
+		fadeOpacity: number
+	): void {
+		const gl = this.gl;
+		const trail = this.trail!;
+		const shaderData = opts.projection!.shaderData;
+		const mesh = this.getWarpMesh();
+		gl.bindVertexArray(mesh.vao);
+
+		// Pass 1: previous screen-space trails into the mercator window.
+		const unwarp = this.getWarpProgram(
+			this.unwarpPrograms,
+			shaderData,
+			UNWARP_VERTEX_BODY,
+			UNWARP_FRAGMENT
+		);
+		let u = (name: string): WebGLUniformLocation | null => unwarp.uniforms.get(name) ?? null;
+		gl.useProgram(unwarp.program);
+		gl.bindFramebuffer(gl.FRAMEBUFFER, this.warp!.fbo);
+		gl.viewport(0, 0, this.trailW, this.trailH);
+		this.uploadProjectionUniforms(u, prevData);
+		gl.uniform4f(u('u_window'), ...opts.bounds);
+		gl.activeTexture(gl.TEXTURE0);
+		gl.bindTexture(gl.TEXTURE_2D, trail.textures[trail.head]);
+		gl.uniform1i(u('u_trail'), 0);
+		gl.drawElements(gl.TRIANGLES, mesh.indexCount, gl.UNSIGNED_SHORT, 0);
+
+		// Pass 2: forward through the current projection, with the decay. The
+		// mesh does not cover pixels outside the window, so clear first.
+		const rewarp = this.getWarpProgram(
+			this.rewarpPrograms,
+			shaderData,
+			REWARP_VERTEX_BODY,
+			REWARP_FRAGMENT
+		);
+		u = (name: string): WebGLUniformLocation | null => rewarp.uniforms.get(name) ?? null;
+		gl.useProgram(rewarp.program);
+		gl.bindFramebuffer(gl.FRAMEBUFFER, trail.fbos[1 - trail.head]);
+		gl.clearColor(0, 0, 0, 0);
+		gl.clear(gl.COLOR_BUFFER_BIT);
+		this.uploadProjectionUniforms(u, opts.projection!.data);
+		gl.uniform4f(u('u_window'), ...opts.bounds);
+		gl.uniform1f(u('u_fade'), fadeOpacity);
+		gl.activeTexture(gl.TEXTURE0);
+		gl.bindTexture(gl.TEXTURE_2D, this.warp!.texture);
+		gl.uniform1i(u('u_warp'), 0);
+		gl.drawElements(gl.TRIANGLES, mesh.indexCount, gl.UNSIGNED_SHORT, 0);
+
+		gl.bindVertexArray(this.emptyVao);
 	}
 
 	private getUpdateProgram(opts: ParticleRenderOptions): ProgramInfo {
@@ -683,6 +1003,7 @@ export class ParticleSystem {
 		gl.uniform1f(u('u_speedMerc'), opts.mercPerMps);
 		gl.uniform1f(u('u_maxAge'), opts.config.maxAgeSec ?? 5);
 		gl.uniform4f(u('u_bounds'), ...opts.bounds);
+		gl.uniform1f(u('u_globe'), opts.globe);
 
 		// Zoom-out shed: a grown window keeps every old particle inside it, so
 		// without this the old viewport's population lingers as a dense block
@@ -708,21 +1029,28 @@ export class ParticleSystem {
 		// plane -> screen mapping is a homography, so a camera move (pan, zoom,
 		// rotate, pitch) *reprojects* the previous frame's trails to their new
 		// screen positions during the fade pass — the history follows the map.
-		// The globe is not planar; there a camera change drops the history (the
-		// geographic particle positions carry on and rebuild it).
+		// On the globe the mapping is not planar; there the history is warped
+		// through mercator space with the real projectTile of both frames
+		// (warpTrail), so trails survive rotation, zoom and the transition too.
 		const p = opts.projection?.data;
 		const onGlobe = (p?.projectionTransition ?? 0) > 0;
 		const matrix = p?.mainMatrix ?? opts.matrix ?? IDENTITY3;
 		let reproject: Float32Array = IDENTITY3;
-		if (onGlobe) {
-			const cameraKey = `${Array.from(matrix).join(',')}|${p!.projectionTransition}`;
-			if (cameraKey !== this.globeCameraKey) {
-				this.globeCameraKey = cameraKey;
-				this.trailDirty = true;
-			}
+		let warpFrom: ProjectionSnapshot | undefined;
+		if (onGlobe && opts.projection) {
 			this.prevHomography = undefined;
+			const variant = opts.projection.shaderData.variantName;
+			const cur = snapshotProjection(p!);
+			const prev = this.prevProjection;
+			if (!prev || prev.variant !== variant) {
+				// First globe frame (or a variant switch): no usable history map.
+				this.trailDirty = true;
+			} else if (!sameProjection(prev.data, cur)) {
+				warpFrom = prev.data;
+			}
+			this.prevProjection = { variant, data: cur };
 		} else {
-			this.globeCameraKey = '';
+			this.prevProjection = undefined;
 			const homography = planeHomography(matrix);
 			const prev = this.prevHomography;
 			if (prev && !sameMat(prev, homography)) {
@@ -747,24 +1075,29 @@ export class ParticleSystem {
 			}
 		}
 
-		gl.bindFramebuffer(gl.FRAMEBUFFER, trail.fbos[1 - trail.head]);
 		gl.viewport(0, 0, this.trailW, this.trailH);
 
-		// 1. Decayed copy of the previous trail image (writes every texel).
-		this.fadeProgram ??= buildProgram(gl, FULLSCREEN_VERTEX, FADE_FRAGMENT);
-		const fade = this.fadeProgram;
-		gl.useProgram(fade.program);
-		gl.activeTexture(gl.TEXTURE0);
-		gl.bindTexture(gl.TEXTURE_2D, trail.textures[trail.head]);
-		gl.uniform1i(fade.uniforms.get('u_trail') ?? null, 0);
-		// Normalise the per-frame persistence to the actual frame time.
+		// 1. Decayed copy of the previous trail image, reprojected to the new
+		// camera. Normalise the per-frame persistence to the actual frame time.
 		const fadeOpacity = Math.pow(
 			Math.min(1, Math.max(0, opts.config.fadeOpacity ?? 0.96)),
 			opts.dtSeconds * 60
 		);
-		gl.uniform1f(fade.uniforms.get('u_fade') ?? null, fadeOpacity);
-		gl.uniformMatrix3fv(fade.uniforms.get('u_reproject') ?? null, false, reproject);
-		gl.drawArrays(gl.TRIANGLES, 0, 3);
+		if (warpFrom) {
+			// Globe camera move: two-pass warp through mercator space.
+			this.warpTrail(opts, warpFrom, fadeOpacity);
+		} else {
+			gl.bindFramebuffer(gl.FRAMEBUFFER, trail.fbos[1 - trail.head]);
+			this.fadeProgram ??= buildProgram(gl, FULLSCREEN_VERTEX, FADE_FRAGMENT);
+			const fade = this.fadeProgram;
+			gl.useProgram(fade.program);
+			gl.activeTexture(gl.TEXTURE0);
+			gl.bindTexture(gl.TEXTURE_2D, trail.textures[trail.head]);
+			gl.uniform1i(fade.uniforms.get('u_trail') ?? null, 0);
+			gl.uniform1f(fade.uniforms.get('u_fade') ?? null, fadeOpacity);
+			gl.uniformMatrix3fv(fade.uniforms.get('u_reproject') ?? null, false, reproject);
+			gl.drawArrays(gl.TRIANGLES, 0, 3);
+		}
 
 		// 2. The particles on top, premultiplied over the faded history.
 		const point = this.getPointProgram(opts.projection?.shaderData);

@@ -13,7 +13,7 @@
  * vector tiles: a shaft plus open V head in a unit box, pointing where the
  * flow goes (direction + 180°), length stepped by speed.
  */
-import { tile2lat } from '../utils/math';
+import { lat2tile, tile2lat } from '../utils/math';
 
 import type { ProjectionShaderData } from './shader-source';
 
@@ -66,18 +66,35 @@ const levelFor = (levels: GpuArrowLevel[], speed: number): GpuArrowLevel => {
 export interface ArrowAnchors {
 	/** Base-world mercator x,y pairs. */
 	positions: Float64Array;
+	/**
+	 * Per anchor: the fractional zoom at which it becomes visible (0 for
+	 * anchors that are also on the coarser lattice). See buildArrowAnchors.
+	 */
+	thresholds: Float32Array;
 	count: number;
 	/** Identity of the lattice, for rebuild checks. */
 	key: string;
 }
 
-const MAX_ANCHORS = 12000;
+const MAX_ANCHORS = 20000;
 
 /**
- * The anchor lattice for a viewport: spacing snapped to the *integer* zoom
- * level and aligned to the mercator origin, so anchors sit still while the
- * map zooms between levels and line up with the tile lattice of the CPU path
- * (the spacing divides a tile exactly).
+ * The anchor lattice for a viewport, aligned to the mercator origin so
+ * anchors sit still on the map while it zooms.
+ *
+ * The lattice lives at the finer of the two integer levels bracketing the
+ * zoom and refines through the quincunx chain — the only regular square
+ * sub-lattices between a lattice and its 2x refinement:
+ *
+ *   coarse (even/even)  ⊂  checkerboard (col+row even, a 45°-rotated square
+ *   lattice at √2 spacing)  ⊂  fine (all)
+ *
+ * The fractional zoom picks the stage (thresholds 0 / 0.25 / 0.75, centring
+ * each stage's spacing around the nominal): arrows pop in — at full strength,
+ * opacity stays a pure speed signal — as two clean refinement waves per
+ * level, every visible state is an equal-distance lattice, positions never
+ * move, and the on-screen spacing stays within ±19% of nominal. At each
+ * integer boundary the full fine lattice hands over as the next coarse one.
  */
 export const buildArrowAnchors = (
 	view: { minX: number; minY: number; maxX: number; maxY: number },
@@ -85,15 +102,16 @@ export const buildArrowAnchors = (
 	spacingPx: number,
 	clipBounds?: [number, number, number, number],
 	/** Polygon clip: anchors outside are dropped (createClippingTester). */
-	insideClip?: (lon: number, lat: number) => boolean
+	insideClip?: (lon: number, lat: number) => boolean,
+	/** Globe projection active: build the equal-area geographic lattice. */
+	globe = false
 ): ArrowAnchors => {
-	const zInt = Math.max(0, Math.round(zoom));
-	// World pixels at the integer zoom (512px tiles).
-	let spacing = spacingPx / (512 * Math.pow(2, zInt));
-	// The world tiles draw much larger than nominal at the lowest zooms; densify
-	// like the CPU lattice (generateWindPoints' z0/z1 multipliers).
-	if (zInt === 0) spacing /= 2;
-	else if (zInt === 1) spacing /= 1.55;
+	const zFine = Math.max(0, Math.floor(zoom)) + 1;
+	// World pixels at the fine integer zoom (512px tiles).
+	const spacing = spacingPx / (512 * Math.pow(2, zFine));
+	if (globe) {
+		return buildGlobeAnchors(view, zFine, spacing, clipBounds, insideClip);
+	}
 
 	const minY = Math.max(0, view.minY);
 	const maxY = Math.min(1, view.maxY);
@@ -115,6 +133,7 @@ export const buildArrowAnchors = (
 	const rows = lastY - firstY + 1;
 	const capacity = Math.min(cols * rows, MAX_ANCHORS);
 	const positions = new Float64Array(capacity * 2);
+	const thresholds = new Float32Array(capacity);
 	let count = 0;
 
 	outer: for (let row = firstY; row <= lastY; row++) {
@@ -138,23 +157,101 @@ export const buildArrowAnchors = (
 			if (count >= capacity) break outer;
 			positions[count * 2] = x;
 			positions[count * 2 + 1] = y;
+			// Quincunx stages: coarse always, the 45° checkerboard centres from
+			// frac(zoom) 0.25, the remaining cells from 0.75 (see doc above).
+			thresholds[count] =
+				(col & 1) === 0 && (row & 1) === 0 ? 0 : ((col + row) & 1) === 0 ? 0.25 : 0.75;
 			count++;
 		}
 	}
 
 	return {
 		positions,
+		thresholds,
 		count,
-		key: `${zInt}|${spacing}|${firstX}|${lastX}|${firstY}|${lastY}|${clipBounds?.join(',') ?? ''}${insideClip ? '|p' : ''}`
+		key: `${zFine}|${spacing}|${firstX}|${lastX}|${firstY}|${lastY}|${clipBounds?.join(',') ?? ''}${insideClip ? '|p' : ''}`
+	};
+};
+
+/**
+ * The globe lattice: rows at uniform latitude steps, per-row longitude steps
+ * of equal ground length (a reduced lattice, like reduced gaussian grids) —
+ * equal-area on the sphere. The mercator-uniform lattice fails twice on the
+ * globe: columns converge cos(lat)-fold towards the poles, and globe-wide
+ * view bounds blow its cell count past MAX_ANCHORS, silently truncating the
+ * southern rows. Here the in-view count stays ~viewport/spacing² regardless.
+ * Rows nest across zoom levels (lat = row·dLat); the per-row column counts
+ * do not, so a level change re-lattices columns — rare at globe zooms.
+ */
+const buildGlobeAnchors = (
+	view: { minX: number; minY: number; maxX: number; maxY: number },
+	zFine: number,
+	spacing: number,
+	clipBounds?: [number, number, number, number],
+	insideClip?: (lon: number, lat: number) => boolean
+): ArrowAnchors => {
+	// The globe matches the mercator scale at the view-centre latitude, so a
+	// degree there renders 1/cos(lat0) larger than the equatorial mercator
+	// scale the spacing was derived from — a polar view would come out ~5x too
+	// sparse. Densify by the quantised (power-of-two) factor: within a band
+	// the spacing deviates at most x1.41, and a band change halves the step
+	// like a zoom level does, so the rows keep nesting.
+	const centerY = Math.min(1, Math.max(0, (view.minY + view.maxY) / 2));
+	const cosCenter = Math.max(0.05, Math.cos((tile2lat(centerY, 0) * Math.PI) / 180));
+	const band = Math.min(4, Math.max(0, Math.round(Math.log2(1 / cosCenter))));
+	const dLat = (spacing / Math.pow(2, band)) * 360;
+	const rowFirst = Math.ceil(-85.05 / dLat);
+	const rowLast = Math.floor(85.05 / dLat);
+	const minY = Math.max(0, view.minY) - spacing;
+	const maxY = Math.min(1, view.maxY) + spacing;
+	const spanX = Math.min(1, view.maxX - view.minX + 2 * spacing);
+
+	const positions = new Float64Array(MAX_ANCHORS * 2);
+	const thresholds = new Float32Array(MAX_ANCHORS);
+	let count = 0;
+
+	outer: for (let row = rowFirst; row <= rowLast; row++) {
+		const lat = row * dLat;
+		const y = lat2tile(lat, 0);
+		if (y < minY || y > maxY) continue;
+		const cols = Math.max(1, Math.round((360 * Math.cos((lat * Math.PI) / 180)) / dLat));
+		const dLon = 1 / cols;
+		for (let col = 0; col < cols; col++) {
+			const x = col * dLon;
+			// Wrap-aware view test with a one-cell margin folded into spanX.
+			const offX = (((x - view.minX - spacing) % 1) + 1) % 1;
+			if (offX > spanX) continue;
+			const lon = x * 360 - 180;
+			if (
+				clipBounds &&
+				(lon < clipBounds[0] || lat < clipBounds[1] || lon > clipBounds[2] || lat > clipBounds[3])
+			) {
+				continue;
+			}
+			if (insideClip && !insideClip(lon, lat)) continue;
+			if (count >= MAX_ANCHORS) break outer;
+			positions[count * 2] = x;
+			positions[count * 2 + 1] = y;
+			thresholds[count] =
+				(col & 1) === 0 && (row & 1) === 0 ? 0 : ((col + row) & 1) === 0 ? 0.25 : 0.75;
+			count++;
+		}
+	}
+
+	return {
+		positions,
+		thresholds,
+		count,
+		key: `g${zFine}.${band}|${view.minX}|${view.maxX}|${view.minY}|${view.maxY}|${clipBounds?.join(',') ?? ''}${insideClip ? '|p' : ''}`
 	};
 };
 
 /**
  * Floats per arrow instance:
  * [0-1] anchor x,y · [2-5] prev sin,cos,halfLen,width · [6-9] cur ditto ·
- * [10-11] prev/cur alpha.
+ * [10-11] prev/cur alpha · [12] visibility threshold on the fractional zoom.
  */
-export const ARROW_INSTANCE_FLOATS = 12;
+export const ARROW_INSTANCE_FLOATS = 13;
 
 /** Writes sin,cos,halfLen,width at `at`; returns the stroke alpha. */
 const writeState = (
@@ -205,6 +302,7 @@ export const buildArrowInstances = (
 		out[at + 1] = y;
 		out[at + 10] = writeState(out, at + 2, previous ?? current, lat, lon, levels);
 		out[at + 11] = writeState(out, at + 6, current, lat, lon, levels);
+		out[at + 12] = anchors.thresholds[i];
 	}
 	return out;
 };
@@ -233,8 +331,10 @@ in vec2 a_anchor;   // base-world mercator
 in vec4 a_prev;     // sin, cos, halfLen (box fraction), width (px)
 in vec4 a_cur;
 in vec2 a_alpha;    // prev, cur
+in float a_threshold; // visible once frac(zoom) passes this (0 = always)
 
 uniform float u_mix;
+uniform float u_zoomFrac;
 uniform float u_sizePx;
 uniform vec2 u_viewport;
 uniform float u_worldOffset;
@@ -258,6 +358,9 @@ void main() {
 	float h = mix(a_prev.z, a_cur.z, u_mix);
 	float w = mix(a_prev.w, a_cur.w, u_mix);
 	v_alpha = mix(a_alpha.x, a_alpha.y, u_mix);
+	// Density gate, deliberately a hard step and not a fade: opacity encodes
+	// wind speed, so in-between anchors pop in at full strength instead.
+	v_alpha *= step(a_threshold, u_zoomFrac);
 
 	// Segment endpoints in the unit box, y towards the arrow tip at +h.
 	vec2 A, B = vec2(0.0, h);
@@ -299,8 +402,14 @@ void main() {
 	// lattice cos(lat) denser towards the poles, where all columns converge.
 	// The thresholds only bite below ~45% compression, so face-on mid-latitudes
 	// keep full strength while the limb and the polar convergence fade out.
+	// On the globe a mercator-y step spans cos(lat) less angle, so the raw
+	// probe reads high latitudes as foreshortened and fades face-on polar
+	// arrows; normalising by cos(lat) leaves only true limb foreshortening.
+	// (On flat mercator stepPx equals the reference, so this stays >= 1.)
+	float nMerc = 3.141592653589793 - 6.283185307179586 * a_anchor.y;
+	float cosLat = cos(atan(0.5 * (exp(nMerc) - exp(-nMerc))));
 	float stepPx = min(length(sY - sA), length(sX - sA));
-	float foreshorten = 0.5 * stepPx / max(u_refStepPx, 1e-3);
+	float foreshorten = 0.5 * stepPx / (max(u_refStepPx, 1e-3) * max(cosLat, 0.05));
 	v_alpha *= smoothstep(0.25, 0.5, min(foreshorten, 1.0));
 
 	clip.xy += vec2(screen.x, -screen.y) * 2.0 / u_viewport * clip.w;

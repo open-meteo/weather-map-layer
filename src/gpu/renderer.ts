@@ -634,6 +634,8 @@ export class WeatherGpuRenderer {
 		opacity: number;
 		/** Temporal blend factor between the instances' prev/cur states. */
 		mix: number;
+		/** Fractional zoom gating the anchors' visibility thresholds. */
+		zoomFrac: number;
 		/** Drawing buffer size in CSS pixels. */
 		viewport: [number, number];
 		/** Flat-mercator screen length of the shader's foreshortening probe step. */
@@ -665,6 +667,7 @@ export class WeatherGpuRenderer {
 		}
 
 		gl.uniform1f(u('u_mix'), opts.mix);
+		gl.uniform1f(u('u_zoomFrac'), opts.zoomFrac);
 		gl.uniform1f(u('u_sizePx'), opts.sizePx);
 		gl.uniform2f(u('u_viewport'), opts.viewport[0], opts.viewport[1]);
 		gl.uniform1f(u('u_refStepPx'), opts.refStepPx);
@@ -901,6 +904,7 @@ export class WeatherGpuRenderer {
 		instanceAttribute('a_prev', 4, 2);
 		instanceAttribute('a_cur', 4, 6);
 		instanceAttribute('a_alpha', 2, 10);
+		instanceAttribute('a_threshold', 1, 12);
 		gl.bindVertexArray(null);
 
 		instances.vaos.set(key, vao);

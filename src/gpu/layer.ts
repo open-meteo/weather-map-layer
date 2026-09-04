@@ -1150,9 +1150,11 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 	}
 
 	/**
-	 * The instanced arrow overlay. Anchors live on a screen-space lattice; the
-	 * instance buffer is resampled only when the lattice, the data or the
-	 * outgoing blend state changes — the per-frame cost is one instanced draw.
+	 * The instanced arrow overlay. Anchors live on a map-fixed lattice whose
+	 * visible density stays constant per screen (per-anchor pop-in thresholds
+	 * gated by the fractional zoom, see buildArrowAnchors); the instance
+	 * buffer is resampled only when the lattice, the data or the outgoing
+	 * blend state changes — the per-frame cost is one instanced draw.
 	 */
 	private drawArrowPass(
 		gl: WebGL2RenderingContext,
@@ -1193,7 +1195,10 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			map.getZoom(),
 			config.spacingPx,
 			clipBounds,
-			style.clipTester ?? undefined
+			style.clipTester ?? undefined,
+			// On the globe the lattice turns geographic (equal-area, no polar
+			// convergence, bounded anchor count for globe-wide views).
+			(projection?.data.projectionTransition ?? 0) > 0
 		);
 		const instanceKey = `${anchors.key}#${this.arrowGeneration}#${mix < 1 ? 'blend' : 'still'}`;
 		this.arrowInstances ??= renderer.createArrowInstances();
@@ -1213,6 +1218,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			color: config.color,
 			opacity,
 			mix,
+			zoomFrac: zoom - Math.floor(zoom),
 			viewport: [gl.drawingBufferWidth / pixelRatio, gl.drawingBufferHeight / pixelRatio],
 			// The shader probes a 0.0005 mercator-y step; on flat mercator that
 			// spans this many screen pixels (512px world tiles at fractional zoom).
@@ -1296,6 +1302,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			dtSeconds: dt,
 			mercPerMps,
 			bounds: [minX, minY, maxX, maxY],
+			globe: projection?.data.projectionTransition ?? 0,
 			opacity: opacity * (config.opacity ?? 0.8) * zoomFade,
 			sizeDevicePx: config.sizePx * map.getPixelRatio(),
 			worldOffsets: this.worldOffsets(projection)
