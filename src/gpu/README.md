@@ -88,6 +88,17 @@ dropping the tile/bitmap machinery is worth.
   map through pan/zoom/rotate/pitch), on the globe it clears and rebuilds.
   Points draw through `projectTile`, so the animation follows the globe.
   Requires `EXT_color_buffer_float` (else the pass is a no-op).
+  Beyond wind: any variable with a direction pair animates (waves, swell,
+  ocean currents); `shape: 'dash'` renders motion-oriented dashes (marching
+  wave crests) and `mode: 'rain'` turns the pass into falling streaks whose
+  alpha follows the sampled scalar field (precipitation).
+- **Wind-advected temporal blend** (`setAdvection`, single-layer grids): with
+  a wind variable configured, the timestep morph samples the previous field
+  upstream and the next downstream of the wind displacement (scaled by the
+  parsed timestep interval), so precipitation/cloud features drift with the
+  flow instead of cross-fading in place. The wind loads as a sibling variable
+  of each prepared URL through the shared protocol state; any failure falls
+  back silently to the plain blend. Seamless composites keep the plain blend.
 - **prepareUrl/commit**: the load resolves to a commit callback so a host can
   prepare several layers and commit them in the same frame; `setUrl` is
   prepare + immediate commit. `drawRaster: false` gives an arrows-only layer.

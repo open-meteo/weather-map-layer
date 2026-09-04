@@ -38,9 +38,9 @@ import type { ProjectionShaderData, SamplingShaderSpec } from './shader-source';
 export interface GpuParticleConfig {
 	/** Particle count (rounded up to a square state texture). */
 	count: number;
-	/** Point diameter in CSS pixels. */
+	/** Point diameter / dash width in CSS pixels. */
 	sizePx: number;
-	/** Particle RGB 0..1 (plain white or black in practice). */
+	/** Particle RGB 0..1 (plain black or white in practice). */
 	color: [number, number, number];
 	/** Trail opacity 0..1 multiplied into the composite. @default 0.8 */
 	opacity?: number;
@@ -54,6 +54,31 @@ export interface GpuParticleConfig {
 	minZoom?: number;
 	/** Particles fade out above this zoom. */
 	maxZoom?: number;
+	/**
+	 * Particle rendering: round points, or short dashes oriented along the
+	 * motion (wave crests, rain streaks). @default 'point'
+	 */
+	shape?: 'point' | 'dash';
+	/** Dash length in CSS pixels (shape 'dash'). @default 8 */
+	dashLengthPx?: number;
+	/**
+	 * 'flow' advects along the sampled vector field; 'rain' falls straight
+	 * down the screen at `speedPxPerSec` px/s, with the particle alpha driven
+	 * by the sampled scalar field (precipitation intensity). @default 'flow'
+	 */
+	mode?: 'flow' | 'rain';
+	/** Rain mode: field value (mm) at which streaks reach full alpha. @default 1.5 */
+	rainRefValue?: number;
+	/**
+	 * Field magnitude below which the population thins out: near-static
+	 * particles age `calmThinning` times faster, dropping their steady-state
+	 * density by the same factor — dead-air zones stop filling with idle
+	 * clutter. In field units (m/s wind, m wave height); 0 disables.
+	 * @default 0
+	 */
+	calmThreshold?: number;
+	/** Density reduction factor in calm areas (see calmThreshold). @default 3 */
+	calmThinning?: number;
 }
 
 /** One wind-field layer of the update pass (seamless composites pass several). */
@@ -93,8 +118,10 @@ export interface ParticleRenderOptions {
 	globe: number;
 	/** Composited trail opacity 0..1 (layer opacity, zoom fade included). */
 	opacity: number;
-	/** Point diameter in device pixels. */
+	/** Point diameter / dash width in device pixels. */
 	sizeDevicePx: number;
+	/** Dash length in device pixels (shape 'dash'). */
+	dashLenDevicePx: number;
 	/** Whole-world x offsets to draw (antimeridian copies). */
 	worldOffsets: number[];
 }
@@ -299,11 +326,16 @@ const sameProjection = (a: ProjectionSnapshot, b: ProjectionSnapshot): boolean =
  * The update pass: one fragment per particle, sampling the wind components
  * through the generated grid samplers and writing the next state.
  */
-export const updateFragmentSource = (spec: SamplingShaderSpec, temporal: boolean): string => {
+export const updateFragmentSource = (
+	spec: SamplingShaderSpec,
+	temporal: boolean,
+	mode: 'flow' | 'rain' = 'flow'
+): string => {
 	const layers = spec.layers;
-	const decls = layers
-		.map((_, i) => `uniform sampler2D u_u${i};\nuniform sampler2D u_v${i};`)
-		.join('\n');
+	const decls =
+		mode === 'rain'
+			? 'uniform sampler2D u_u0;'
+			: layers.map((_, i) => `uniform sampler2D u_u${i};\nuniform sampler2D u_v${i};`).join('\n');
 	const uArgs = layers.map((_, i) => `, u_u${i}`).join('');
 	const vArgs = layers.map((_, i) => `, u_v${i}`).join('');
 
@@ -319,12 +351,48 @@ export const updateFragmentSource = (spec: SamplingShaderSpec, temporal: boolean
 	}`
 		: '';
 
+	// Flow: advect along the sampled vector field, remembering the motion
+	// bearing (state.w) for the dash rendering. Rain: fall straight down the
+	// screen; state.w carries the local field intensity as the streak alpha.
+	const motion =
+		mode === 'rain'
+			? `
+	// Streak alpha follows the field at the particle (precipitation intensity).
+	float fieldValue = blendedValue(lat, lon, u_u0);
+	float w = isMissing(fieldValue) ? 0.0 : clamp(fieldValue / u_rainRef, 0.0, 1.0);
+	bool missing = false;
+	pos.y += u_speedMerc;`
+			: `
+	float u = blendedValue(lat, lon${uArgs});
+	float v = blendedValue(lat, lon${vArgs});${temporalChunk}
+
+	bool missing = isMissing(u) || isMissing(v);
+	float w = s.w;
+	if (!missing) {
+		// +u is east (+x); +v is north, which decreases mercator y. The globe
+		// shows a mercator step cos(lat) smaller: compensate so high-latitude
+		// particles keep their screen speed instead of freezing near the poles.
+		float boost = mix(1.0, 1.0 / max(cos(radians(lat)), 0.05), u_globe);
+		vec2 d = vec2(u, -v);
+		pos += d * (u_speedMerc * boost);
+		// Motion bearing for the dash rendering (y down the screen).
+		if (length(d) > 1e-6) w = atan(d.x, d.y);
+		// Calm thinning: near-static particles age faster, so their
+		// steady-state density drops by the same factor — dead-air zones
+		// don't fill up with idle clutter.
+		if (u_calm.x > 0.0) {
+			float aging = mix(u_calm.y, 1.0, smoothstep(0.0, u_calm.x, length(d)));
+			age += u_dt * (aging - 1.0);
+		}
+	}`;
+
 	return `#version 300 es
 precision highp float;
 precision highp int;
 ${samplingSource(spec)}
 ${decls}
 ${temporal ? 'uniform sampler2D u_uPrev0;\nuniform sampler2D u_vPrev0;\nuniform float u_mix;' : ''}
+${mode === 'rain' ? 'uniform float u_rainRef; // field value at full streak alpha' : '// (calm magnitude threshold, aging factor below it); x <= 0 disables\nuniform vec2 u_calm;'}
 
 uniform sampler2D u_state;
 uniform float u_dt;        // seconds of this step
@@ -365,17 +433,7 @@ void main() {
 
 	float lat = mercToLat(pos.y);
 	float lon = pos.x * 360.0 - 180.0;
-	float u = blendedValue(lat, lon${uArgs});
-	float v = blendedValue(lat, lon${vArgs});${temporalChunk}
-
-	bool missing = isMissing(u) || isMissing(v);
-	if (!missing) {
-		// +u is east (+x); +v is north, which decreases mercator y. The globe
-		// shows a mercator step cos(lat) smaller: compensate so high-latitude
-		// particles keep their screen speed instead of freezing near the poles.
-		float boost = mix(1.0, 1.0 / max(cos(radians(lat)), 0.05), u_globe);
-		pos += vec2(u, -v) * (u_speedMerc * boost);
-	}
+${motion}
 
 	// Inside test, wrap-aware in x: the offset from the window's west edge,
 	// wrapped into one world, must not exceed the window span.
@@ -410,7 +468,7 @@ void main() {
 		age = 0.0;
 	}
 
-	outState = vec4(fract(pos.x), clamp(pos.y, 0.0, 1.0), age, s.w);
+	outState = vec4(fract(pos.x), clamp(pos.y, 0.0, 1.0), age, w);
 }
 `;
 };
@@ -457,6 +515,78 @@ out vec4 outColor;
 void main() {
 	vec2 d = gl_PointCoord * 2.0 - 1.0;
 	float a = v_alive * (1.0 - smoothstep(0.5, 1.0, length(d)));
+	outColor = vec4(u_color * a, a);
+}
+`;
+
+/**
+ * Dash rendering: one small instanced quad per particle, stretched along the
+ * motion bearing stored in state.w (wave crests) — or, in rain mode, held
+ * vertical with state.w read as the streak alpha instead.
+ */
+const DASH_VERTEX_BODY = `
+uniform sampler2D u_state;
+uniform int u_stateW;
+uniform float u_worldOffset;
+uniform vec2 u_viewport; // device px
+uniform float u_sizePx;  // dash width, device px
+uniform float u_dashLen; // dash length, device px
+uniform float u_mode;    // 0 = flow (state.w = bearing), 1 = rain (state.w = alpha)
+
+out vec2 v_uv;
+out float v_alpha;
+
+void main() {
+	vec4 s = texelFetch(u_state, ivec2(gl_InstanceID % u_stateW, gl_InstanceID / u_stateW), 0);
+	float alive = s.z > 0.0 ? 1.0 : 0.0;
+	v_alpha = alive * (u_mode > 0.5 ? s.w : 1.0);
+	float bearing = u_mode > 0.5 ? 0.0 : s.w;
+
+	int vid = gl_VertexID;
+	vec2 corner = vec2(
+		vid == 1 || vid == 4 || vid == 5 ? 0.5 : -0.5,
+		vid == 2 || vid == 3 || vid == 5 ? 0.5 : -0.5
+	);
+	v_uv = corner;
+
+	// Bearing convention matches the update pass: y down the screen.
+	vec2 dir = vec2(sin(bearing), cos(bearing));
+	vec2 perp = vec2(-dir.y, dir.x);
+	vec2 off = dir * (corner.y * u_dashLen) + perp * (corner.x * u_sizePx);
+	vec4 clip = projectTile(vec2(s.x + u_worldOffset, s.y));
+	clip.xy += vec2(off.x, -off.y) * 2.0 / u_viewport * clip.w;
+	gl_Position = clip;
+}
+`;
+
+const dashVertexSource = (shaderData?: ProjectionShaderData): string => {
+	if (shaderData) {
+		return `#version 300 es
+${shaderData.vertexShaderPrelude}
+${shaderData.define}
+${DASH_VERTEX_BODY}`;
+	}
+	return `#version 300 es
+precision highp float;
+
+uniform mat4 u_matrix;
+
+vec4 projectTile(vec2 pos) {
+	return u_matrix * vec4(pos, 0.0, 1.0);
+}
+${DASH_VERTEX_BODY}`;
+};
+
+const DASH_FRAGMENT = `#version 300 es
+precision mediump float;
+in vec2 v_uv;
+in float v_alpha;
+uniform vec3 u_color;
+out vec4 outColor;
+void main() {
+	float ax = 1.0 - smoothstep(0.3, 0.5, abs(v_uv.x));
+	float ay = 1.0 - smoothstep(0.3, 0.5, abs(v_uv.y));
+	float a = v_alpha * ax * ay;
 	outColor = vec4(u_color * a, a);
 }
 `;
@@ -584,6 +714,7 @@ export class ParticleSystem {
 	private updatePrograms = new Map<string, ProgramInfo>();
 	private static readonly UPDATE_PROGRAM_CACHE_MAX = 4;
 	private pointPrograms = new Map<string, ProgramInfo>();
+	private dashPrograms = new Map<string, ProgramInfo>();
 	private fadeProgram: ProgramInfo | undefined;
 	private compositeProgram: ProgramInfo | undefined;
 	private emptyVao: WebGLVertexArrayObject | null = null;
@@ -674,6 +805,8 @@ export class ParticleSystem {
 		this.updatePrograms.clear();
 		for (const { program } of this.pointPrograms.values()) gl.deleteProgram(program);
 		this.pointPrograms.clear();
+		for (const { program } of this.dashPrograms.values()) gl.deleteProgram(program);
+		this.dashPrograms.clear();
 		for (const { program } of this.unwarpPrograms.values()) gl.deleteProgram(program);
 		this.unwarpPrograms.clear();
 		for (const { program } of this.rewarpPrograms.values()) gl.deleteProgram(program);
@@ -936,15 +1069,20 @@ ${body}`;
 			// higher-order raster methods buy nothing at particle step sizes.
 			interpolation: 'linear'
 		};
-		const temporal = opts.prev !== undefined && opts.layers.length === 1;
-		const key = shaderKey({ ...spec, temporal });
+		const mode = opts.config.mode ?? 'flow';
+		const temporal = mode === 'flow' && opts.prev !== undefined && opts.layers.length === 1;
+		const key = `${mode}|${shaderKey({ ...spec, temporal })}`;
 		const cached = this.updatePrograms.get(key);
 		if (cached) {
 			this.updatePrograms.delete(key);
 			this.updatePrograms.set(key, cached);
 			return cached;
 		}
-		const info = buildProgram(this.gl, FULLSCREEN_VERTEX, updateFragmentSource(spec, temporal));
+		const info = buildProgram(
+			this.gl,
+			FULLSCREEN_VERTEX,
+			updateFragmentSource(spec, temporal, mode)
+		);
 		this.updatePrograms.set(key, info);
 		if (this.updatePrograms.size > ParticleSystem.UPDATE_PROGRAM_CACHE_MAX) {
 			const oldest = this.updatePrograms.keys().next().value!;
@@ -964,12 +1102,23 @@ ${body}`;
 		return info;
 	}
 
+	private getDashProgram(shaderData?: ProjectionShaderData): ProgramInfo {
+		const key = shaderData?.variantName ?? 'plain';
+		let info = this.dashPrograms.get(key);
+		if (!info) {
+			info = buildProgram(this.gl, dashVertexSource(shaderData), DASH_FRAGMENT);
+			this.dashPrograms.set(key, info);
+		}
+		return info;
+	}
+
 	private updateParticles(opts: ParticleRenderOptions): void {
 		const gl = this.gl;
 		const state = this.state!;
 		const info = this.getUpdateProgram(opts);
 		const u = (name: string): WebGLUniformLocation | null => info.uniforms.get(name) ?? null;
-		const temporal = opts.prev !== undefined && opts.layers.length === 1;
+		const mode = opts.config.mode ?? 'flow';
+		const temporal = mode === 'flow' && opts.prev !== undefined && opts.layers.length === 1;
 
 		gl.useProgram(info.program);
 		gl.bindFramebuffer(gl.FRAMEBUFFER, state.fbos[1 - state.head]);
@@ -987,7 +1136,8 @@ ${body}`;
 		for (let i = 0; i < opts.layers.length; i++) {
 			const layer = opts.layers[i];
 			bindTexture(`u_u${i}`, layer.uTexture);
-			bindTexture(`u_v${i}`, layer.vTexture);
+			// Rain mode samples one scalar field; there is no v component.
+			if (mode !== 'rain') bindTexture(`u_v${i}`, layer.vTexture);
 			const spec = layerSpecOf(layer, i === opts.layers.length - 1);
 			uploadGridLayerUniforms(gl, u, i, spec, layer, bindTexture);
 		}
@@ -995,6 +1145,11 @@ ${body}`;
 			bindTexture('u_uPrev0', opts.prev.uTexture);
 			bindTexture('u_vPrev0', opts.prev.vTexture);
 			gl.uniform1f(u('u_mix'), opts.mix);
+		}
+		if (mode === 'rain') {
+			gl.uniform1f(u('u_rainRef'), opts.config.rainRefValue ?? 1.5);
+		} else {
+			gl.uniform2f(u('u_calm'), opts.config.calmThreshold ?? 0, opts.config.calmThinning ?? 3);
 		}
 
 		gl.uniform1f(u('u_dt'), opts.dtSeconds);
@@ -1099,10 +1254,14 @@ ${body}`;
 			gl.drawArrays(gl.TRIANGLES, 0, 3);
 		}
 
-		// 2. The particles on top, premultiplied over the faded history.
-		const point = this.getPointProgram(opts.projection?.shaderData);
-		const u = (name: string): WebGLUniformLocation | null => point.uniforms.get(name) ?? null;
-		gl.useProgram(point.program);
+		// 2. The particles on top, premultiplied over the faded history —
+		// round points, or motion-oriented dashes (waves, rain streaks).
+		const dash = opts.config.shape === 'dash';
+		const program = dash
+			? this.getDashProgram(opts.projection?.shaderData)
+			: this.getPointProgram(opts.projection?.shaderData);
+		const u = (name: string): WebGLUniformLocation | null => program.uniforms.get(name) ?? null;
+		gl.useProgram(program.program);
 		if (opts.projection) {
 			const data = opts.projection.data;
 			gl.uniformMatrix4fv(u('u_projection_matrix'), false, data.mainMatrix as Float32List);
@@ -1123,12 +1282,21 @@ ${body}`;
 		gl.uniform1i(u('u_stateW'), this.stateW);
 		gl.uniform1f(u('u_sizePx'), opts.sizeDevicePx);
 		gl.uniform3f(u('u_color'), ...opts.config.color);
+		if (dash) {
+			gl.uniform2f(u('u_viewport'), this.trailW, this.trailH);
+			gl.uniform1f(u('u_dashLen'), opts.dashLenDevicePx);
+			gl.uniform1f(u('u_mode'), (opts.config.mode ?? 'flow') === 'rain' ? 1 : 0);
+		}
 
 		gl.enable(gl.BLEND);
 		gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 		for (const offset of opts.worldOffsets) {
 			gl.uniform1f(u('u_worldOffset'), offset);
-			gl.drawArrays(gl.POINTS, 0, this.stateW * this.stateW);
+			if (dash) {
+				gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.stateW * this.stateW);
+			} else {
+				gl.drawArrays(gl.POINTS, 0, this.stateW * this.stateW);
+			}
 		}
 		gl.disable(gl.BLEND);
 

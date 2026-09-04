@@ -137,6 +137,12 @@ export interface GpuDrawOptions {
 	prevTexture?: WebGLTexture;
 	/** Blend factor: 0 = previous texture, 1 = current. Default 1. */
 	mix?: number;
+	/**
+	 * Wind-advected temporal blend (single layer): eastward/northward wind
+	 * component textures (m/s) plus the upstream/downstream displacement
+	 * scales in degrees per m/s (mix and 1-mix times the timestep interval).
+	 */
+	advect?: { uTexture: WebGLTexture; vTexture: WebGLTexture; prevDeg: number; nextDeg: number };
 	lut: LutHandle;
 	halfQuantum: number;
 	opacity: number;
@@ -480,12 +486,14 @@ export class WeatherGpuRenderer {
 		const gl = this.gl;
 		const layers = opts.layers;
 		const multiTemporal = layers.length > 1 && layers.every((layer) => layer.prevTexture);
+		const advect = opts.advect !== undefined && layers.length === 1;
 		const spec: FragmentShaderSpec = {
 			layers: layers.map((layer, i) => layerSpecOf(layer, i === layers.length - 1)),
 			interpolation: opts.interpolation,
 			temporal: multiTemporal,
 			contours: opts.contours !== undefined,
-			clipMask: opts.clipMask !== undefined
+			clipMask: opts.clipMask !== undefined,
+			advect
 		};
 		const info = this.getProgram(spec, opts.projection?.shaderData);
 		const u = (name: string): WebGLUniformLocation | null => info.uniforms.get(name) ?? null;
@@ -514,6 +522,11 @@ export class WeatherGpuRenderer {
 			const prevTexture = opts.prevTexture ?? layers[0].prevTexture;
 			bindTexture('u_valuesPrev', prevTexture ?? layers[0].valuesTexture);
 			gl.uniform1f(u('u_mix'), prevTexture ? (opts.mix ?? 1) : 1);
+			if (advect && opts.advect) {
+				bindTexture('u_windU', opts.advect.uTexture);
+				bindTexture('u_windV', opts.advect.vTexture);
+				gl.uniform2f(u('u_advect'), opts.advect.prevDeg, opts.advect.nextDeg);
+			}
 		} else if (multiTemporal) {
 			for (let i = 0; i < layers.length; i++) {
 				bindTexture(`u_valuesPrev${i}`, layers[i].prevTexture!);

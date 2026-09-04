@@ -376,5 +376,19 @@ const DEFAULT_DERIVATION_RULES: VariableDerivationRule[] = [
 			values: height,
 			directions: direction
 		})
+	},
+
+	// Ocean current velocity and direction (marine-API naming, stored separately)
+	{
+		pattern: /ocean_current_(?:velocity|direction)/,
+		scaleFactor: 'primary',
+		getSourceVars: (variable: string) => [
+			variable.replace('ocean_current_direction', 'ocean_current_velocity'),
+			variable.replace('ocean_current_velocity', 'ocean_current_direction')
+		],
+		process: (velocity: Float32Array, direction: Float32Array) => ({
+			values: velocity,
+			directions: direction
+		})
 	}
 ];

@@ -108,6 +108,11 @@ interface PlainFrame extends RenderStyle {
 	values: Float32Array;
 	/** Wind directions of the data, for the particle pass's u/v derivation. */
 	directions?: Float32Array;
+	/** Wind components for the advected temporal blend (setAdvection). */
+	advU?: Float32Array;
+	advV?: Float32Array;
+	/** Valid time parsed from the URL, for the advection displacement scale. */
+	timeMs?: number;
 	gridUniforms: GpuGridUniforms;
 	/** Identity of the grid geometry; temporal blending requires equal signatures. */
 	gridSignature: string;
@@ -223,6 +228,10 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 	private arrows: GpuArrowConfig | undefined;
 	private contours: GpuContourStyle | undefined;
 	private particles: GpuParticleConfig | undefined;
+	/** Wind variable powering the advected temporal blend, if configured. */
+	private advectWindVariable: string | undefined;
+	/** Valid time of the frame the current blend morphs from. */
+	private previousTimeMs: number | undefined;
 	private particleSystem: ParticleSystem | undefined;
 	/** Last particle-update timestamp; 0 restarts the step clock. */
 	private particleLastTime = 0;
@@ -399,9 +408,38 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			});
 		}
 
+		// Advected blend: side-load the wind variable of the same file/crop and
+		// derive its components. Any failure (variable missing on the domain,
+		// grid mismatch) silently keeps the plain in-place blend.
+		let advU: Float32Array | undefined;
+		let advV: Float32Array | undefined;
+		if (this.advectWindVariable) {
+			try {
+				const windUrl = url.replace(
+					/([?&])variable=[^&]*/,
+					`$1variable=${this.advectWindVariable}`
+				);
+				const wind = await loadOmUrl(windUrl, this.settings, signal);
+				if (sequence !== this.loadSequence) return null;
+				if (wind.data.values && wind.data.directions) {
+					const windUniforms = computeGridUniforms(wind.domain.grid, wind.ranges);
+					if (windUniforms.nx === gridUniforms.nx && windUniforms.ny === gridUniforms.ny) {
+						const uv = windComponentsOf(wind.data.values, wind.data.directions);
+						advU = uv.u;
+						advV = uv.v;
+					}
+				}
+			} catch {
+				// Advection unavailable for this domain; plain blend.
+			}
+		}
+
 		const frame: PlainFrame = {
 			values,
 			directions,
+			advU,
+			advV,
+			timeMs: WeatherGpuLayer.timeOf(url),
 			gridUniforms,
 			gridSignature,
 			interpolation: renderOptions.interpolation,
@@ -473,6 +511,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 				this.particlePrev = this.current.directions
 					? { values: this.current.values, directions: this.current.directions }
 					: undefined;
+				this.previousTimeMs = this.current.timeMs;
 				this.fadeStart = performance.now();
 			} else if (this.current && this.fadeMs > 0 && recropped) {
 				this.particlePrev = undefined;
@@ -484,6 +523,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 					// Morph from the shown field re-resolved on the new geometry.
 					this.previous = { values: recropped, gridUniforms: frame.gridUniforms };
 					this.arrowPrevSampler = this.current.sampler;
+					this.previousTimeMs = this.current.timeMs;
 					this.fadeStart = performance.now();
 				}
 			} else {
@@ -509,6 +549,13 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		if (gridUniforms.gridKind === 'gaussian') return undefined;
 		const full = computeGridUniforms(grid, null);
 		return [full.originX, full.originY];
+	}
+
+	/** Valid time parsed from the om URL's file segment (UTC ms), if present. */
+	private static timeOf(url: string): number | undefined {
+		const m = url.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2})(\d{2})\.om/);
+		if (!m) return undefined;
+		return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
 	}
 
 	/** Blend-compatibility identity: grid geometry plus variable and domain. */
@@ -599,6 +646,18 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		this.arrows = config;
 		this.arrowGeneration++;
 		this.map?.triggerRepaint();
+	}
+
+	/**
+	 * Configure (or remove) the wind-advected temporal blend: while a timestep
+	 * morph is in flight, the scalar field (precipitation, cloud cover, …) is
+	 * sampled upstream/downstream of the wind displacement so features drift
+	 * with the flow instead of cross-fading in place. The wind loads as a
+	 * sibling variable of each prepared URL; failures fall back silently to
+	 * the plain blend. Takes effect on the next prepareUrl/setUrl.
+	 */
+	setAdvection(windVariable: string | undefined): void {
+		this.advectWindVariable = windVariable;
 	}
 
 	/**
@@ -891,6 +950,28 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 
 		const clipMask = frame.clipping?.polygons ? renderer.getClipMask(frame.clipping) : undefined;
 
+		// Advected blend: features drift along the wind between the timesteps.
+		// The scales split the displacement across the morph (mix upstream,
+		// 1 - mix downstream) and carry the sign of the step, so scrubbing
+		// backwards rewinds the drift; a gap over 6h would fling features too far.
+		let advect: GpuDrawOptions['advect'];
+		if (mix < 1 && prevTexture && frame.advU && frame.advV) {
+			const dtSec =
+				frame.timeMs !== undefined && this.previousTimeMs !== undefined
+					? (frame.timeMs - this.previousTimeMs) / 1000
+					: 0;
+			if (dtSec !== 0 && Math.abs(dtSec) <= 6 * 3600) {
+				const g = frame.gridUniforms;
+				const degPerMps = dtSec / 111_320;
+				advect = {
+					uTexture: renderer.getValueTexture(frame.advU, g.nx, g.ny),
+					vTexture: renderer.getValueTexture(frame.advV, g.nx, g.ny),
+					prevDeg: mix * degPerMps,
+					nextDeg: (1 - mix) * degPerMps
+				};
+			}
+		}
+
 		if (this.drawRaster || contours) {
 			const g = frame.gridUniforms;
 			renderer.draw({
@@ -904,6 +985,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 				interpolation: frame.interpolation,
 				prevTexture,
 				mix,
+				advect,
 				lut: renderer.getLut(frame.colorScale, frame.colorBlend),
 				halfQuantum: frame.halfQuantum,
 				opacity: this.drawRaster ? opacity : 0,
@@ -946,12 +1028,19 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		}
 	}
 
-	/** The particle pass's wind-component layer for a plain frame, if wind data. */
+	/** The particle pass's field layer for a plain frame. */
 	private plainParticleLayers(frame: PlainFrame): ParticleFieldLayer[] {
-		if (!frame.directions || !this.particles) return [];
-		const uv = windComponentsOf(frame.values, frame.directions);
+		if (!this.particles) return [];
 		const g = frame.gridUniforms;
 		const renderer = this.renderer!;
+		if (this.particles.mode === 'rain') {
+			// Rain streaks sample the scalar field itself (e.g. precipitation);
+			// the v slot is unused by the rain update shader.
+			const values = renderer.getValueTexture(frame.values, g.nx, g.ny, frame.stateKey);
+			return [{ gridUniforms: g, uTexture: values, vTexture: values }];
+		}
+		if (!frame.directions) return [];
+		const uv = windComponentsOf(frame.values, frame.directions);
 		return [
 			{
 				gridUniforms: g,
@@ -967,6 +1056,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		mix: number
 	): { uTexture: WebGLTexture; vTexture: WebGLTexture } | undefined {
 		if (mix >= 1 || !this.particlePrev || !this.particles) return undefined;
+		if (this.particles.mode === 'rain') return undefined;
 		// particlePrev is only set for same-geometry commits, so the previous
 		// arrays share the current frame's texture dimensions.
 		const uv = windComponentsOf(this.particlePrev.values, this.particlePrev.directions);
@@ -1305,6 +1395,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			globe: projection?.data.projectionTransition ?? 0,
 			opacity: opacity * (config.opacity ?? 0.8) * zoomFade,
 			sizeDevicePx: config.sizePx * map.getPixelRatio(),
+			dashLenDevicePx: (config.dashLengthPx ?? 8) * map.getPixelRatio(),
 			worldOffsets: this.worldOffsets(projection)
 		});
 		map.triggerRepaint();

@@ -147,6 +147,40 @@ describe('gpu wind particles', () => {
 		expect(source).toContain('uniform sampler2D u_nan1;');
 	});
 
+	it('assembles the rain-mode update shader (single scalar field)', () => {
+		const source = updateFragmentSource(
+			{ layers: [{ gridKind: 'regular' }], interpolation: 'linear' },
+			false,
+			'rain'
+		);
+		expect(source).toContain('uniform float u_rainRef');
+		expect(source).toContain('blendedValue(lat, lon, u_u0)');
+		expect(source).not.toContain('u_v0');
+	});
+
+	it('compiles the wind-advected temporal blend variant', () => {
+		const plain = fragmentSource({ layers: [{ gridKind: 'regular' }], interpolation: 'linear' });
+		expect(plain).not.toContain('u_windU');
+
+		const advected = fragmentSource({
+			layers: [{ gridKind: 'regular' }],
+			interpolation: 'linear',
+			advect: true
+		});
+		expect(advected).toContain('uniform sampler2D u_windU;');
+		expect(advected).toContain('uniform vec2 u_advect;');
+		expect(advected).toContain('lon - wu * u_advect.x');
+		expect(advected).toContain('lon + wu * u_advect.y');
+
+		// Multi-layer (seamless) draws never compile the advected path.
+		const multi = fragmentSource({
+			layers: [{ gridKind: 'regular', blends: true }, { gridKind: 'regular' }],
+			interpolation: 'linear',
+			advect: true
+		});
+		expect(multi).not.toContain('u_windU');
+	});
+
 	it('derives eastward/northward flow components from speed + direction', () => {
 		const values = new Float32Array([10, 5, NaN, 4]);
 		// direction = where the wind comes FROM: 0° is a northerly (flows south).

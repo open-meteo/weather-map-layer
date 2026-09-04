@@ -62,6 +62,13 @@ export interface FragmentShaderSpec {
 	 * rectangular u_clipBounds clip stays independent of this.
 	 */
 	clipMask?: boolean;
+	/**
+	 * Wind-advected temporal blend (single layer only): instead of cross-fading
+	 * the two timesteps in place, sample the previous field upstream and the
+	 * next field downstream of the wind displacement — precipitation and cloud
+	 * features then drift with the flow between timesteps.
+	 */
+	advect?: boolean;
 }
 
 export const shaderKey = (spec: FragmentShaderSpec): string =>
@@ -71,7 +78,7 @@ export const shaderKey = (spec: FragmentShaderSpec): string =>
 				`${l.gridKind}:${l.projectionName ?? ''}:${l.blends ? 'b' : ''}${l.hasNanField ? 'n' : ''}`
 		)
 		.join('|') +
-	`|${spec.interpolation}${spec.temporal ? '|t' : ''}${spec.contours ? '|ct' : ''}${spec.clipMask ? '|cm' : ''}`;
+	`|${spec.interpolation}${spec.temporal ? '|t' : ''}${spec.contours ? '|ct' : ''}${spec.clipMask ? '|cm' : ''}${spec.advect ? '|adv' : ''}`;
 
 /**
  * MapLibre's per-projection shader chunk for custom layers
@@ -800,11 +807,30 @@ export const fragmentSource = (spec: FragmentShaderSpec): string => {
 	const multiTemporal = !single && spec.temporal === true;
 	const currentArgs = layers.map((_, i) => `, u_values${i}`).join('');
 	const prevArgs = single ? ', u_valuesPrev' : layers.map((_, i) => `, u_valuesPrev${i}`).join('');
+	const advect = single && spec.advect === true;
+	// Semi-Lagrangian frame interpolation: with wind textures bound, sample the
+	// previous field upstream and the next downstream of the displacement, so
+	// features drift with the flow instead of cross-fading in place. Falls back
+	// to the plain in-place mix wherever the wind or offset samples miss.
+	const advectChunk = advect
+		? `
+		float wu = blendedValue(lat, lon, u_windU);
+		float wv = blendedValue(lat, lon, u_windV);
+		if (!isMissing(wu) && !isMissing(wv)) {
+			float cl = max(cos(radians(lat)), 0.2);
+			float vUp = blendedValue(lat - wv * u_advect.x, lon - wu * u_advect.x / cl${prevArgs});
+			float vDown = blendedValue(lat + wv * u_advect.y, lon + wu * u_advect.y / cl${currentArgs});
+			if (!isMissing(vUp) && !isMissing(vDown)) {
+				vPrev = vUp;
+				value = vDown;
+			}
+		}`
+		: '';
 	const temporal =
 		single || multiTemporal
 			? `
 	if (u_mix < 1.0) {
-		float vPrev = blendedValue(lat, lon${prevArgs});
+		float vPrev = blendedValue(lat, lon${prevArgs});${advectChunk}
 		if (!isMissing(value) && !isMissing(vPrev)) {
 			value = mix(vPrev, value, u_mix);
 		} else if (isMissing(value)) {
@@ -813,6 +839,12 @@ export const fragmentSource = (spec: FragmentShaderSpec): string => {
 	}`
 			: '';
 
+	const advectUniforms = advect
+		? `uniform sampler2D u_windU;
+uniform sampler2D u_windV;
+// (mix, 1 - mix) times the timestep interval in degrees per m/s of wind.
+uniform vec2 u_advect;`
+		: '';
 	const prevUniforms = single
 		? 'uniform sampler2D u_valuesPrev;\nuniform float u_mix; // 0 = previous, 1 = current'
 		: multiTemporal
@@ -907,6 +939,7 @@ uniform vec4 u_clipMaskRect;`
 
 	parts.push(`
 ${prevUniforms}
+${advectUniforms}
 ${contourUniforms}
 ${clipMaskUniforms}
 
