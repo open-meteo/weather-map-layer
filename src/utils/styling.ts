@@ -188,6 +188,10 @@ export const COLOR_SCALES_WITH_ALIASES: ColorScales = {
 		...COLOR_SCALES['geopotential_height'],
 		unit: 'W/m²'
 	},
+	// meteofrance_currents serves ocean_u_current/ocean_v_current, whose prefix
+	// lookup lands on 'ocean'; the explicit key also covers a future
+	// ocean_current_velocity/direction naming directly.
+	ocean: COLOR_SCALES['ocean_current'],
 	wave: COLOR_SCALES['swell'],
 	wind_wave_height: COLOR_SCALES['swell'],
 	swell_wave_height: COLOR_SCALES['swell'],
