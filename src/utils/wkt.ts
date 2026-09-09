@@ -1,4 +1,9 @@
-import { GaussianGridData, GridData, ProjectionGridFromBounds, RegularGridData } from '../types';
+import type {
+	GaussianGridData,
+	GridData,
+	ProjectionGridFromBounds,
+	RegularGridFromBounds
+} from '../types';
 
 type WktValue = string | number | WktNode | WktValue[];
 
@@ -130,6 +135,12 @@ function getParameter(node: WktNode, paramName: string): number | undefined {
 	return undefined;
 }
 
+/**
+ * The open-meteo server writes `BBOX[latMin, lonMin, latMax, lonMax]` as the
+ * geographic position of the first (index 0) and the last (nx*ny-1) grid
+ * point, not as an extent. For a grid stored north to south "latMin" is
+ * therefore the northern edge; callers keep that first/last order.
+ */
 function getBbox(
 	node: WktNode
 ): { latMin: number; lonMin: number; latMax: number; lonMax: number } | undefined {
@@ -179,6 +190,10 @@ function getRemark(node: WktNode): string | undefined {
 // Convert parsed WKT to GridData
 // ============================================================================
 
+/**
+ * Derive the grid definition of an om file from its `crs_wkt` attribute (OGC
+ * WKT2 as written by the open-meteo server) and the dimensions of a variable.
+ */
 export function wktToGridData(wkt: string, nx: number, ny: number): GridData {
 	const parsed = parseWkt(wkt);
 	const bbox = getBbox(parsed);
@@ -187,19 +202,11 @@ export function wktToGridData(wkt: string, nx: number, ny: number): GridData {
 		throw new Error('No BBOX found in WKT USAGE section');
 	}
 
-	// Check for Reduced Gaussian Grid
+	// Reduced Gaussian grids have no real CRS; the server tags them in REMARK,
+	// e.g. "Reduced Gaussian Grid O1280 (ECMWF)".
 	const remark = getRemark(parsed);
 	if (remark && remark.includes('Reduced Gaussian Grid')) {
-		// Extract the number from "O1280" pattern
-		const match = remark.match(/O(\d+)/i);
-		const gaussianGridLatitudeLines = match ? parseInt(match[1], 10) : ny / 2;
-
-		return {
-			type: 'gaussian',
-			nx,
-			ny,
-			gaussianGridLatitudeLines
-		} as GaussianGridData;
+		return gaussianGridData(remark, nx, ny);
 	}
 
 	// Check if it's a projected CRS
@@ -212,6 +219,14 @@ export function wktToGridData(wkt: string, nx: number, ny: number): GridData {
 		const method = conversion.children['METHOD']?.[0];
 		const methodName = method?.values[0] as string;
 		const radius = getEllipsoidRadius(parsed);
+		const bounds: Pick<ProjectionGridFromBounds, 'type' | 'nx' | 'ny' | 'latitude' | 'longitude'> =
+			{
+				type: 'projectedFromBounds',
+				nx,
+				ny,
+				latitude: [bbox.latMin, bbox.latMax],
+				longitude: [bbox.lonMin, bbox.lonMax]
+			};
 
 		// Stereographic
 		if (methodName?.includes('Stereographic')) {
@@ -219,18 +234,14 @@ export function wktToGridData(wkt: string, nx: number, ny: number): GridData {
 			const lon = getParameter(conversion, 'Longitude of natural origin') ?? 0;
 
 			return {
-				type: 'projectedFromBounds',
+				...bounds,
 				projection: {
 					name: 'StereographicProjection',
 					latitude: lat,
 					longitude: lon,
 					...(radius && { radius })
-				},
-				nx,
-				ny,
-				latitude: [bbox.latMin, bbox.latMax],
-				longitude: [bbox.lonMin, bbox.lonMax]
-			} as ProjectionGridFromBounds;
+				}
+			};
 		}
 
 		// Lambert Conformal Conic
@@ -250,7 +261,7 @@ export function wktToGridData(wkt: string, nx: number, ny: number): GridData {
 				0;
 
 			return {
-				type: 'projectedFromBounds',
+				...bounds,
 				projection: {
 					name: 'LambertConformalConicProjection',
 					λ0: lambda0,
@@ -258,12 +269,8 @@ export function wktToGridData(wkt: string, nx: number, ny: number): GridData {
 					ϕ1: phi1,
 					ϕ2: phi2,
 					...(radius && { radius })
-				},
-				nx,
-				ny,
-				latitude: [bbox.latMin, bbox.latMax],
-				longitude: [bbox.lonMin, bbox.lonMax]
-			} as ProjectionGridFromBounds;
+				}
+			};
 		}
 
 		// Lambert Azimuthal Equal-Area
@@ -275,18 +282,14 @@ export function wktToGridData(wkt: string, nx: number, ny: number): GridData {
 			const lon = getParameter(conversion, 'Longitude of natural origin') ?? 0;
 
 			return {
-				type: 'projectedFromBounds',
+				...bounds,
 				projection: {
 					name: 'LambertAzimuthalEqualAreaProjection',
 					λ0: lon,
 					ϕ1: lat,
 					radius: radius ?? 6371229
-				},
-				nx,
-				ny,
-				latitude: [bbox.latMin, bbox.latMax],
-				longitude: [bbox.lonMin, bbox.lonMax]
-			} as ProjectionGridFromBounds;
+				}
+			};
 		}
 
 		throw new Error(`Unknown projection method: ${methodName}`);
@@ -300,43 +303,60 @@ export function wktToGridData(wkt: string, nx: number, ny: number): GridData {
 			const oLatP = getParameter(derivingConversion, 'o_lat_p') ?? 0;
 			const lon0 = getParameter(derivingConversion, 'lon_0') ?? 0;
 
-			// Convert to your RotatedLatLonProjection format
-			// o_lat_p is the latitude of the rotated pole
-			// lon_0 is the longitude rotation
+			// The server writes o_lat_p = 90 - θ (RotatedLatLon.swift) while
+			// RotatedLatLonProjection derives θ = 90 + rotatedLat, so the pole
+			// latitude changes sign on the way in: o_lat_p = 35 → rotatedLat = -35.
 			return {
 				type: 'projectedFromBounds',
 				projection: {
 					name: 'RotatedLatLonProjection',
-					rotatedLat: oLatP,
+					rotatedLat: -oLatP,
 					rotatedLon: lon0
 				},
 				nx,
 				ny,
 				latitude: [bbox.latMin, bbox.latMax],
 				longitude: [bbox.lonMin, bbox.lonMax]
-			} as ProjectionGridFromBounds;
+			};
 		}
 
-		// Regular lat/lon grid
-		let lonRange = bbox.lonMax - bbox.lonMin;
-		if (lonRange < 0) lonRange += 360;
-		const latRange = bbox.latMax - bbox.latMin;
+		// Regular lat/lon grid, defined by its first and last grid point so the
+		// spacing is derived exactly like the server does: (last - first) / (n - 1).
+		// A grid stored north to south has latMin > latMax, which gives the
+		// negative row spacing RegularGrid expects for such grids.
+		let lonMax = bbox.lonMax;
+		// A grid crossing the antimeridian ends at a smaller longitude than it starts.
+		if (lonMax < bbox.lonMin) lonMax += 360;
 
-		// The BBOX stores the positions of the first (SW) and last (NE) grid points,
-		// so there are (nx-1) intervals between them.
-		const dx = lonRange / (nx - 1);
-		const dy = latRange / (ny - 1);
-
-		return {
+		const grid: RegularGridFromBounds = {
 			type: 'regular',
 			nx,
 			ny,
-			lonMin: bbox.lonMin,
-			latMin: bbox.latMin,
-			dx,
-			dy
-		} as RegularGridData;
+			latitude: [bbox.latMin, bbox.latMax],
+			longitude: [bbox.lonMin, lonMax]
+		};
+		return grid;
 	}
 
 	throw new Error(`Unknown WKT type: ${parsed.type}`);
+}
+
+function gaussianGridData(remark: string, nx: number, ny: number): GaussianGridData {
+	if (/\bArea\b/.test(remark)) {
+		throw new Error(`Regional reduced Gaussian grids are not supported: ${remark}`);
+	}
+	// GaussianGrid implements the octahedral layout (O<n>: 20 + 4i points on the
+	// i-th latitude line from the pole); classic reduced grids (N<n>) lay out
+	// their lines differently and would be misplaced.
+	const match = remark.match(/\bO(\d+)\b/);
+	if (!match) {
+		throw new Error(`Only octahedral reduced Gaussian grids (O<n>) are supported: ${remark}`);
+	}
+
+	return {
+		type: 'gaussian',
+		nx,
+		ny,
+		gaussianGridLatitudeLines: parseInt(match[1], 10)
+	};
 }
