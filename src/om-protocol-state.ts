@@ -175,7 +175,6 @@ export const ensureData = async (
 		const controller = new AbortController();
 		inflightRequests.set(state, { controller, subscriberCount });
 
-		state.lastError = undefined;
 		state.dataPromise = (async () => {
 			try {
 				const data = await omFileReader.readVariable(
@@ -191,15 +190,6 @@ export const ensureData = async (
 
 				state.data = data;
 				return data;
-			} catch (error) {
-				// Recorded so getDataState can report 'error' — MapLibre counts
-				// failed tiles as complete, so renderers cannot see this otherwise.
-				// An abort is every subscriber cancelling (normal map navigation),
-				// not a failed load, so it leaves no error behind.
-				if (!(error instanceof Error && error.name === 'AbortError')) {
-					state.lastError = error;
-				}
-				throw error;
 			} finally {
 				state.dataPromise = null;
 				inflightRequests.delete(state);
@@ -212,33 +202,6 @@ export const ensureData = async (
 			signal.removeEventListener('abort', cleanup);
 		}
 		cleanup();
-	}
-};
-
-export type OmDataState = 'loaded' | 'loading' | 'error' | 'missing';
-
-/**
- * Synchronous data-availability check for an om url (with or without the
- * om:// prefix). Lets renderers await actual data instead of inferring it
- * from tile events: failed tiles count as complete in MapLibre, so a purely
- * tile-based check can show an empty frame.
- *
- * States are keyed by the normalized URL: meta-JSON URLs (`latest.json`,
- * `in-progress.json`) must be resolved to their dated `.om` form first (see
- * `normalizeUrl`), otherwise this always returns 'missing'.
- */
-export const getDataState = (omUrl: string): OmDataState => {
-	if (!omProtocolInstance) return 'missing';
-	try {
-		const url = omUrl.startsWith('om://') ? omUrl : 'om://' + omUrl;
-		const { fileAndVariableKey } = parseUrlComponents(url);
-		const state = omProtocolInstance.stateByKey.get(fileAndVariableKey);
-		if (!state) return 'missing';
-		if (state.data) return 'loaded';
-		if (state.dataPromise) return 'loading';
-		return state.lastError !== undefined ? 'error' : 'missing';
-	} catch {
-		return 'missing';
 	}
 };
 

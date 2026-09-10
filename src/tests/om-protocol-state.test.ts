@@ -391,29 +391,26 @@ describe('getOrCreateState – eviction', () => {
 });
 
 describe('ensureData – error state', () => {
-	it('records lastError on failure and clears it when a new load starts', async () => {
+	it('leaves no half-loaded state on failure and recovers on retry', async () => {
 		const state = makeState(new Map(), 'err');
 		const reader = new FakeReader();
 
 		const p = ensureData(state, asReader(reader), undefined);
-		const failure = new Error('fetch failed');
-		reader.rejectCall(0, failure);
+		reader.rejectCall(0, new Error('fetch failed'));
 		await expect(p).rejects.toThrow('fetch failed');
 
-		// getDataState reports 'error' from exactly this field
-		expect(state.lastError).toBe(failure);
+		// The failed load must not leave the promise behind, or every later
+		// request would await the rejection instead of retrying
 		expect(state.data).toBeNull();
 		expect(state.dataPromise).toBeNull();
 
-		// A retry clears the recorded error while the new load is in flight
 		const retry = ensureData(state, asReader(reader), undefined);
-		expect(state.lastError).toBeUndefined();
 		reader.resolveCall(1, { values: new Float32Array(1), directions: undefined });
 		await retry;
 		expect(state.data).not.toBeNull();
 	});
 
-	it('does not record an abort as lastError', async () => {
+	it('propagates an abort instead of swallowing it', async () => {
 		const state = makeState(new Map(), 'abort-no-err');
 		const reader = new FakeReader();
 		const ac = new AbortController();
@@ -425,9 +422,6 @@ describe('ensureData – error state', () => {
 		// The underlying read rejects the way a cancelled fetch does
 		reader.rejectCall(0, new DOMException('Aborted', 'AbortError'));
 		await expect(p).rejects.toMatchObject({ name: 'AbortError' });
-
-		// All subscribers cancelling is normal navigation, not a failed load,
-		// so getDataState must not report 'error' afterwards
-		expect(state.lastError).toBeUndefined();
+		expect(state.dataPromise).toBeNull();
 	});
 });
