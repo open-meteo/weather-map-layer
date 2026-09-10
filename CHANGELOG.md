@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.1](https://github.com/open-meteo/weather-map-layer/compare/v0.1.0...v0.1.1) (2026-09-10)
+
+
+### Features
+
+* add colorscale for visibility ([#311](https://github.com/open-meteo/weather-map-layer/issues/311)) ([2f1938a](https://github.com/open-meteo/weather-map-layer/commit/2f1938aaf88d2f915f83a4020e2ca5b055b3721d))
+* grid boundary polygons and domain data footprints ([#304](https://github.com/open-meteo/weather-map-layer/issues/304)) ([8b2a6e8](https://github.com/open-meteo/weather-map-layer/commit/8b2a6e82c03b574ff63d7069994698ceed80c200))
+
+
+### Bug Fixes
+
+* better support multiple variables ([#292](https://github.com/open-meteo/weather-map-layer/issues/292)) ([4c511a3](https://github.com/open-meteo/weather-map-layer/commit/4c511a3555abced05528ebfb9c6caf69cb428768))
+* bump the openmeteo group across 1 directory with 10 updates ([#298](https://github.com/open-meteo/weather-map-layer/issues/298)) ([4a5ab56](https://github.com/open-meteo/weather-map-layer/commit/4a5ab5698d62041e72846cdc5a8f8cdde36b5142))
+* bump the openmeteo group with 14 updates ([#313](https://github.com/open-meteo/weather-map-layer/issues/313)) ([707d734](https://github.com/open-meteo/weather-map-layer/commit/707d7341172acc7315618511baa1002ba0d9bf3d))
+* circular direction interpolation ([#303](https://github.com/open-meteo/weather-map-layer/issues/303)) ([16f524b](https://github.com/open-meteo/weather-map-layer/commit/16f524ba5cdac869681b5a3c0f188c813d776026))
+* retire bunnycdn ([#306](https://github.com/open-meteo/weather-map-layer/issues/306)) ([37136ba](https://github.com/open-meteo/weather-map-layer/commit/37136ba4efa2abb332222b5079ce29a951b2588f))
+* worker errors, meta cache retry, grid memoization, clarify endpoints ([#301](https://github.com/open-meteo/weather-map-layer/issues/301)) ([f2f9d3f](https://github.com/open-meteo/weather-map-layer/commit/f2f9d3f053af44a88d1ba588c48c47b40be37c30))
+
 ## [0.1.0](https://github.com/open-meteo/weather-map-layer/compare/v0.0.20...v0.1.0) (2026-08-25)
 
 
