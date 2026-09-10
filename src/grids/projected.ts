@@ -232,6 +232,12 @@ export class ProjectionGrid implements GridInterface {
 	 * the axis-aligned bounding box. Each edge is sampled at up to
 	 * `maxPointsPerEdge` points so the curvature is captured without emitting one
 	 * vertex per grid column/row.
+	 *
+	 * The ring spans `nx * dx` — one step past the last grid node, like
+	 * getBounds() and the regular grid — matching the sampled coverage
+	 * (`findPointInterpolated` accepts `0 <= x < nx`, which nearest sampling
+	 * fills entirely). A node-rectangle ring sat one full cell inside the
+	 * rendered data on the max-x/max-y sides.
 	 */
 	getBoundaryPolygon(maxPointsPerEdge = 64): Array<[number, number]> {
 		const ring: Array<[number, number]> = [];
@@ -248,16 +254,16 @@ export class ProjectionGrid implements GridInterface {
 			ring.push([lon, lat]);
 		};
 
-		const xEnd = this.minX + (this.nx - 1) * this.dx;
-		const yEnd = this.minY + (this.ny - 1) * this.dy;
-		const stepX = Math.max(1, Math.ceil((this.nx - 1) / maxPointsPerEdge));
-		const stepY = Math.max(1, Math.ceil((this.ny - 1) / maxPointsPerEdge));
+		const xEnd = this.minX + this.nx * this.dx;
+		const yEnd = this.minY + this.ny * this.dy;
+		const stepX = Math.max(1, Math.ceil(this.nx / maxPointsPerEdge));
+		const stepY = Math.max(1, Math.ceil(this.ny / maxPointsPerEdge));
 
 		// Walk the perimeter counter-clockwise: bottom → right → top → left.
-		for (let i = 0; i < this.nx - 1; i += stepX) add(this.minX + i * this.dx, this.minY);
-		for (let j = 0; j < this.ny - 1; j += stepY) add(xEnd, this.minY + j * this.dy);
-		for (let i = this.nx - 1; i > 0; i -= stepX) add(this.minX + i * this.dx, yEnd);
-		for (let j = this.ny - 1; j > 0; j -= stepY) add(this.minX, this.minY + j * this.dy);
+		for (let i = 0; i < this.nx; i += stepX) add(this.minX + i * this.dx, this.minY);
+		for (let j = 0; j < this.ny; j += stepY) add(xEnd, this.minY + j * this.dy);
+		for (let i = this.nx; i > 0; i -= stepX) add(this.minX + i * this.dx, yEnd);
+		for (let j = this.ny; j > 0; j -= stepY) add(this.minX, this.minY + j * this.dy);
 		add(this.minX, this.minY); // close the ring
 		return ring;
 	}

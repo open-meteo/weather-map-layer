@@ -2,10 +2,13 @@
 // Approximate non-NULL data footprints (closed [lon, lat] rings) for reprojected
 // regular-grid domains, so seamless borders follow the real data shape instead of
 // the rectangular grid box. Regenerate with: npm run generate:footprints
+import { GridFactory } from './grids/index';
 
-export const DOMAIN_FOOTPRINTS: Record<string, Array<[number, number]>> = {
+import type { Domain } from './types';
+
+const DOMAIN_FOOTPRINTS: Record<string, Array<[number, number]>> = {
 	dwd_icon_d2: [
-		[-0.32, 43.141],
+		[-0.33, 43.16],
 		[0.428, 43.204],
 		[1.177, 43.265],
 		[1.925, 43.322],
@@ -29,8 +32,7 @@ export const DOMAIN_FOOTPRINTS: Record<string, Array<[number, number]>> = {
 		[15.395, 43.493],
 		[16.143, 43.453],
 		[16.892, 43.411],
-		[17.64, 43.366],
-		[17.617, 43.38],
+		[17.629, 43.373],
 		[17.704, 43.977],
 		[17.792, 44.573],
 		[17.882, 45.17],
@@ -54,8 +56,7 @@ export const DOMAIN_FOOTPRINTS: Record<string, Array<[number, number]>> = {
 		[19.899, 55.91],
 		[20.041, 56.507],
 		[20.187, 57.103],
-		[20.336, 57.7],
-		[20.34, 57.684],
+		[20.338, 57.692],
 		[19.328, 57.754],
 		[18.317, 57.817],
 		[17.305, 57.873],
@@ -79,8 +80,7 @@ export const DOMAIN_FOOTPRINTS: Record<string, Array<[number, number]>> = {
 		[-0.905, 57.634],
 		[-1.917, 57.552],
 		[-2.928, 57.463],
-		[-3.94, 57.367],
-		[-3.967, 57.36],
+		[-3.954, 57.364],
 		[-3.768, 56.769],
 		[-3.574, 56.178],
 		[-3.385, 55.587],
@@ -104,11 +104,10 @@ export const DOMAIN_FOOTPRINTS: Record<string, Array<[number, number]>> = {
 		[-0.69, 44.953],
 		[-0.571, 44.362],
 		[-0.454, 43.771],
-		[-0.339, 43.18],
-		[-0.32, 43.141]
+		[-0.33, 43.16]
 	],
 	meteofrance_arome_france0025: [
-		[-8.175, 37.497],
+		[-8.171, 37.511],
 		[-7.326, 37.579],
 		[-6.477, 37.653],
 		[-5.628, 37.721],
@@ -132,8 +131,7 @@ export const DOMAIN_FOOTPRINTS: Record<string, Array<[number, number]>> = {
 		[9.653, 37.719],
 		[10.502, 37.651],
 		[11.351, 37.577],
-		[12.2, 37.496],
-		[12.194, 37.525],
+		[12.197, 37.511],
 		[12.314, 38.241],
 		[12.437, 38.956],
 		[12.561, 39.672],
@@ -157,8 +155,7 @@ export const DOMAIN_FOOTPRINTS: Record<string, Array<[number, number]>> = {
 		[15.418, 52.553],
 		[15.619, 53.269],
 		[15.826, 53.984],
-		[16.036, 54.7],
-		[15.975, 54.674],
+		[16.006, 54.687],
 		[14.809, 54.789],
 		[13.644, 54.893],
 		[12.478, 54.987],
@@ -182,8 +179,7 @@ export const DOMAIN_FOOTPRINTS: Record<string, Array<[number, number]>> = {
 		[-8.503, 54.985],
 		[-9.669, 54.891],
 		[-10.834, 54.786],
-		[-12, 54.671],
-		[-12.001, 54.675],
+		[-12, 54.673],
 		[-11.786, 53.96],
 		[-11.577, 53.246],
 		[-11.374, 52.531],
@@ -207,11 +203,15 @@ export const DOMAIN_FOOTPRINTS: Record<string, Array<[number, number]>> = {
 		[-8.529, 39.669],
 		[-8.406, 38.954],
 		[-8.284, 38.24],
-		[-8.166, 37.525],
-		[-8.175, 37.497]
+		[-8.171, 37.511]
 	]
 };
 
-/** Returns the precomputed data-shape outline for a domain, if one exists. */
-export const getDomainFootprint = (domainValue: string): Array<[number, number]> | undefined =>
-	DOMAIN_FOOTPRINTS[domainValue];
+/**
+ * Returns the domain's outline as a closed `[lon, lat]` ring: the precomputed
+ * data-shape footprint when one exists (NULL-padded reprojected grids whose real
+ * data region is smaller than the grid box), otherwise the grid's boundary
+ * polygon (`getBoundaryPolygon`).
+ */
+export const getDomainBoundary = (domain: Domain): Array<[number, number]> =>
+	DOMAIN_FOOTPRINTS[domain.value] ?? GridFactory.create(domain.grid, null).getBoundaryPolygon();

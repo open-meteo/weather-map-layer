@@ -48,6 +48,7 @@
 		"coverage": "vitest run --coverage",
 		"lint": "prettier --check . && eslint .",
 		"generate:colorscales": "tsx scripts/generate-colorscales.ts && prettier --write src/utils/color-scales.ts",
+		"generate:footprints": "tsx scripts/generate-domain-footprints.ts && prettier --write src/domain-footprints.ts",
 		"watch:colorscales": "npm-watch generate:colorscales",
 		"build:esm": "vite build",
 		"build:cjs": "vite build --config vite.config.cjs.ts",
@@ -85,7 +86,7 @@
 		"@mapbox/tilebelt": "^2.0.3",
 		"@mapbox/vector-tile": "^3.0.0",
 		"@openmeteo/file-reader": "^0.0.18",
-		"maplibre-gl": "^5.20.1",
+		"maplibre-gl": "^6.5.0",
 		"pbf": "^5.1.0",
 		"point-in-polygon-hao": "^1.2.4"
 	}

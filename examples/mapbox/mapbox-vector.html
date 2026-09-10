@@ -63,7 +63,7 @@
 			});
 
 			// Both layers share the same model file and time step. The vector layer appends `&arrows=true` to request PBF arrow tiles.
-			const omUrl = `https://openmeteo-data-spatial.b-cdn.net/dwd_icon/latest.json?time_step=current_time_1H&variable=wind_u_component_10m`;
+			const omUrl = `https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=wind_u_component_10m`;
 
 			map.on('load', () => {
 				map.addSource('omRasterSource', {

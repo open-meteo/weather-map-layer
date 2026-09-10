@@ -54,7 +54,7 @@
 				hash: true
 			});
 
-			const omUrl = `https://openmeteo-data-spatial.b-cdn.net/ecmwf_ifs/latest.json?time_step=current_time_1H&variable=pressure_msl`;
+			const omUrl = `https://openmeteo.s3.amazonaws.com/data_spatial/ecmwf_ifs/latest.json?time_step=current_time_1H&variable=pressure_msl`;
 
 			map.on('load', () => {
 				map.addSource('omFileSource', {

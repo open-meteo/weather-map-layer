@@ -458,6 +458,20 @@ const colorScaleDefinitions: Record<string, ColorScaleDefinition> = {
 			{ range: [0, 0.75], opacity: [0, 1], easing: 'power', exponent: 1.5 }
 		]
 	},
+	visibility: {
+		unit: 'm',
+		breakpoints: [0, 100, 200, 500, 1000, 2000, 3000, 5000, 7500, 10000, 15000, 20000],
+		colorSegments: [
+			{ range: [0, 1000], colors: ['#800080', '#ff0000'] }, // dense fog -> fog
+			{ range: [1000, 5000], colors: ['#ff0000', '#ffa500', '#ffff00'] }, // mist / poor
+			{ range: [5000, 10000], colors: ['#ffff00', '#008000'] }, // moderate
+			{ range: [10000, 20000], colors: ['#008000', '#4682b4'] } // good -> very good
+		],
+		opacitySegments: [
+			{ range: [0, 10000], opacity: [1, 1], easing: 'linear' },
+			{ range: [10000, 20000], opacity: [1, 0], easing: 'linear' } // clear air fades out
+		]
+	},
 	wind: {
 		unit: 'm/s',
 		breakpoints: [

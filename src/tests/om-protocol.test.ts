@@ -114,14 +114,14 @@ describe('Request Options', () => {
 			const settings = createTestSettings({ domainOptions });
 
 			const url1 =
-				'om://https://example.b-cdn.net/domain1/2026/07/13/0600Z/2026-07-13T1300.om?variable=temperature&dark=true&intervals=2';
+				'om://https://example.com/domain1/2026/07/13/0600Z/2026-07-13T1300.om?variable=temperature&dark=true&intervals=2';
 
 			const url2 =
 				'om://https://example.com/nested/bucket/structure/domain1/2026/07/13/0600Z/2026-07-13T1300.om?variable=temperature&dark=true&intervals=2';
 
 			// Bare .om file with neither a data_spatial prefix nor a model-run path.
 			const url3 =
-				'om://https://example.b-cdn.net/domain1/file.om?variable=temperature&dark=true&intervals=2';
+				'om://https://example.com/domain1/file.om?variable=temperature&dark=true&intervals=2';
 
 			const url4 =
 				'om://https://example.com/nested/bucket/structure/domain1/file.om?variable=temperature&dark=true&intervals=2';

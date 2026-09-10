@@ -58,7 +58,7 @@
 			}).addTo(map);
 
 			// Create the om:// tile layer. The URL points at a TileJSON endpoint, tile templates and bounds are resolved automatically from the response.
-			const omUrl = `https://openmeteo-data-spatial.b-cdn.net/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m`;
+			const omUrl = `https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m`;
 
 			leafletAdapter
 				.createTileLayer('om://' + omUrl, {

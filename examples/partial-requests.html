@@ -40,7 +40,7 @@
 			});
 
 			// below url is used to request 'latest.json' and get the nearest timestep to "current local time" + 1 hour
-			const omUrl = `https://openmeteo-data-spatial.b-cdn.net/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m`;
+			const omUrl = `https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m`;
 
 			map.on('dataloading', () => {
 				const bounds = map.getBounds();
