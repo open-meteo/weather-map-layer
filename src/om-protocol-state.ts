@@ -23,6 +23,8 @@ import type {
 interface InflightRequest {
 	controller: AbortController;
 	subscriberCount: number;
+	/** The read this entry owns — identifies it once it settles. */
+	promise?: Promise<Data>;
 }
 
 const inflightRequests = new WeakMap<OmUrlState, InflightRequest>();
@@ -126,6 +128,58 @@ export const getOrCreateState = (
 };
 
 /**
+ * Starts the shared read for a state, or joins the one already running,
+ * **without becoming a subscriber of it**: the caller gets the data, but its
+ * presence never keeps the read alive. Use it to warm the cache up front (the
+ * TileJSON request does, so the download overlaps MapLibre setting the source
+ * up); a warm-up that counted as a subscriber could never be released, and
+ * the read would go on downloading long after every tile of that frame was
+ * abandoned.
+ *
+ * A read whose subscribers have all aborted is no longer joinable even while
+ * its rejection is still in flight — the next caller starts a fresh one
+ * instead of inheriting a cancellation it did not ask for.
+ */
+export const startData = (
+	state: OmUrlState,
+	omFileReader: WeatherMapLayerFileReader,
+	postReadCallback: PostReadCallback
+): Promise<Data> => {
+	const running = state.dataPromise;
+	if (running && inflightRequests.has(state)) return running;
+
+	const entry: InflightRequest = { controller: new AbortController(), subscriberCount: 0 };
+	inflightRequests.set(state, entry);
+
+	const promise = (async () => {
+		try {
+			const data = await omFileReader.readVariable(
+				state.omFileUrl,
+				state.dataOptions.variable,
+				state.ranges,
+				entry.controller.signal
+			);
+
+			if (postReadCallback) {
+				postReadCallback(omFileReader, data, state);
+			}
+
+			state.data = data;
+			return data;
+		} finally {
+			// Only clear what still belongs to this read: an abandoned one can
+			// have been replaced by a fresh read before it settles
+			if (state.dataPromise === entry.promise) state.dataPromise = null;
+			if (inflightRequests.get(state) === entry) inflightRequests.delete(state);
+		}
+	})();
+	entry.promise = promise;
+	state.dataPromise = promise;
+
+	return promise;
+};
+
+/**
  * Ensures that data for a given state is loaded.
  * Handles multiple concurrent requests for the same data by sharing a promise.
  * Correctly handles AbortSignals by tracking all active subscribers and
@@ -140,26 +194,23 @@ export const ensureData = async (
 	if (state.data) return state.data;
 	if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
+	const pending = startData(state, omFileReader, postReadCallback);
 	const inflight = inflightRequests.get(state);
-	const subscriberCount = (inflight?.subscriberCount ?? 0) + 1;
-
-	if (inflight) {
-		inflight.subscriberCount = subscriberCount;
-	}
+	if (inflight) inflight.subscriberCount += 1;
 
 	let finished = false;
 	const cleanup = () => {
 		if (finished) return;
 		finished = true;
 
-		const current = inflightRequests.get(state);
-		if (!current) return;
+		// Not `inflightRequests.get(state)`: our read may already have been
+		// replaced, and releasing a subscriber of the newer one would abort it
+		if (!inflight || inflightRequests.get(state) !== inflight) return;
 
-		if (current.subscriberCount <= 1) {
+		inflight.subscriberCount -= 1;
+		if (inflight.subscriberCount <= 0) {
 			inflightRequests.delete(state);
-			current.controller.abort();
-		} else {
-			current.subscriberCount -= 1;
+			inflight.controller.abort();
 		}
 	};
 
@@ -168,35 +219,7 @@ export const ensureData = async (
 	}
 
 	try {
-		if (state.dataPromise) {
-			return await state.dataPromise;
-		}
-
-		const controller = new AbortController();
-		inflightRequests.set(state, { controller, subscriberCount });
-
-		state.dataPromise = (async () => {
-			try {
-				const data = await omFileReader.readVariable(
-					state.omFileUrl,
-					state.dataOptions.variable,
-					state.ranges,
-					controller.signal
-				);
-
-				if (postReadCallback) {
-					postReadCallback(omFileReader, data, state);
-				}
-
-				state.data = data;
-				return data;
-			} finally {
-				state.dataPromise = null;
-				inflightRequests.delete(state);
-			}
-		})();
-
-		return await state.dataPromise;
+		return await pending;
 	} finally {
 		if (signal) {
 			signal.removeEventListener('abort', cleanup);

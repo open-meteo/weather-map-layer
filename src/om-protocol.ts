@@ -9,7 +9,7 @@ import { COLOR_SCALES_WITH_ALIASES as defaultColorScales } from './utils/styling
 import { domainOptions as defaultDomainOptions } from './domains';
 import { GridFactory } from './grids/index';
 import { defaultFileReaderConfig } from './om-file-reader';
-import { ensureData, getOrCreateState, getProtocolInstance } from './om-protocol-state';
+import { ensureData, getOrCreateState, getProtocolInstance, startData } from './om-protocol-state';
 import { capitalize } from './utils';
 import { WorkerPool } from './worker-pool';
 
@@ -75,8 +75,10 @@ export const omProtocol = async (
 	// data download. The data load is still kicked off right away (fire and
 	// forget) so it runs while MapLibre processes the TileJSON — the subsequent
 	// tile requests then await the same shared promise via state.dataPromise.
+	// `startData`, not `ensureData`: the warm-up must not subscribe, or the read
+	// would outlive the tiles it was started for and could never be cancelled.
 	if (params.type == 'json') {
-		ensureData(state, instance.omFileReader, settings.postReadCallback).catch(() => {
+		startData(state, instance.omFileReader, settings.postReadCallback).catch(() => {
 			// Errors surface on the awaited tile requests; ignore here.
 		});
 		return {
