@@ -1,5 +1,5 @@
 import type { WeatherMapLayerFileReader } from '../om-file-reader';
-import { ensureData, getOrCreateState, getRanges } from '../om-protocol-state';
+import { ensureData, getOrCreateState, getRanges, startData } from '../om-protocol-state';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type {
@@ -422,6 +422,79 @@ describe('ensureData – error state', () => {
 		// The underlying read rejects the way a cancelled fetch does
 		reader.rejectCall(0, new DOMException('Aborted', 'AbortError'));
 		await expect(p).rejects.toMatchObject({ name: 'AbortError' });
+		expect(state.dataPromise).toBeNull();
+	});
+});
+
+describe('startData – warm-up', () => {
+	it('does not keep a read alive that all subscribers cancelled', async () => {
+		const state = makeState(new Map(), 'warm-up');
+		const reader = new FakeReader();
+
+		// The TileJSON request warms the data up before any tile asks for it
+		startData(state, asReader(reader), undefined).catch(() => {});
+		await flushMicrotasks();
+		expect(reader.calls).toHaveLength(1);
+
+		const ac = new AbortController();
+		const tile = ensureData(state, asReader(reader), undefined, ac.signal);
+		await flushMicrotasks();
+
+		// The tile joins the warmed-up read instead of starting a second one
+		expect(reader.calls).toHaveLength(1);
+		expect(reader.calls[0].signal!.aborted).toBe(false);
+
+		// ...and cancelling it cancels the read, warm-up notwithstanding
+		ac.abort();
+		expect(reader.calls[0].signal!.aborted).toBe(true);
+		await expect(tile).rejects.toThrow();
+	});
+
+	it('completes when no subscriber ever joins', async () => {
+		const state = makeState(new Map(), 'warm-up-alone');
+		const reader = new FakeReader();
+
+		const warm = startData(state, asReader(reader), undefined);
+		await flushMicrotasks();
+
+		const mockData = makeMockData();
+		reader.resolveCall(0, mockData);
+
+		await expect(warm).resolves.toBe(mockData);
+		expect(state.data).toBe(mockData);
+		expect(state.dataPromise).toBeNull();
+	});
+});
+
+describe('ensureData – cancelled read still settling', () => {
+	it('starts a fresh read instead of handing on the cancellation', async () => {
+		const state = makeState(new Map(), 'late-joiner');
+		const reader = new FakeReader();
+
+		const ac = new AbortController();
+		const abandoned = ensureData(state, asReader(reader), undefined, ac.signal);
+		// Assert on it up front: it rejects the moment the abort lands, and an
+		// expectation attached later would first see an unhandled rejection
+		const abandonedRejected = expect(abandoned).rejects.toThrow();
+		await flushMicrotasks();
+
+		ac.abort();
+		// The read is cancelled, but its rejection has not propagated yet — a
+		// subscriber arriving in this window asked for data, not for an abort
+		expect(state.dataPromise).not.toBeNull();
+
+		const p = ensureData(state, asReader(reader), undefined);
+		await flushMicrotasks();
+		expect(reader.calls).toHaveLength(2);
+
+		const mockData = makeMockData();
+		reader.resolveCall(1, mockData);
+		await expect(p).resolves.toBe(mockData);
+		await abandonedRejected;
+
+		// The abandoned read settling later must not clear the fresh one
+		await flushMicrotasks();
+		expect(state.data).toBe(mockData);
 		expect(state.dataPromise).toBeNull();
 	});
 });
