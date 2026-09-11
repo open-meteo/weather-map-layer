@@ -64,30 +64,26 @@ const renderVector = (job: BenchRenderJob): void => {
 
 	const pbf = new PbfWriter();
 	if (job.mode === 'contours') {
+		const sampleValue = (lat: number, lon: number) =>
+			grid.getInterpolatedValue(job.values, lat, lon, job.method);
 		generateContours(
 			pbf,
-			job.values,
-			grid,
+			sampleValue,
 			job.x,
 			job.y,
 			job.z,
 			job.tileSize,
 			job.intervals ?? [],
-			undefined,
-			job.method
+			undefined
 		);
 	} else {
-		generateArrows(
-			pbf,
-			job.values,
-			job.directions!,
-			grid,
-			job.x,
-			job.y,
-			job.z,
-			undefined,
-			job.method
-		);
+		// Same sampler shape as src/worker.ts: magnitude with the selected
+		// method, direction linear.
+		const sampleVector = (lat: number, lon: number) => ({
+			value: grid.getInterpolatedValue(job.values, lat, lon, job.method),
+			direction: grid.getLinearInterpolatedValue(job.directions!, lat, lon)
+		});
+		generateArrows(pbf, sampleVector, job.x, job.y, job.z, undefined);
 	}
 	pbf.finish();
 };
