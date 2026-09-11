@@ -1,16 +1,14 @@
-import { GridInterface } from '../grids/index';
 import { PbfWriter } from 'pbf';
 
 import { type ResolvedClippingOptions, createClippingTester } from './clipping';
 import { VECTOR_TILE_EXTENT } from './constants';
 import { tile2lat, tile2lon } from './math';
 import { command, writeLayer, zigzag } from './pbf';
-
-import { InterpolationMethod } from '../types';
+import type { ValueSampler } from './seamless-sampling';
 
 // prettier-ignore
 export const CASES: [number, number][][][] = [
-	[],					       // 0
+	[],					       			// 0
 	[[[1, 2],[0, 1]]],			  // 1
 	[[[2, 1],[1, 2]]],			  // 2
 	[[[2, 1],[0, 1]]],			  // 3
@@ -141,15 +139,13 @@ const isAscending = (arr: number[]): boolean => {
 
 export const generateContours = (
 	pbf: PbfWriter,
-	values: Float32Array,
-	grid: GridInterface,
+	sampleValue: ValueSampler,
 	x: number,
 	y: number,
 	z: number,
 	tileSize: number,
 	intervals: number[],
 	clippingOptions: ResolvedClippingOptions | undefined,
-	interpolation: InterpolationMethod = 'linear',
 	// Added to every sample so contour crossings fall off the quantization grid,
 	// matching the raster (see halfQuantum / worker). Keeps contours aligned with
 	// the colour band edges.
@@ -257,7 +253,7 @@ export const generateContours = (
 
 	const sampleRow = (lat: number, out: Float64Array): void => {
 		for (let c = 0; c < numCols; c++) {
-			out[c] = grid.getInterpolatedValue(values, lat, lons[c], interpolation) + valueOffset;
+			out[c] = sampleValue(lat, lons[c]) + valueOffset;
 		}
 	};
 
