@@ -3,6 +3,12 @@ export { omProtocol } from './om-protocol';
 // Functions
 
 export {
+	isSeamlessDomain,
+	getFallbackDomainValue,
+	resolveConcreteDomain,
+	getFallbackDomain
+} from './domain-helpers';
+export {
 	getValueFromLatLong,
 	clearBlockCache,
 	clearBackends,
@@ -19,6 +25,7 @@ export { getColor, getColorScale } from './utils/styling';
 // Classes
 
 export { GridFactory } from './grids/index';
+export { WeatherMapLayerFileReader } from './om-file-reader';
 
 // Objects / Constants
 
@@ -48,6 +55,7 @@ export { addOpenLayersProtocolSupport } from './adapters/openlayers';
 // Types
 
 export type {
+	AnyDomain,
 	ArrowStyle,
 	ClippingOptions,
 	Data,
@@ -60,7 +68,9 @@ export type {
 	InterpolationMethod,
 	OmProtocolSettings,
 	OmUrlState,
-	RenderableColorScale
+	RenderableColorScale,
+	SeamlessDomain,
+	SeamlessLayer
 } from './types';
 
-export type { VariableDerivationRule, WeatherMapLayerFileReader } from './om-file-reader';
+export type { VariableDerivationRule } from './om-file-reader';
