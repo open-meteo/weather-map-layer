@@ -1,4 +1,5 @@
 import {
+	boundsIntersect,
 	checkAgainstBounds,
 	constrainBounds,
 	currentBounds,
@@ -352,6 +353,36 @@ describe('constrainBounds', () => {
 			const clip: Bounds = [-180, -90, 180, 90];
 
 			expect(constrainBounds(bounds, clip)).toEqual([-50, 0, 50, 0]);
+		});
+	});
+
+	describe('boundsIntersect', () => {
+		it('returns true for overlapping boxes', () => {
+			expect(boundsIntersect([0, 0, 10, 10], [5, 5, 15, 15])).toBe(true);
+		});
+
+		it('returns true when one box contains the other', () => {
+			expect(boundsIntersect([-180, -90, 180, 90], [5, 5, 15, 15])).toBe(true);
+		});
+
+		it('returns false when longitudes are disjoint', () => {
+			// e.g. a France domain vs a viewport over Japan
+			expect(boundsIntersect([-5, 40, 10, 55], [120, 30, 150, 45])).toBe(false);
+		});
+
+		it('returns false when latitudes are disjoint', () => {
+			expect(boundsIntersect([0, -80, 10, -60], [0, 60, 10, 80])).toBe(false);
+		});
+
+		it('treats edge-touching boxes as intersecting', () => {
+			expect(boundsIntersect([0, 0, 10, 10], [10, 10, 20, 20])).toBe(true);
+		});
+
+		it('handles a dateline-crossing box (minLon > maxLon)', () => {
+			// Box wraps the antimeridian: [170..180] ∪ [-180..-170].
+			expect(boundsIntersect([170, 0, -170, 10], [175, 5, 178, 8])).toBe(true); // right segment
+			expect(boundsIntersect([170, 0, -170, 10], [-179, 5, -175, 8])).toBe(true); // left segment
+			expect(boundsIntersect([170, 0, -170, 10], [0, 5, 10, 8])).toBe(false); // in the gap
 		});
 	});
 });
