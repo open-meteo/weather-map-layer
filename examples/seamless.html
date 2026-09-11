@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Weather Map Layer - Temperature Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
+		<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+		<!-- x-release-please-start-version -->
+		<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.0.19/dist/index.js"></script>
+		<!-- x-release-please-end -->
+		<!-- Local development -->
+		<script>
+			if (location.hostname === 'localhost' || location.href.startsWith('file://')) {
+				document.write('<script src="../dist/index.js"><\/script>');
+			}
+		</script>
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<script>
+			maplibregl.addProtocol('om', OMWeatherMapLayer.omProtocol);
+
+			const map = new maplibregl.Map({
+				container: 'map',
+				style: 'https://map-assets.open-meteo.com/styles/minimal-planet-maps.json', // replace with your own style sheet
+				hash: true,
+				center: [10, 41],
+				zoom: 1.9
+			});
+
+			// note the '_seamless' postfix. not all domains support seamless composites, check the readme for details
+			const omUrl = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon_seamless/latest.json?time_step=current_time_1H&variable=temperature_2m`;
+
+			map.on('load', () => {
+				map.addSource('omFileSource', {
+					url: 'om://' + omUrl,
+					type: 'raster',
+					maxzoom: 12
+				});
+				map.addLayer(
+					{
+						id: 'omFileLayer',
+						type: 'raster',
+						source: 'omFileSource',
+						paint: {
+							'raster-opacity': 0.75
+						}
+					},
+					'waterway-tunnel'
+				);
+
+				map.addSource('seamlessBorders', {
+					type: 'geojson',
+					data: {
+						type: 'FeatureCollection',
+						features: borders.map((b) => ({
+							type: 'Feature',
+							geometry: {
+								type: 'LineString',
+								coordinates: b.bbox ? bbox2poly(b.bbox) : b.geometry
+							},
+							properties: b
+						}))
+					}
+				});
+
+				for (const b of borders) {
+					const opacity = [
+						'interpolate',
+						['linear'],
+						['zoom'],
+						Math.max(0, b.minZoom - 2),
+						0,
+						b.minZoom,
+						1
+					];
+					const lineColor = [
+						'step',
+						['zoom'],
+						'rgba(0,0,0,0.5)',
+						b.minZoom,
+						'rgba(30,120,255,0.8)'
+					];
+					const textColor = ['step', ['zoom'], 'rgba(0,0,0,0.75)', b.minZoom, 'rgba(30,120,255,1)'];
+					const filter = ['==', ['get', 'id'], b.id];
+					map.addLayer({
+						id: `sb-line-${b.id}`,
+						type: 'line',
+						source: 'seamlessBorders',
+						minzoom: Math.max(0, b.minZoom - 2),
+						filter,
+						paint: {
+							'line-color': lineColor,
+							'line-width': 1.5,
+							'line-dasharray': [4, 3],
+							'line-opacity': opacity
+						}
+					});
+					map.addLayer({
+						id: `sb-label-${b.id}`,
+						type: 'symbol',
+						source: 'seamlessBorders',
+						minzoom: Math.max(0, b.minZoom - 2),
+						filter,
+						layout: {
+							'text-field': ['get', 'label'],
+							'text-size': 11,
+							'symbol-placement': 'line',
+							'symbol-spacing': 400,
+							'text-offset': [0, -0.8]
+						},
+						paint: {
+							'text-color': textColor,
+							'text-halo-color': 'rgba(255,255,255,0.5)',
+							'text-halo-width': 1.5,
+							'text-opacity': opacity
+						}
+					});
+				}
+			});
+
+			const bbox2poly = ([w, s, e, n]) => [
+				[w, s],
+				[e, s],
+				[e, n],
+				[w, n],
+				[w, s]
+			];
+
+			// Seamless domain borders
+			const borders = [
+				{ id: 'eu', bbox: [-23.5, 29.5, 62.5, 70.5], minZoom: 2, label: 'DWD ICON EU' },
+				{
+					id: 'd2',
+					geometry: [
+						[-0.32, 43.141],
+						[0.428, 43.204],
+						[1.177, 43.265],
+						[1.925, 43.322],
+						[2.673, 43.376],
+						[3.422, 43.427],
+						[4.17, 43.472],
+						[4.918, 43.513],
+						[5.667, 43.548],
+						[6.415, 43.578],
+						[7.163, 43.603],
+						[7.912, 43.621],
+						[8.66, 43.634],
+						[9.408, 43.64],
+						[10.157, 43.641],
+						[10.905, 43.636],
+						[11.653, 43.625],
+						[12.402, 43.608],
+						[13.15, 43.586],
+						[13.898, 43.56],
+						[14.647, 43.528],
+						[15.395, 43.493],
+						[16.143, 43.453],
+						[16.892, 43.411],
+						[17.64, 43.366],
+						[17.617, 43.38],
+						[17.704, 43.977],
+						[17.792, 44.573],
+						[17.882, 45.17],
+						[17.973, 45.767],
+						[18.065, 46.363],
+						[18.16, 46.96],
+						[18.256, 47.557],
+						[18.355, 48.153],
+						[18.456, 48.75],
+						[18.56, 49.347],
+						[18.666, 49.943],
+						[18.775, 50.54],
+						[18.887, 51.137],
+						[19.002, 51.733],
+						[19.12, 52.33],
+						[19.241, 52.927],
+						[19.366, 53.523],
+						[19.494, 54.12],
+						[19.625, 54.717],
+						[19.76, 55.313],
+						[19.899, 55.91],
+						[20.041, 56.507],
+						[20.187, 57.103],
+						[20.336, 57.7],
+						[20.34, 57.684],
+						[19.328, 57.754],
+						[18.317, 57.817],
+						[17.305, 57.873],
+						[16.293, 57.921],
+						[15.282, 57.963],
+						[14.27, 57.997],
+						[13.258, 58.024],
+						[12.247, 58.044],
+						[11.235, 58.056],
+						[10.223, 58.061],
+						[9.212, 58.059],
+						[8.2, 58.05],
+						[7.188, 58.032],
+						[6.177, 58.008],
+						[5.165, 57.976],
+						[4.153, 57.937],
+						[3.142, 57.891],
+						[2.13, 57.838],
+						[1.118, 57.777],
+						[0.107, 57.709],
+						[-0.905, 57.634],
+						[-1.917, 57.552],
+						[-2.928, 57.463],
+						[-3.94, 57.367],
+						[-3.967, 57.36],
+						[-3.768, 56.769],
+						[-3.574, 56.178],
+						[-3.385, 55.587],
+						[-3.2, 54.997],
+						[-3.02, 54.406],
+						[-2.845, 53.815],
+						[-2.675, 53.224],
+						[-2.508, 52.633],
+						[-2.347, 52.042],
+						[-2.189, 51.452],
+						[-2.035, 50.861],
+						[-1.885, 50.27],
+						[-1.739, 49.679],
+						[-1.597, 49.088],
+						[-1.458, 48.498],
+						[-1.323, 47.907],
+						[-1.19, 47.316],
+						[-1.061, 46.725],
+						[-0.935, 46.134],
+						[-0.811, 45.543],
+						[-0.69, 44.953],
+						[-0.571, 44.362],
+						[-0.454, 43.771],
+						[-0.339, 43.18],
+						[-0.32, 43.141]
+					],
+					minZoom: 4,
+					label: 'DWD ICON D2'
+				}
+			];
+		</script>
+	</body>
+</html>
