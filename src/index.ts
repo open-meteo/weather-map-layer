@@ -13,6 +13,7 @@ export { updateCurrentBounds } from './utils/bounds';
 export { createClippingTester } from './utils/clipping';
 export { domainStep, closestModelRun } from './utils/model-runs';
 export { getCachedResolvedClipping } from './utils/parse-request';
+export { wktToGridData } from './utils/wkt';
 export { getColor, getColorScale } from './utils/styling';
 
 // Classes
