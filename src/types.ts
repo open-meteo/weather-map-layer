@@ -17,6 +17,12 @@ export interface DataIdentityOptions {
 
 export type InterpolationMethod = 'nearest' | 'linear' | 'cubic' | 'monotone';
 
+/** Shape drawn for directions: a plain arrow, or station-model wind barbs. */
+export type ArrowStyle = 'arrow' | 'barb';
+
+/** Tile geometry that scales with the zoom, or points drawn as symbols. */
+export type ArrowRender = 'line' | 'icon';
+
 export type TileSize = 64 | 128 | 256 | 512 | 1024 | 2048;
 
 export interface RenderOptions {
@@ -26,6 +32,10 @@ export interface RenderOptions {
 	colorBlend: boolean;
 	drawGrid: boolean;
 	drawArrows: boolean;
+	arrowStyle: ArrowStyle;
+	arrowRender: ArrowRender;
+	/** Points across a tile, for the icon renderer's lattice. */
+	arrowPoints: number;
 	drawContours: boolean;
 	intervals: number[];
 	colorScale: RenderableColorScale;
