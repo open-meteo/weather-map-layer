@@ -433,9 +433,8 @@ describe('ensureData – cancelled read still settling', () => {
 
 		const ac = new AbortController();
 		const abandoned = ensureData(state, asReader(reader), undefined, ac.signal);
-		// Assert on it up front: it rejects the moment the abort lands, and an
-		// expectation attached later would first see an unhandled rejection
-		const abandonedRejected = expect(abandoned).rejects.toThrow();
+		// Attach the rejection handler before aborting to avoid an unhandled rejection.
+		const abandonedRejected = expect(abandoned).rejects.toMatchObject({ name: 'AbortError' });
 		await flushMicrotasks();
 
 		ac.abort();
@@ -444,16 +443,23 @@ describe('ensureData – cancelled read still settling', () => {
 		expect(state.dataPromise).not.toBeNull();
 
 		const p = ensureData(state, asReader(reader), undefined);
+		const replacementPromise = state.dataPromise;
+		expect(replacementPromise).not.toBeNull();
 		await flushMicrotasks();
+		await abandonedRejected;
+		expect(reader.calls).toHaveLength(2);
+
+		// The abandoned read's cleanup must preserve the pending replacement.
+		expect(state.dataPromise).toBe(replacementPromise);
+		const joined = ensureData(state, asReader(reader), undefined);
 		expect(reader.calls).toHaveLength(2);
 
 		const mockData = makeMockData();
 		reader.resolveCall(1, mockData);
 		await expect(p).resolves.toBe(mockData);
-		await abandonedRejected;
+		await expect(joined).resolves.toBe(mockData);
 
-		// The abandoned read settling later must not clear the fresh one
-		await flushMicrotasks();
+		// The replacement caches its result and clears its own pending promise.
 		expect(state.data).toBe(mockData);
 		expect(state.dataPromise).toBeNull();
 	});
