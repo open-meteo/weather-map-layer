@@ -128,19 +128,13 @@ export const getOrCreateState = (
 };
 
 /**
- * Starts the shared read for a state, or joins the one already running,
- * **without becoming a subscriber of it**: the caller gets the data, but its
- * presence never keeps the read alive. Use it to warm the cache up front (the
- * TileJSON request does, so the download overlaps MapLibre setting the source
- * up); a warm-up that counted as a subscriber could never be released, and
- * the read would go on downloading long after every tile of that frame was
- * abandoned.
+ * Starts the shared read for a state, or joins the one already running.
  *
  * A read whose subscribers have all aborted is no longer joinable even while
  * its rejection is still in flight — the next caller starts a fresh one
  * instead of inheriting a cancellation it did not ask for.
  */
-export const startData = (
+const startRead = (
 	state: OmUrlState,
 	omFileReader: WeatherMapLayerFileReader,
 	postReadCallback: PostReadCallback
@@ -194,7 +188,7 @@ export const ensureData = async (
 	if (state.data) return state.data;
 	if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
-	const pending = startData(state, omFileReader, postReadCallback);
+	const pending = startRead(state, omFileReader, postReadCallback);
 	const inflight = inflightRequests.get(state);
 	if (inflight) inflight.subscriberCount += 1;
 
