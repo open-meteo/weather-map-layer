@@ -25,6 +25,8 @@ import type {
 interface InflightRequest {
 	controller: AbortController;
 	subscriberCount: number;
+	/** The read this entry owns — identifies it once it settles. */
+	promise?: Promise<Data>;
 }
 
 const inflightRequests = new WeakMap<OmUrlState, InflightRequest>();
@@ -147,6 +149,10 @@ export const getOrCreateState = (
  * Handles multiple concurrent requests for the same data by sharing a promise.
  * Correctly handles AbortSignals by tracking all active subscribers and
  * only cancelling the underlying fetch if all subscribers have aborted.
+ *
+ * A read whose subscribers have all aborted is no longer joinable even while
+ * its rejection is still in flight — the next caller starts a fresh one
+ * instead of inheriting a cancellation it did not ask for.
  */
 export const ensureData = async (
 	state: OmUrlState,
@@ -157,43 +163,14 @@ export const ensureData = async (
 	if (state.data) return state.data;
 	if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
-	const inflight = inflightRequests.get(state);
-	const subscriberCount = (inflight?.subscriberCount ?? 0) + 1;
-
-	if (inflight) {
-		inflight.subscriberCount = subscriberCount;
-	}
-
-	let finished = false;
-	const cleanup = () => {
-		if (finished) return;
-		finished = true;
-
-		const current = inflightRequests.get(state);
-		if (!current) return;
-
-		if (current.subscriberCount <= 1) {
-			inflightRequests.delete(state);
-			current.controller.abort();
-		} else {
-			current.subscriberCount -= 1;
-		}
-	};
-
-	if (signal) {
-		signal.addEventListener('abort', cleanup, { once: true });
-	}
-
-	try {
-		if (state.dataPromise) {
-			return await state.dataPromise;
-		}
-
-		const controller = new AbortController();
-		inflightRequests.set(state, { controller, subscriberCount });
+	let inflight = inflightRequests.get(state);
+	let pending = state.dataPromise;
+	if (!inflight || !pending) {
+		const entry: InflightRequest = { controller: new AbortController(), subscriberCount: 0 };
+		inflightRequests.set(state, entry);
 
 		state.lastError = undefined;
-		state.dataPromise = (async () => {
+		const promise = (async () => {
 			try {
 				// Decode in the worker when available: the wasm decompression and
 				// derivation loops freeze mobile for hundreds of ms when run here.
@@ -204,7 +181,7 @@ export const ensureData = async (
 						state.omFileUrl,
 						state.dataOptions.variable,
 						state.ranges,
-						controller.signal
+						entry.controller.signal
 					);
 				const decodeWorker = omProtocolInstance?.decodeWorker;
 				const data =
@@ -214,7 +191,7 @@ export const ensureData = async (
 									state.omFileUrl,
 									state.dataOptions.variable,
 									state.ranges,
-									controller.signal
+									entry.controller.signal
 								)
 								.catch((error: Error) =>
 									error.name === 'DecodeWorkerBroken' ? readInline() : Promise.reject(error)
@@ -237,12 +214,42 @@ export const ensureData = async (
 				}
 				throw error;
 			} finally {
-				state.dataPromise = null;
-				inflightRequests.delete(state);
+				// Only clear what still belongs to this read: an abandoned one can
+				// have been replaced by a fresh read before it settles
+				if (state.dataPromise === entry.promise) state.dataPromise = null;
+				if (inflightRequests.get(state) === entry) inflightRequests.delete(state);
 			}
 		})();
+		entry.promise = promise;
+		state.dataPromise = promise;
 
-		return await state.dataPromise;
+		inflight = entry;
+		pending = promise;
+	}
+	inflight.subscriberCount += 1;
+
+	let finished = false;
+	const cleanup = () => {
+		if (finished) return;
+		finished = true;
+
+		// Not `inflightRequests.get(state)`: our read may already have been
+		// replaced, and releasing a subscriber of the newer one would abort it
+		if (inflightRequests.get(state) !== inflight) return;
+
+		inflight.subscriberCount -= 1;
+		if (inflight.subscriberCount <= 0) {
+			inflightRequests.delete(state);
+			inflight.controller.abort();
+		}
+	};
+
+	if (signal) {
+		signal.addEventListener('abort', cleanup, { once: true });
+	}
+
+	try {
+		return await pending;
 	} finally {
 		if (signal) {
 			signal.removeEventListener('abort', cleanup);
