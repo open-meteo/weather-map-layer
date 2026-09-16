@@ -24,7 +24,6 @@ afterEach(() => vi.restoreAllMocks());
 
 describe('WebGLWeatherDataSource', () => {
 	test('coalesces concurrent variable reads', async () => {
-		vi.spyOn(WeatherMapLayerFileReader.prototype, 'setToOmFile').mockResolvedValue();
 		const read = vi.spyOn(WeatherMapLayerFileReader.prototype, 'readVariable').mockResolvedValue({
 			values: new Float32Array([1, 2, 3, 4, 5, 6]),
 			directions: undefined
@@ -42,7 +41,6 @@ describe('WebGLWeatherDataSource', () => {
 	});
 
 	test('rejects data whose dimensions do not match the domain', async () => {
-		vi.spyOn(WeatherMapLayerFileReader.prototype, 'setToOmFile').mockResolvedValue();
 		vi.spyOn(WeatherMapLayerFileReader.prototype, 'readVariable').mockResolvedValue({
 			values: new Float32Array([1, 2, 3]),
 			directions: undefined
@@ -54,7 +52,6 @@ describe('WebGLWeatherDataSource', () => {
 	});
 
 	test('prepares wind components once without circular direction interpolation', async () => {
-		vi.spyOn(WeatherMapLayerFileReader.prototype, 'setToOmFile').mockResolvedValue();
 		const read = vi.spyOn(WeatherMapLayerFileReader.prototype, 'readVariable').mockResolvedValue({
 			values: new Float32Array([10, 10, 10, 10, 10, 10]),
 			directions: new Float32Array([359, 1, 90, 180, 270, 0])
@@ -74,7 +71,6 @@ describe('WebGLWeatherDataSource', () => {
 	});
 
 	test('caller abort does not cancel the shared underlying read', async () => {
-		vi.spyOn(WeatherMapLayerFileReader.prototype, 'setToOmFile').mockResolvedValue();
 		let resolveRead: ((value: { values: Float32Array; directions: undefined }) => void) | undefined;
 		vi.spyOn(WeatherMapLayerFileReader.prototype, 'readVariable').mockReturnValue(
 			new Promise((resolve) => {

@@ -8,9 +8,6 @@ updates:
     open-pull-requests-limit: 10
     allow:
       - dependency-type: direct
-    ignore:
-      - dependency-name: '*'
-        update-types: ['version-update:semver-patch']
     commit-message:
       prefix: 'fix: '
     cooldown:

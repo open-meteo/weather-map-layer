@@ -61,7 +61,8 @@ export const omProtocol = async (
 		instance.stateByKey,
 		request.fileAndVariableKey,
 		request.dataOptions,
-		request.baseUrl
+		request.baseUrl,
+		settings.maxStatesWithData
 	);
 
 	// Check abort status before proceeding
@@ -70,14 +71,10 @@ export const omProtocol = async (
 	}
 
 	// Handle TileJSON request. The bounds only depend on the grid definition, so
-	// respond immediately instead of blocking MapLibre's source setup on the full
-	// data download. The data load is still kicked off right away (fire and
-	// forget) so it runs while MapLibre processes the TileJSON — the subsequent
-	// tile requests then await the same shared promise via state.dataPromise.
+	// respond without touching the data: the read starts with the first tile
+	// request, which is only a frame away, and never for a source whose tiles
+	// are never requested (hidden layer, out of view).
 	if (params.type == 'json') {
-		ensureData(state, instance.omFileReader, settings.postReadCallback).catch(() => {
-			// Errors surface on the awaited tile requests; ignore here.
-		});
 		return {
 			data: await getTilejson(params.url, request.dataOptions, request.clippingOptions)
 		};

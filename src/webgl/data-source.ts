@@ -38,7 +38,6 @@ export class WebGLWeatherDataSource {
 	readonly grid: WebGLGridDescriptor;
 
 	private readonly reader: WeatherMapLayerFileReader;
-	private readerReady?: Promise<void>;
 	private readonly variables = new Map<string, Promise<Data>>();
 	private readonly windVariables = new Map<string, Promise<WebGLWindData>>();
 	private disposed = false;
@@ -56,14 +55,11 @@ export class WebGLWeatherDataSource {
 		}
 		let request = this.variables.get(variable);
 		if (!request) {
-			this.readerReady ??= this.reader.setToOmFile(this.url);
-			request = this.readerReady
-				.then(() =>
-					this.reader.readVariable(variable, [
-						{ start: 0, end: this.grid.ny },
-						{ start: 0, end: this.grid.nx }
-					])
-				)
+			request = this.reader
+				.readVariable(this.url, variable, [
+					{ start: 0, end: this.grid.ny },
+					{ start: 0, end: this.grid.nx }
+				])
 				.then((data) => {
 					if (!data.values) throw new Error(`Variable "${variable}" did not contain values.`);
 					const expected = this.grid.nx * this.grid.ny;
@@ -117,6 +113,6 @@ export class WebGLWeatherDataSource {
 		this.disposed = true;
 		this.variables.clear();
 		this.windVariables.clear();
-		this.reader.dispose();
+		this.reader.clearBackends();
 	}
 }

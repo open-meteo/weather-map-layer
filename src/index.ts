@@ -5,6 +5,7 @@ export { omProtocol } from './om-protocol';
 export {
 	getValueFromLatLong,
 	clearBlockCache,
+	clearBackends,
 	getRanges,
 	getProtocolInstance
 } from './om-protocol-state';
@@ -25,6 +26,7 @@ export type { WebGLWindData } from './webgl/data-source';
 export { currentBounds } from './utils/bounds';
 export { defaultOmProtocolSettings } from './om-protocol';
 export { domainOptions, domainGroups } from './domains';
+export { getDomainBoundary } from './domain-footprints';
 export { variableOptions, levelGroupVariables } from './utils/variables';
 export { VARIABLE_PREFIX, LEVEL_PREFIX, LEVEL_REGEX, LEVEL_UNIT_REGEX } from './utils/constants';
 

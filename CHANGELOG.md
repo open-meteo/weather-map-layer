@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.0](https://github.com/open-meteo/weather-map-layer/compare/v0.0.20...v0.1.0) (2026-08-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* atomic one-step reads, drop setToOmFile ([#299](https://github.com/open-meteo/weather-map-layer/issues/299))
+
+### Features
+
+* atomic one-step reads, drop setToOmFile ([#299](https://github.com/open-meteo/weather-map-layer/issues/299)) ([fa6dc3a](https://github.com/open-meteo/weather-map-layer/commit/fa6dc3a3cb2b18a5d076d68d69569b8fa2239748))
+
+
+### Bug Fixes
+
+* change examples and capture api to new endpoint ([#294](https://github.com/open-meteo/weather-map-layer/issues/294)) ([8d99ad4](https://github.com/open-meteo/weather-map-layer/commit/8d99ad4bbfb885cbf1a3b44fbaa3c860093720ca))
+
 ## [0.0.20](https://github.com/open-meteo/weather-map-layer/compare/v0.0.19...v0.0.20) (2026-07-28)
 
 

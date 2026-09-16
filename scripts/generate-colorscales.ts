@@ -210,6 +210,48 @@ const colorScaleDefinitions: Record<string, ColorScaleDefinition> = {
 			{ range: [20, 100], opacity: [0.4, 1], easing: 'linear' }
 		]
 	},
+	// Cloud levels are tinted blue/green/red by height, so a chart stacking all
+	// three stays readable. Same breakpoints and opacity ramp as cloud_cover:
+	// only the hue differs. In light mode coverage darkens the tint; in dark
+	// mode it brightens it, but stops at a saturated mid tone rather than
+	// running up into white, where the three levels would be hard to tell
+	// apart and dense cloud would read as a grey veil.
+	cloud_cover_high: {
+		unit: '%',
+		breakpoints: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
+		colorSegments: {
+			light: [{ range: [0, 100], colors: ['#ffffff', '#dbeafe', '#93c5fd', '#3b82f6', '#1e3a8a'] }],
+			dark: [{ range: [0, 100], colors: ['#0b1220', '#1e3a8a', '#2563eb', '#3b82f6', '#60a5fa'] }]
+		},
+		opacitySegments: [
+			{ range: [0, 20], opacity: [0, 0.4], easing: 'power', exponent: 1.5 },
+			{ range: [20, 100], opacity: [0.4, 1], easing: 'linear' }
+		]
+	},
+	cloud_cover_mid: {
+		unit: '%',
+		breakpoints: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
+		colorSegments: {
+			light: [{ range: [0, 100], colors: ['#ffffff', '#dcfce7', '#86efac', '#22c55e', '#166534'] }],
+			dark: [{ range: [0, 100], colors: ['#0b1a12', '#14532d', '#16a34a', '#22c55e', '#4ade80'] }]
+		},
+		opacitySegments: [
+			{ range: [0, 20], opacity: [0, 0.4], easing: 'power', exponent: 1.5 },
+			{ range: [20, 100], opacity: [0.4, 1], easing: 'linear' }
+		]
+	},
+	cloud_cover_low: {
+		unit: '%',
+		breakpoints: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
+		colorSegments: {
+			light: [{ range: [0, 100], colors: ['#ffffff', '#fee2e2', '#fca5a5', '#ef4444', '#991b1b'] }],
+			dark: [{ range: [0, 100], colors: ['#1a0b0b', '#7f1d1d', '#dc2626', '#ef4444', '#f87171'] }]
+		},
+		opacitySegments: [
+			{ range: [0, 20], opacity: [0, 0.4], easing: 'power', exponent: 1.5 },
+			{ range: [20, 100], opacity: [0.4, 1], easing: 'linear' }
+		]
+	},
 	convective_inhibition: {
 		unit: 'J/kg',
 		breakpoints: [0, 25, 50, 100, 150, 200, 300, 400, 500],
@@ -281,7 +323,8 @@ const colorScaleDefinitions: Record<string, ColorScaleDefinition> = {
 	pressure: {
 		unit: 'hPa',
 		breakpoints: [
-			940, 950, 960, 970, 980, 990, 995, 1000, 1005, 1010, 1015, 1020, 1025, 1030, 1040, 1050, 1060
+			940, 950, 960, 970, 980, 986, 990, 996, 1000, 1006, 1010, 1016, 1020, 1026, 1030, 1040, 1050,
+			1060
 		],
 		colorSegments: [
 			{ range: [940, 1010], colors: ['#4444ff', '#ffffff'] },
@@ -456,6 +499,20 @@ const colorScaleDefinitions: Record<string, ColorScaleDefinition> = {
 		opacitySegments: [
 			{ range: [-0.75, 0], opacity: [1, 0], easing: 'power-inverse', exponent: 1.5 },
 			{ range: [0, 0.75], opacity: [0, 1], easing: 'power', exponent: 1.5 }
+		]
+	},
+	visibility: {
+		unit: 'm',
+		breakpoints: [0, 100, 200, 500, 1000, 2000, 3000, 5000, 7500, 10000, 15000, 20000],
+		colorSegments: [
+			{ range: [0, 1000], colors: ['#800080', '#ff0000'] }, // dense fog -> fog
+			{ range: [1000, 5000], colors: ['#ff0000', '#ffa500', '#ffff00'] }, // mist / poor
+			{ range: [5000, 10000], colors: ['#ffff00', '#008000'] }, // moderate
+			{ range: [10000, 20000], colors: ['#008000', '#4682b4'] } // good -> very good
+		],
+		opacitySegments: [
+			{ range: [0, 10000], opacity: [1, 1], easing: 'linear' },
+			{ range: [10000, 20000], opacity: [1, 0], easing: 'linear' } // clear air fades out
 		]
 	},
 	wind: {
