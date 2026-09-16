@@ -43,6 +43,19 @@ export class GaussianGrid implements GridInterface {
 		return [-180, -90, 180, 90];
 	}
 
+	getBoundaryPolygon(): Array<[number, number]> {
+		// All gaussian grids are global, so the outline is just the nominal world
+		// rectangle (it is never drawn as a domain border).
+		const [minLon, minLat, maxLon, maxLat] = this.getBounds();
+		return [
+			[minLon, minLat],
+			[maxLon, minLat],
+			[maxLon, maxLat],
+			[minLon, maxLat],
+			[minLon, minLat]
+		];
+	}
+
 	getCenter(): { lng: number; lat: number } {
 		// FIXME: Center hardcoded for now
 		return { lng: 0, lat: 0 };

@@ -226,6 +226,48 @@ export class ProjectionGrid implements GridInterface {
 		return { x: Math.floor(x), y: Math.floor(y), xFraction, yFraction };
 	}
 
+	/**
+	 * Traces the grid's outer edge through the projection, returning a closed
+	 * `[lon, lat]` ring that follows the true (curved) domain boundary rather than
+	 * the axis-aligned bounding box. Each edge is sampled at up to
+	 * `maxPointsPerEdge` points so the curvature is captured without emitting one
+	 * vertex per grid column/row.
+	 *
+	 * The ring spans `nx * dx` — one step past the last grid node, like
+	 * getBounds() and the regular grid — matching the sampled coverage
+	 * (`findPointInterpolated` accepts `0 <= x < nx`, which nearest sampling
+	 * fills entirely). A node-rectangle ring sat one full cell inside the
+	 * rendered data on the max-x/max-y sides.
+	 */
+	getBoundaryPolygon(maxPointsPerEdge = 64): Array<[number, number]> {
+		const ring: Array<[number, number]> = [];
+		let prevLon: number | null = null;
+		const add = (projX: number, projY: number): void => {
+			const [lat, lonRaw] = this.projection.reverse(projX, projY);
+			let lon = ((((lonRaw + 180) % 360) + 360) % 360) - 180; // normalize to [-180, 180]
+			// Unwrap relative to the previous vertex so the ring stays continuous
+			// across the antimeridian / around a pole instead of jumping ~360°.
+			if (prevLon !== null) {
+				lon -= 360 * Math.round((lon - prevLon) / 360);
+			}
+			prevLon = lon;
+			ring.push([lon, lat]);
+		};
+
+		const xEnd = this.minX + this.nx * this.dx;
+		const yEnd = this.minY + this.ny * this.dy;
+		const stepX = Math.max(1, Math.ceil(this.nx / maxPointsPerEdge));
+		const stepY = Math.max(1, Math.ceil(this.ny / maxPointsPerEdge));
+
+		// Walk the perimeter counter-clockwise: bottom → right → top → left.
+		for (let i = 0; i < this.nx; i += stepX) add(this.minX + i * this.dx, this.minY);
+		for (let j = 0; j < this.ny; j += stepY) add(xEnd, this.minY + j * this.dy);
+		for (let i = this.nx; i > 0; i -= stepX) add(this.minX + i * this.dx, yEnd);
+		for (let j = this.ny; j > 0; j -= stepY) add(this.minX, this.minY + j * this.dy);
+		add(this.minX, this.minY); // close the ring
+		return ring;
+	}
+
 	private getProjectedBorderPoints(): number[][] {
 		const points = [];
 		for (let i = 0; i < this.ny; i++) {

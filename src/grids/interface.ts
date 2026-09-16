@@ -32,6 +32,14 @@ export interface GridInterface {
 	getCoveringRanges(south: number, west: number, north: number, east: number): DimensionRange[];
 
 	/**
+	 * Returns the grid's outline as a closed `[lon, lat]` ring (first point repeated
+	 * at the end). Projected grids return the true perimeter traced through the
+	 * projection (a curved polygon in lon/lat); regular and gaussian grids return
+	 * their axis-aligned bounds rectangle.
+	 */
+	getBoundaryPolygon(): Array<[number, number]>;
+
+	/**
 	 * Iterates over grid points, invoking the callback with the flat array index
 	 * and the geographic coordinates for each point.
 	 * When `bounds` is provided, only points within the geographic bounding box

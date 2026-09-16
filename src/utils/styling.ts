@@ -184,10 +184,6 @@ export const COLOR_SCALES_WITH_ALIASES: ColorScales = {
 	),
 	snowfall_height: freezingLevelHeightScale,
 	snowfall_water_equivalent: COLOR_SCALES['precipitation'],
-	visibility: {
-		...COLOR_SCALES['geopotential_height'],
-		unit: 'W/m²'
-	},
 	wave: COLOR_SCALES['swell'],
 	wind_wave_height: COLOR_SCALES['swell'],
 	swell_wave_height: COLOR_SCALES['swell'],

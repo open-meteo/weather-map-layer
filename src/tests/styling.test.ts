@@ -1,4 +1,4 @@
-import { getColor } from '../utils/styling';
+import { getColor, getColorScale } from '../utils/styling';
 import { describe, expect, test } from 'vitest';
 
 import type { RenderableColorScale } from '../types';
@@ -36,5 +36,14 @@ describe('getColor', () => {
 		expect(getColor(scale, 12.5, true, out)).toBe(out); // t=0.25 -> [125,0,0,1]
 		expect(getColor(scale, 17.5, true, out)).toBe(out); // t=0.75 -> [175,0,0,1]
 		expect(out).toEqual([175, 0, 0, 1]);
+	});
+});
+
+describe('getColorScale', () => {
+	test('visibility resolves to its own metre scale', () => {
+		const scale = getColorScale('visibility', false);
+		expect(scale.unit).toBe('m');
+		expect(scale.type).toBe('breakpoint');
+		if (scale.type === 'breakpoint') expect(scale.breakpoints[0]).toBe(0);
 	});
 });
