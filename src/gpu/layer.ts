@@ -1373,7 +1373,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		const overlapY = Math.min(vy1, dy1) - Math.max(vy0, dy0);
 		if (overlapY <= 0) return 1; // domain off-screen: nothing spawns anyway
 
-		let dx0 = (domainBounds[0] + 180) / 360;
+		const dx0 = (domainBounds[0] + 180) / 360;
 		let dx1 = (domainBounds[2] + 180) / 360;
 		if (dx1 <= dx0) dx1 += 1; // dateline-crossing domain
 		// Shift the domain by whole worlds onto the (possibly unwrapped)
