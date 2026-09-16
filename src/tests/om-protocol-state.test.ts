@@ -391,7 +391,7 @@ describe('getOrCreateState – eviction', () => {
 });
 
 describe('ensureData – error state', () => {
-	it('records lastError on failure and clears it when a new load starts', async () => {
+	it('leaves no half-loaded state on failure and recovers on retry', async () => {
 		const state = makeState(new Map(), 'err');
 		const reader = new FakeReader();
 
@@ -400,10 +400,12 @@ describe('ensureData – error state', () => {
 		reader.rejectCall(0, failure);
 		await expect(p).rejects.toThrow('fetch failed');
 
-		// getDataState reports 'error' from exactly this field
-		expect(state.lastError).toBe(failure);
+		// The failed load must not leave the promise behind, or every later
+		// request would await the rejection instead of retrying
 		expect(state.data).toBeNull();
 		expect(state.dataPromise).toBeNull();
+		// getDataState reports 'error' from exactly this field
+		expect(state.lastError).toBe(failure);
 
 		// A retry clears the recorded error while the new load is in flight
 		const retry = ensureData(state, asReader(reader), undefined);
@@ -413,7 +415,7 @@ describe('ensureData – error state', () => {
 		expect(state.data).not.toBeNull();
 	});
 
-	it('does not record an abort as lastError', async () => {
+	it('propagates an abort instead of swallowing it', async () => {
 		const state = makeState(new Map(), 'abort-no-err');
 		const reader = new FakeReader();
 		const ac = new AbortController();
@@ -425,9 +427,48 @@ describe('ensureData – error state', () => {
 		// The underlying read rejects the way a cancelled fetch does
 		reader.rejectCall(0, new DOMException('Aborted', 'AbortError'));
 		await expect(p).rejects.toMatchObject({ name: 'AbortError' });
-
+		expect(state.dataPromise).toBeNull();
 		// All subscribers cancelling is normal navigation, not a failed load,
 		// so getDataState must not report 'error' afterwards
 		expect(state.lastError).toBeUndefined();
+	});
+});
+
+describe('ensureData – cancelled read still settling', () => {
+	it('starts a fresh read instead of handing on the cancellation', async () => {
+		const state = makeState(new Map(), 'late-joiner');
+		const reader = new FakeReader();
+
+		const ac = new AbortController();
+		const abandoned = ensureData(state, asReader(reader), undefined, ac.signal);
+		// Attach the rejection handler before aborting to avoid an unhandled rejection.
+		const abandonedRejected = expect(abandoned).rejects.toMatchObject({ name: 'AbortError' });
+		await flushMicrotasks();
+
+		ac.abort();
+		// The read is cancelled, but its rejection has not propagated yet — a
+		// subscriber arriving in this window asked for data, not for an abort
+		expect(state.dataPromise).not.toBeNull();
+
+		const p = ensureData(state, asReader(reader), undefined);
+		const replacementPromise = state.dataPromise;
+		expect(replacementPromise).not.toBeNull();
+		await flushMicrotasks();
+		await abandonedRejected;
+		expect(reader.calls).toHaveLength(2);
+
+		// The abandoned read's cleanup must preserve the pending replacement.
+		expect(state.dataPromise).toBe(replacementPromise);
+		const joined = ensureData(state, asReader(reader), undefined);
+		expect(reader.calls).toHaveLength(2);
+
+		const mockData = makeMockData();
+		reader.resolveCall(1, mockData);
+		await expect(p).resolves.toBe(mockData);
+		await expect(joined).resolves.toBe(mockData);
+
+		// The replacement caches its result and clears its own pending promise.
+		expect(state.data).toBe(mockData);
+		expect(state.dataPromise).toBeNull();
 	});
 });
