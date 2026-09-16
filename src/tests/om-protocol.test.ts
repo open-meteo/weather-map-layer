@@ -88,6 +88,22 @@ describe('Request Options', () => {
 			expect(renderOptions.intervals).toStrictEqual([2]);
 		});
 
+		it('draws barbs only for wind speeds, arrows otherwise', () => {
+			const settings = createTestSettings({ domainOptions: [createTestDomain('domain1')] });
+			const base =
+				'om://https://example.com/data_spatial/domain1/file.om?arrows=true&arrow_style=barb';
+
+			expect(
+				parseRequest(`${base}&variable=wind_u_component_10m`, settings).renderOptions.arrowStyle
+			).toBe('barb');
+			expect(parseRequest(`${base}&variable=wave_height`, settings).renderOptions.arrowStyle).toBe(
+				'arrow'
+			);
+			expect(
+				parseRequest(`${base}&variable=ocean_u_current`, settings).renderOptions.arrowStyle
+			).toBe('arrow');
+		});
+
 		it('can resolve domain from a variety of different urls', async () => {
 			const domainOptions = [createTestDomain('domain1')];
 			const settings = createTestSettings({ domainOptions });
