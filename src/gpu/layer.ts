@@ -1509,8 +1509,9 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		// still draw. A fresh composite identity snaps them (that commit already
 		// dissolves as a whole); within one identity a layer joining or leaving
 		// the active set ramps over SEAMLESS_REVEAL_MS, morphing the fine field
-		// out of (or back into) the coarser composite. The outgoing crossfade
-		// (still) renders with the factors as they stand.
+		// out of (or back into) the coarser composite. With animation off
+		// (fadeMs 0, like the timestep blend) the factors snap too. The outgoing
+		// crossfade (still) renders with the factors as they stand.
 		const activeSet = new Set(activeSeamlessLayers(frame.domain, zoom).map((l) => l.domainValue));
 		const globalLayer = frame.domain.layers[frame.domain.layers.length - 1];
 		let revealAnimating = false;
@@ -1518,7 +1519,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			const revealKey = `${frame.domain.value}|${String(frame.request.dataOptions.variable)}`;
 			const now = performance.now();
 			const step =
-				this.seamlessRevealKey === revealKey
+				this.seamlessRevealKey === revealKey && this.fadeMs > 0
 					? Math.min(100, now - this.seamlessRevealTime) / WeatherGpuLayer.SEAMLESS_REVEAL_MS
 					: 1;
 			if (this.seamlessRevealKey !== revealKey) this.seamlessReveal.clear();
