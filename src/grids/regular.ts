@@ -2,6 +2,7 @@ import { GridInterface, GridPoint } from './interface';
 import {
 	interpolateCubic,
 	interpolateLinear,
+	interpolateLinearAngle,
 	interpolateMonotone,
 	interpolateNearest
 } from './interpolations';
@@ -109,29 +110,24 @@ export class RegularGrid implements GridInterface {
 		this.wrapLastCellDouble = this.longitudeWrap && lonSpan < 360 - 0.5 * absDx;
 	}
 
-	getLinearInterpolatedValue(values: Float32Array, lat: number, lon: number): number {
-		return this.getInterpolatedValue(values, lat, lon, 'linear');
-	}
-
-	getInterpolatedValue(
-		values: Float32Array,
+	/** Grid cell and in-cell fractions for a coordinate, or null outside the grid. */
+	private locate(
 		lat: number,
-		lon: number,
-		method: InterpolationMethod
-	): number {
+		lon: number
+	): { x: number; y: number; xFraction: number; yFraction: number } | null {
 		// Compute floating-point grid indices from origin
 		const xRaw = (lon - this.originLon) / this.dx;
 		const yRaw = (lat - this.originLat) / this.dy;
 
 		// Check y bounds (works for both positive and negative dy)
 		if (yRaw < 0 || yRaw >= this.ny) {
-			return NaN;
+			return null;
 		}
 
 		// Check x bounds
 		if (!this.longitudeWrap) {
 			if (xRaw < 0 || xRaw >= this.nx) {
-				return NaN;
+				return null;
 			}
 		}
 
@@ -144,6 +140,41 @@ export class RegularGrid implements GridInterface {
 		const absDx = Math.abs(this.dx);
 		const effectiveDx = this.wrapLastCellDouble && xRaw >= this.nx - 1 ? absDx * 2 : absDx;
 		const xFraction = Math.abs((lon - this.originLon) % effectiveDx) / effectiveDx;
+
+		return { x, y, xFraction, yFraction };
+	}
+
+	getLinearInterpolatedValue(values: Float32Array, lat: number, lon: number): number {
+		return this.getInterpolatedValue(values, lat, lon, 'linear');
+	}
+
+	getLinearInterpolatedDirection(values: Float32Array, lat: number, lon: number): number {
+		const cell = this.locate(lat, lon);
+		if (!cell) {
+			return NaN;
+		}
+		return interpolateLinearAngle(
+			values,
+			cell.x,
+			cell.y,
+			cell.xFraction,
+			cell.yFraction,
+			this.nx,
+			this.longitudeWrap
+		);
+	}
+
+	getInterpolatedValue(
+		values: Float32Array,
+		lat: number,
+		lon: number,
+		method: InterpolationMethod
+	): number {
+		const cell = this.locate(lat, lon);
+		if (!cell) {
+			return NaN;
+		}
+		const { x, y, xFraction, yFraction } = cell;
 
 		switch (method) {
 			// 'nearest' returns the value of the closest grid node (round), centred on the node exactly like the
@@ -194,6 +225,26 @@ export class RegularGrid implements GridInterface {
 
 	getBounds(): Bounds {
 		return this.bounds;
+	}
+
+	getBoundaryPolygon(): Array<[number, number]> {
+		// `bounds` sit one cell beyond the last data point on the side the step walks
+		// towards (origin + d · count), whereas the origin side is the first data
+		// point. Pull that end side in by one cell so the outline hugs the rendered
+		// data instead of leaving a one-cell seam — which side that is depends on the
+		// sign of the step (e.g. cams_europe stores rows north-to-south, dy < 0).
+		const [minLon, minLat, maxLon, maxLat] = this.bounds;
+		const west = this.dx >= 0 ? minLon : minLon + Math.abs(this.dx);
+		const east = this.dx >= 0 ? maxLon - this.dx : maxLon;
+		const south = this.dy >= 0 ? minLat : minLat + Math.abs(this.dy);
+		const north = this.dy >= 0 ? maxLat - this.dy : maxLat;
+		return [
+			[west, south],
+			[east, south],
+			[east, north],
+			[west, north],
+			[west, south]
+		];
 	}
 
 	getCenter(): { lng: number; lat: number } {

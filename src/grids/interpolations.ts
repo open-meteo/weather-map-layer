@@ -1,4 +1,4 @@
-import { roundWithPrecision } from '../utils/math';
+import { degreesToRadians, modPositive, radiansToDegrees, roundWithPrecision } from '../utils/math';
 
 export const interpolateNearest = (
 	values: Float32Array,
@@ -87,6 +87,60 @@ export const bilinearNaNAware = (
 	return NaN;
 };
 
+/**
+ * The NaN-aware bilinear for an angular field in degrees. Angles cannot be
+ * blended as scalars — halfway between 359° and 1° is 0°, not 180° — so each
+ * corner becomes a unit vector, the two components are blended by the same
+ * NaN-aware bilinear as any scalar field, and the resultant is turned back into
+ * an angle. That is the circular mean, i.e. exactly what interpolating the u/v
+ * components of a unit-speed wind would give.
+ *
+ * `Math.sin`/`Math.cos` map NaN to NaN, so both component blends see the same
+ * missing corners and take the same triangle branch. The blend only has to be
+ * proportional to the resultant vector — `atan2` is scale invariant — so the
+ * triangle branch's weight renormalization is harmless here.
+ *
+ * The resultant is degenerate (zero length) only when the contributing corners
+ * cancel exactly, e.g. two equally weighted corners 180° apart; there is no
+ * meaningful mean direction in that case and `atan2(0, 0)` returns 0°.
+ */
+export const bilinearAngleNaNAware = (
+	p0: number,
+	p1: number,
+	p2: number,
+	p3: number,
+	xfLower: number,
+	xfUpper: number,
+	yFraction: number
+): number => {
+	const r0 = degreesToRadians(p0);
+	const r1 = degreesToRadians(p1);
+	const r2 = degreesToRadians(p2);
+	const r3 = degreesToRadians(p3);
+
+	const y = bilinearNaNAware(
+		Math.sin(r0),
+		Math.sin(r1),
+		Math.sin(r2),
+		Math.sin(r3),
+		xfLower,
+		xfUpper,
+		yFraction
+	);
+	const x = bilinearNaNAware(
+		Math.cos(r0),
+		Math.cos(r1),
+		Math.cos(r2),
+		Math.cos(r3),
+		xfLower,
+		xfUpper,
+		yFraction
+	);
+	if (!isFinite(y) || !isFinite(x)) return NaN;
+
+	return modPositive(radiansToDegrees(Math.atan2(y, x)), 360);
+};
+
 export const interpolateLinear = (
 	values: Float32Array,
 	x: number,
@@ -117,6 +171,46 @@ export const interpolateLinear = (
 
 	// Rectangular cell: both edges share the same horizontal fraction.
 	return bilinearNaNAware(
+		values[index],
+		values[nextIndex],
+		values[index + nx],
+		values[nextIndex + nx],
+		xFraction,
+		xFraction,
+		yFraction
+	);
+};
+
+/** `interpolateLinear` for an angular field in degrees (see `bilinearAngleNaNAware`). */
+export const interpolateLinearAngle = (
+	values: Float32Array,
+	x: number,
+	y: number,
+	xFraction: number,
+	yFraction: number,
+	nx: number,
+	longitudeWrap: boolean = false
+): number => {
+	const index = y * nx + x;
+
+	let nextIndex: number;
+	if (longitudeWrap) {
+		// For global grids, data can wrap to the other side
+		nextIndex = y * nx + ((x + 1) % nx);
+	} else {
+		nextIndex = index + 1;
+		// Right border
+		if (nextIndex % nx === 0) {
+			return NaN;
+		}
+	}
+
+	// Bottom border
+	if (index + nx > values.length) {
+		return NaN;
+	}
+
+	return bilinearAngleNaNAware(
 		values[index],
 		values[nextIndex],
 		values[index + nx],
