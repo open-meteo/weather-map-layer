@@ -97,8 +97,22 @@ describe('gpu shader source', () => {
 			define: '#define GLOBE'
 		});
 		expect(withPrelude).toContain('#define GLOBE');
-		expect(withPrelude).toContain('projectTile(vec2(pos.x + u_worldOffset, pos.y))');
+		expect(withPrelude).toContain('projectPoint(vec2(pos.x + u_worldOffset, pos.y))');
+		expect(withPrelude).toContain('return projectTile(pos);');
 		expect(withPrelude).not.toContain('u_matrix');
+		expect(withPrelude).not.toContain('u_elevation');
+
+		// Over 3D terrain the vertices lift onto the elevation map.
+		const elevated = vertexSource(
+			{
+				variantName: 'mercator',
+				vertexShaderPrelude: 'vec4 projectTile(vec2 p) { return vec4(p, 0.0, 1.0); }',
+				define: ''
+			},
+			true
+		);
+		expect(elevated).toContain('uniform sampler2D u_elevation;');
+		expect(elevated).toContain('projectTileFor3D(pos, elevationAt(');
 	});
 
 	it('rejects unknown projections', () => {

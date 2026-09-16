@@ -27,6 +27,15 @@ import {
 	vertexSource
 } from './shader-source';
 import type { FragmentShaderSpec, LayerShaderSpec, ProjectionShaderData } from './shader-source';
+import {
+	VISIBILITY_FRAGMENT,
+	VISIBILITY_VERTEX_BODY,
+	elevationQuad,
+	projectPointSource,
+	uploadElevationUniforms,
+	uploadSurfaceQuad
+} from './terrain-elevation';
+import type { GpuElevationMap } from './terrain-elevation';
 
 import type { Bounds, InterpolationMethod, RenderableColorScale } from '../types';
 
@@ -34,11 +43,13 @@ const LUT_SIZE_FROM_BAKE = 2048; // must match color-lut.ts LUT_SIZE
 
 interface ProgramInfo {
 	program: WebGLProgram;
-	vao: WebGLVertexArrayObject;
+	/**
+	 * Geometry per mesh density (cells per side; 0 = the plain quad strip).
+	 * Terrain draws pick the density per view, so a program serves several.
+	 */
+	vaos: Map<number, { vao: WebGLVertexArrayObject; indexCount: number }>;
 	/** All active uniform locations, by name. */
 	uniforms: Map<string, WebGLUniformLocation>;
-	/** Mesh variants draw indexed triangles; the plain variant a quad strip. */
-	indexCount: number;
 }
 
 /**
@@ -136,6 +147,12 @@ export interface GpuDrawOptions {
 	projection?: {
 		shaderData: ProjectionShaderData;
 		data: GpuProjectionData;
+		/**
+		 * Terrain elevation map: vertices lift onto the ground surface and the
+		 * quad is clipped to the map's rectangle (the part of the world with
+		 * terrain in view), where the mesh is dense enough to follow the relief.
+		 */
+		elevation?: GpuElevationMap;
 	};
 	/** Finest-first; a plain (non-seamless) domain passes exactly one. */
 	layers: GpuLayerDraw[];
@@ -244,15 +261,41 @@ export const uploadGridLayerUniforms = (
 	}
 };
 
+/** Arrow program/VAO cache identity: projection variant plus terrain. */
+const arrowVariantKey = (shaderData?: ProjectionShaderData, elevated = false): string =>
+	shaderData ? `${shaderData.variantName}${elevated ? '|elev' : ''}` : 'plain';
+
+/**
+ * Depth pre-pass fragment stage: besides the depth it writes the ground's
+ * mercator position, giving a screen-space ground map (RG32F; cleared to 0,
+ * so y = 0 marks pixels without ground) that the particles respawn from on
+ * tilted views.
+ */
+const GROUND_FRAGMENT_SOURCE = `#version 300 es
+precision highp float;
+in vec2 v_mercator;
+out vec4 outColor;
+void main() {
+	outColor = vec4(v_mercator, 1.0, 1.0);
+}
+`;
+
 export class WeatherGpuRenderer {
 	private gl: WebGL2RenderingContext;
 	private programs = new Map<string, ProgramInfo>();
+	/** Terrain depth pre-pass / visibility programs per projection variant. */
+	private depthPrograms = new Map<string, ProgramInfo>();
+	private visibilityPrograms = new Map<string, ProgramInfo>();
 	private quadBuffer: WebGLBuffer | null = null;
-	private meshBuffers: {
-		vertices: WebGLBuffer;
-		indices: WebGLBuffer;
-		indexCount: number;
-	} | null = null;
+	/** Subdivided quad meshes by cells per side. */
+	private meshBuffers = new Map<
+		number,
+		{
+			vertices: WebGLBuffer;
+			indices: WebGLBuffer;
+			indexCount: number;
+		}
+	>();
 
 	private arrowPrograms = new Map<
 		string,
@@ -653,11 +696,14 @@ export class WeatherGpuRenderer {
 			clipMask: opts.clipMask !== undefined,
 			advect
 		};
-		const info = this.getProgram(spec, opts.projection?.shaderData);
+		const elevation = opts.projection?.elevation;
+		const info = this.getProgram(spec, opts.projection?.shaderData, elevation !== undefined);
 		const u = (name: string): WebGLUniformLocation | null => info.uniforms.get(name) ?? null;
+		const meshN = opts.projection ? (elevation?.meshN ?? WeatherGpuRenderer.MESH_N) : 0;
+		const geometry = this.getGeometry(info, meshN);
 
 		gl.useProgram(info.program);
-		gl.bindVertexArray(info.vao);
+		gl.bindVertexArray(geometry.vao);
 
 		// Texture unit assignment: per-layer values (+ optional nan field), then
 		// the LUT and the single-layer temporal-blend texture.
@@ -707,8 +753,10 @@ export class WeatherGpuRenderer {
 		} else {
 			gl.uniformMatrix4fv(u('u_matrix'), false, opts.matrix as Float32List);
 		}
+		if (elevation) {
+			uploadElevationUniforms(gl, u, elevation, unit++);
+		}
 		const quad = opts.quad ?? unionQuad(layers.map((layer) => layer.gridUniforms.quad));
-		gl.uniform4f(u('u_quad'), quad[0], quad[1], quad[2], quad[3]);
 
 		gl.uniform4f(
 			u('u_lutRange'),
@@ -747,15 +795,154 @@ export class WeatherGpuRenderer {
 		}
 
 		for (const offset of opts.worldOffsets ?? [0]) {
+			// Over terrain the mesh spans exactly the elevation map's rectangle
+			// (the view's terrain), whatever the data crop: a crop far larger
+			// than the view (a global grid, a seamless composite's world-wide
+			// base) would spread the mesh cells too thin to follow the relief,
+			// and the depth pre-pass (drawSurfaceDepth) must rasterize the very
+			// same triangles for its LEQUAL test to pass. The fragment shader
+			// samples by mercator position, so the quad changes nothing else.
+			// The rectangle lies in the view's world copies, hence the offset.
+			let q = quad;
+			if (elevation) {
+				q = elevationQuad(elevation.bounds, offset);
+				if (q[2] <= q[0] + 1e-9 || q[3] <= q[1] + 1e-9) continue;
+				if (q[2] <= quad[0] || q[0] >= quad[2] || q[3] <= quad[1] || q[1] >= quad[3]) continue;
+			}
+			gl.uniform4f(u('u_quad'), q[0], q[1], q[2], q[3]);
 			gl.uniform1f(u('u_worldOffset'), offset);
-			if (info.indexCount > 0) {
-				gl.drawElements(gl.TRIANGLES, info.indexCount, gl.UNSIGNED_INT, 0);
+			if (geometry.indexCount > 0) {
+				gl.drawElements(gl.TRIANGLES, geometry.indexCount, gl.UNSIGNED_INT, 0);
 			} else {
 				gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 			}
 		}
 
 		gl.bindVertexArray(null);
+	}
+
+	/**
+	 * Depth pre-pass of the terrain surface (see surface-target.ts): the
+	 * elevated mesh over the elevation map's rectangle, writing depth and the
+	 * ground map. Uses the colour passes' vertex shader so the rasterized
+	 * depths coincide.
+	 */
+	drawSurfaceDepth(
+		projection: NonNullable<GpuDrawOptions['projection']>,
+		worldOffsets: number[]
+	): void {
+		const elevation = projection.elevation;
+		if (!elevation) return;
+		const gl = this.gl;
+		const info = this.getDepthProgram(projection.shaderData);
+		const u = (name: string): WebGLUniformLocation | null => info.uniforms.get(name) ?? null;
+		const geometry = this.getGeometry(info, elevation.meshN);
+		gl.useProgram(info.program);
+		gl.bindVertexArray(geometry.vao);
+		const p = projection.data;
+		gl.uniformMatrix4fv(u('u_projection_matrix'), false, p.mainMatrix as Float32List);
+		gl.uniformMatrix4fv(u('u_projection_fallback_matrix'), false, p.fallbackMatrix as Float32List);
+		gl.uniform4f(u('u_projection_tile_mercator_coords'), ...p.tileMercatorCoords);
+		gl.uniform4f(u('u_projection_clipping_plane'), ...p.clippingPlane);
+		gl.uniform1f(u('u_projection_transition'), p.projectionTransition);
+		uploadElevationUniforms(gl, u, elevation, 0);
+		for (const offset of worldOffsets) {
+			const q = elevationQuad(elevation.bounds, offset);
+			if (q[2] <= q[0] + 1e-9 || q[3] <= q[1] + 1e-9) continue;
+			gl.uniform4f(u('u_quad'), q[0], q[1], q[2], q[3]);
+			gl.uniform1f(u('u_worldOffset'), offset);
+			gl.drawElements(gl.TRIANGLES, geometry.indexCount, gl.UNSIGNED_INT, 0);
+		}
+		gl.bindVertexArray(null);
+	}
+
+	/**
+	 * Visibility map of the terrain surface (see terrain-elevation.ts) into
+	 * the framebuffer currently bound: the mesh drawn flat over the elevation
+	 * map's rectangle, comparing each ground point's projected depth with the
+	 * surface depth texture (unit 1). Depth test must be off.
+	 */
+	drawSurfaceVisibility(
+		projection: NonNullable<GpuDrawOptions['projection']>,
+		depthTexture: WebGLTexture,
+		depthRange: [number, number]
+	): void {
+		const elevation = projection.elevation;
+		if (!elevation) return;
+		const gl = this.gl;
+		const info = this.getAuxProgram(
+			this.visibilityPrograms,
+			projection.shaderData,
+			`#version 300 es
+${projection.shaderData.vertexShaderPrelude}
+${projection.shaderData.define}
+${projectPointSource(true)}
+${VISIBILITY_VERTEX_BODY}`,
+			VISIBILITY_FRAGMENT
+		);
+		const u = (name: string): WebGLUniformLocation | null => info.uniforms.get(name) ?? null;
+		const geometry = this.getGeometry(info, elevation.meshN);
+		gl.useProgram(info.program);
+		gl.bindVertexArray(geometry.vao);
+		const p = projection.data;
+		gl.uniformMatrix4fv(u('u_projection_matrix'), false, p.mainMatrix as Float32List);
+		gl.uniformMatrix4fv(u('u_projection_fallback_matrix'), false, p.fallbackMatrix as Float32List);
+		gl.uniform4f(u('u_projection_tile_mercator_coords'), ...p.tileMercatorCoords);
+		gl.uniform4f(u('u_projection_clipping_plane'), ...p.clippingPlane);
+		gl.uniform1f(u('u_projection_transition'), p.projectionTransition);
+		uploadElevationUniforms(gl, u, elevation, 0);
+		gl.activeTexture(gl.TEXTURE1);
+		gl.bindTexture(gl.TEXTURE_2D, depthTexture);
+		gl.uniform1i(u('u_depth'), 1);
+		gl.uniform2f(u('u_depthRange'), depthRange[0], depthRange[1]);
+		// The rectangle already lies in the view's world copies: no offset.
+		gl.uniform4f(u('u_quad'), ...elevation.bounds);
+		gl.uniform1f(u('u_worldOffset'), 0);
+		gl.drawElements(gl.TRIANGLES, geometry.indexCount, gl.UNSIGNED_INT, 0);
+		gl.bindVertexArray(null);
+	}
+
+	private getDepthProgram(shaderData: ProjectionShaderData): ProgramInfo {
+		return this.getAuxProgram(
+			this.depthPrograms,
+			shaderData,
+			vertexSource(shaderData, true),
+			GROUND_FRAGMENT_SOURCE
+		);
+	}
+
+	/** Terrain helper programs, cached per projection variant. */
+	private getAuxProgram(
+		cache: Map<string, ProgramInfo>,
+		shaderData: ProjectionShaderData,
+		vertexSrc: string,
+		fragmentSrc: string
+	): ProgramInfo {
+		const key = `${shaderData.variantName}|elev`;
+		const cached = cache.get(key);
+		if (cached) return cached;
+		const gl = this.gl;
+		const program = gl.createProgram();
+		if (!program) throw new Error('gpu: could not create program');
+		gl.attachShader(program, this.compile(gl.VERTEX_SHADER, vertexSrc));
+		gl.attachShader(program, this.compile(gl.FRAGMENT_SHADER, fragmentSrc));
+		gl.linkProgram(program);
+		if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+			const log = gl.getProgramInfoLog(program);
+			gl.deleteProgram(program);
+			throw new Error(`gpu: program link failed: ${log}`);
+		}
+		const uniforms = new Map<string, WebGLUniformLocation>();
+		const count = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS) as number;
+		for (let i = 0; i < count; i++) {
+			const active = gl.getActiveUniform(program, i);
+			if (!active) continue;
+			const location = gl.getUniformLocation(program, active.name);
+			if (location) uniforms.set(active.name.replace(/\[0\]$/, ''), location);
+		}
+		const info: ProgramInfo = { program, vaos: new Map(), uniforms };
+		cache.set(key, info);
+		return info;
 	}
 
 	/**
@@ -816,11 +1003,14 @@ export class WeatherGpuRenderer {
 		const instances = opts.instances;
 		if (instances.count === 0) return;
 		const gl = this.gl;
-		const info = this.getArrowProgram(opts.projection?.shaderData);
+		const elevation = opts.projection?.elevation;
+		const info = this.getArrowProgram(opts.projection?.shaderData, elevation !== undefined);
 		const u = (name: string): WebGLUniformLocation | null => info.uniforms.get(name) ?? null;
 
 		gl.useProgram(info.program);
-		gl.bindVertexArray(this.getArrowVao(instances, opts.projection?.shaderData));
+		gl.bindVertexArray(
+			this.getArrowVao(instances, opts.projection?.shaderData, elevation !== undefined)
+		);
 
 		if (opts.projection) {
 			const p = opts.projection.data;
@@ -833,6 +1023,7 @@ export class WeatherGpuRenderer {
 			gl.uniform4f(u('u_projection_tile_mercator_coords'), ...p.tileMercatorCoords);
 			gl.uniform4f(u('u_projection_clipping_plane'), ...p.clippingPlane);
 			gl.uniform1f(u('u_projection_transition'), p.projectionTransition);
+			if (elevation) uploadElevationUniforms(gl, u, elevation, 0);
 		} else {
 			gl.uniformMatrix4fv(u('u_matrix'), false, opts.matrix as Float32List);
 		}
@@ -847,6 +1038,7 @@ export class WeatherGpuRenderer {
 
 		for (const offset of opts.worldOffsets ?? [0]) {
 			gl.uniform1f(u('u_worldOffset'), offset);
+			if (elevation) uploadSurfaceQuad(gl, u, elevation, offset);
 			gl.drawArraysInstanced(gl.TRIANGLES, 0, ARROW_TEMPLATE.length / 3, instances.count);
 		}
 
@@ -865,11 +1057,17 @@ export class WeatherGpuRenderer {
 			if (mask) gl.deleteTexture(mask.texture);
 		}
 		this.clipMasks.clear();
-		for (const { program, vao } of this.programs.values()) {
+		for (const { program, vaos } of [
+			...this.programs.values(),
+			...this.depthPrograms.values(),
+			...this.visibilityPrograms.values()
+		]) {
 			gl.deleteProgram(program);
-			gl.deleteVertexArray(vao);
+			for (const { vao } of vaos.values()) gl.deleteVertexArray(vao);
 		}
 		this.programs.clear();
+		this.depthPrograms.clear();
+		this.visibilityPrograms.clear();
 		for (const { program } of this.arrowPrograms.values()) {
 			gl.deleteProgram(program);
 		}
@@ -878,11 +1076,11 @@ export class WeatherGpuRenderer {
 			gl.deleteBuffer(this.quadBuffer);
 			this.quadBuffer = null;
 		}
-		if (this.meshBuffers) {
-			gl.deleteBuffer(this.meshBuffers.vertices);
-			gl.deleteBuffer(this.meshBuffers.indices);
-			this.meshBuffers = null;
+		for (const mesh of this.meshBuffers.values()) {
+			gl.deleteBuffer(mesh.vertices);
+			gl.deleteBuffer(mesh.indices);
 		}
+		this.meshBuffers.clear();
 		if (this.arrowTemplateBuffer) {
 			gl.deleteBuffer(this.arrowTemplateBuffer);
 			this.arrowTemplateBuffer = null;
@@ -908,13 +1106,18 @@ export class WeatherGpuRenderer {
 	 * Subdivision of the quad for projectTile variants: the globe projection is
 	 * non-linear, so the rectangle must be a mesh to curve around the sphere.
 	 * 128 cells across the whole world keep the silhouette smooth at low zoom.
+	 * Terrain draws pick a denser mesh per view (GpuElevationMap.meshN).
 	 */
 	private static readonly MESH_N = 128;
 
-	private getMeshBuffers(): { vertices: WebGLBuffer; indices: WebGLBuffer; indexCount: number } {
-		if (this.meshBuffers) return this.meshBuffers;
+	private getMeshBuffers(n: number): {
+		vertices: WebGLBuffer;
+		indices: WebGLBuffer;
+		indexCount: number;
+	} {
+		const cached = this.meshBuffers.get(n);
+		if (cached) return cached;
 		const gl = this.gl;
-		const n = WeatherGpuRenderer.MESH_N;
 
 		const vertices = new Float32Array((n + 1) * (n + 1) * 2);
 		let k = 0;
@@ -950,19 +1153,25 @@ export class WeatherGpuRenderer {
 		gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
 		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
 
-		this.meshBuffers = { vertices: vertexBuffer, indices: indexBuffer, indexCount: k };
-		return this.meshBuffers;
+		const mesh = { vertices: vertexBuffer, indices: indexBuffer, indexCount: k };
+		this.meshBuffers.set(n, mesh);
+		return mesh;
 	}
 
-	private getProgram(spec: FragmentShaderSpec, shaderData?: ProjectionShaderData): ProgramInfo {
-		const key = `${shaderKey(spec)}|${shaderData?.variantName ?? 'plain'}`;
+	private getProgram(
+		spec: FragmentShaderSpec,
+		shaderData?: ProjectionShaderData,
+		elevated = false
+	): ProgramInfo {
+		elevated = elevated && shaderData !== undefined;
+		const key = `${shaderKey(spec)}|${shaderData?.variantName ?? 'plain'}${elevated ? '|elev' : ''}`;
 		const cached = this.programs.get(key);
 		if (cached) return cached;
 
 		const gl = this.gl;
 		const program = gl.createProgram();
 		if (!program) throw new Error('gpu: could not create program');
-		gl.attachShader(program, this.compile(gl.VERTEX_SHADER, vertexSource(shaderData)));
+		gl.attachShader(program, this.compile(gl.VERTEX_SHADER, vertexSource(shaderData, elevated)));
 		gl.attachShader(program, this.compile(gl.FRAGMENT_SHADER, fragmentSource(spec)));
 		gl.linkProgram(program);
 		if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
@@ -982,40 +1191,58 @@ export class WeatherGpuRenderer {
 			if (location) uniforms.set(active.name.replace(/\[0\]$/, ''), location);
 		}
 
+		const info: ProgramInfo = { program, vaos: new Map(), uniforms };
+		this.programs.set(key, info);
+		return info;
+	}
+
+	/** The program's VAO for a mesh density (0 = the plain quad strip). */
+	private getGeometry(
+		info: ProgramInfo,
+		meshN: number
+	): { vao: WebGLVertexArrayObject; indexCount: number } {
+		const cached = info.vaos.get(meshN);
+		if (cached) return cached;
+		const gl = this.gl;
 		const vao = gl.createVertexArray();
 		if (!vao) throw new Error('gpu: could not create VAO');
 		gl.bindVertexArray(vao);
 		let indexCount = 0;
-		if (shaderData) {
-			const mesh = this.getMeshBuffers();
+		if (meshN > 0) {
+			const mesh = this.getMeshBuffers(meshN);
 			gl.bindBuffer(gl.ARRAY_BUFFER, mesh.vertices);
 			gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, mesh.indices);
 			indexCount = mesh.indexCount;
 		} else {
 			gl.bindBuffer(gl.ARRAY_BUFFER, this.getQuadBuffer());
 		}
-		const aUv = gl.getAttribLocation(program, 'a_uv');
+		const aUv = gl.getAttribLocation(info.program, 'a_uv');
 		gl.enableVertexAttribArray(aUv);
 		gl.vertexAttribPointer(aUv, 2, gl.FLOAT, false, 0, 0);
 		gl.bindVertexArray(null);
-
-		const info: ProgramInfo = { program, vao, uniforms, indexCount };
-		this.programs.set(key, info);
-		return info;
+		const geometry = { vao, indexCount };
+		info.vaos.set(meshN, geometry);
+		return geometry;
 	}
 
-	private getArrowProgram(shaderData?: ProjectionShaderData): {
+	private getArrowProgram(
+		shaderData?: ProjectionShaderData,
+		elevated = false
+	): {
 		program: WebGLProgram;
 		uniforms: Map<string, WebGLUniformLocation>;
 	} {
-		const key = shaderData?.variantName ?? 'plain';
+		const key = arrowVariantKey(shaderData, elevated);
 		const cached = this.arrowPrograms.get(key);
 		if (cached) return cached;
 
 		const gl = this.gl;
 		const program = gl.createProgram();
 		if (!program) throw new Error('gpu: could not create arrow program');
-		gl.attachShader(program, this.compile(gl.VERTEX_SHADER, arrowVertexSource(shaderData)));
+		gl.attachShader(
+			program,
+			this.compile(gl.VERTEX_SHADER, arrowVertexSource(shaderData, elevated && !!shaderData))
+		);
 		gl.attachShader(program, this.compile(gl.FRAGMENT_SHADER, ARROW_FRAGMENT_SOURCE));
 		gl.linkProgram(program);
 		if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
@@ -1041,14 +1268,15 @@ export class WeatherGpuRenderer {
 	/** VAO tying a layer's instance buffer to the projection variant's program. */
 	private getArrowVao(
 		instances: ArrowInstances,
-		shaderData?: ProjectionShaderData
+		shaderData?: ProjectionShaderData,
+		elevated = false
 	): WebGLVertexArrayObject {
-		const key = shaderData?.variantName ?? 'plain';
+		const key = arrowVariantKey(shaderData, elevated);
 		const cached = instances.vaos.get(key);
 		if (cached) return cached;
 
 		const gl = this.gl;
-		const { program } = this.getArrowProgram(shaderData);
+		const { program } = this.getArrowProgram(shaderData, elevated);
 		if (!this.arrowTemplateBuffer) {
 			const buffer = gl.createBuffer();
 			if (!buffer) throw new Error('gpu: could not create arrow template buffer');

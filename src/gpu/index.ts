@@ -9,6 +9,8 @@ export { GpuTileRenderer, getSharedTileRenderer } from './tile-renderer';
 export type { GpuTileRequest } from './tile-renderer';
 export { isGpuSupported, WeatherGpuRenderer, mercatorBoxMatrix } from './renderer';
 export type { GpuDrawOptions, GpuLayerDraw, GpuContourStyle, GpuContourDraw } from './renderer';
+export { TerrainElevationBuilder } from './terrain-elevation';
+export type { GpuElevationMap, TerrainSource } from './terrain-elevation';
 export { activeSeamlessLayers, loadSeamlessLayer } from './seamless-data';
 export type { GpuSeamlessLayerData } from './seamless-data';
 export { loadOmUrl, isGpuRenderable } from './data';

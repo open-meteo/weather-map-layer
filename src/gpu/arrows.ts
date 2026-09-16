@@ -16,6 +16,7 @@
 import { lat2tile, tile2lat } from '../utils/math';
 
 import type { ProjectionShaderData } from './shader-source';
+import { projectPointSource } from './terrain-elevation';
 
 /** Per speed threshold: stroke alpha and width, weakest first. */
 export interface GpuArrowLevel {
@@ -342,7 +343,6 @@ uniform float u_mix;
 uniform float u_zoomFrac;
 uniform float u_sizePx;
 uniform vec2 u_viewport;
-uniform float u_worldOffset;
 // Screen pixels a MERC_STEP mercator-y step spans on flat mercator: the
 // reference against which globe foreshortening is measured.
 uniform float u_refStepPx;
@@ -391,15 +391,15 @@ void main() {
 	vec2 screen = vec2(P.x * c + P.y * s, P.x * s - P.y * c);
 
 	vec2 pos = vec2(a_anchor.x + u_worldOffset, a_anchor.y);
-	vec4 clip = projectTile(pos);
+	vec4 clip = projectSurfacePoint(pos);
 
 	// Fade arrows out where the surface turns away from the camera (the globe's
 	// limb): anchors compress in screen space there and would pile up. Probe a
 	// small step on both mercator axes — the limb compresses along different
 	// axes around the silhouette — and compare the shorter one against its
 	// flat-mercator length.
-	vec4 clipStepY = projectTile(vec2(pos.x, pos.y + MERC_STEP));
-	vec4 clipStepX = projectTile(vec2(pos.x + MERC_STEP, pos.y));
+	vec4 clipStepY = projectSurfacePoint(vec2(pos.x, pos.y + MERC_STEP));
+	vec4 clipStepX = projectSurfacePoint(vec2(pos.x + MERC_STEP, pos.y));
 	vec2 sA = clip.xy / max(clip.w, 1e-6) * u_viewport;
 	vec2 sY = clipStepY.xy / max(clipStepY.w, 1e-6) * u_viewport;
 	vec2 sX = clipStepX.xy / max(clipStepX.w, 1e-6) * u_viewport;
@@ -425,11 +425,13 @@ void main() {
 }
 `;
 
-export const arrowVertexSource = (shaderData?: ProjectionShaderData): string => {
+/** `elevated`: anchors (and the foreshortening probes) sit on the terrain. */
+export const arrowVertexSource = (shaderData?: ProjectionShaderData, elevated = false): string => {
 	if (shaderData) {
 		return `#version 300 es
 ${shaderData.vertexShaderPrelude}
 ${shaderData.define}
+${projectPointSource(elevated)}
 ${ARROW_VERTEX_BODY}`;
 	}
 	return `#version 300 es
@@ -440,6 +442,7 @@ uniform mat4 u_matrix;
 vec4 projectTile(vec2 pos) {
 	return u_matrix * vec4(pos, 0.0, 1.0);
 }
+${projectPointSource(false)}
 ${ARROW_VERTEX_BODY}`;
 };
 

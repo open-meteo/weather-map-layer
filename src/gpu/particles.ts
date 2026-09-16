@@ -35,6 +35,12 @@ import type { GpuDrawOptions, GpuProjectionData } from './renderer';
 import { layerSpecOf, uploadGridLayerUniforms } from './renderer';
 import { samplingSource, shaderKey } from './shader-source';
 import type { ProjectionShaderData, SamplingShaderSpec } from './shader-source';
+import {
+	projectPointSource,
+	uploadElevationUniforms,
+	uploadSurfaceQuad
+} from './terrain-elevation';
+import type { GpuVisibilityMap } from './terrain-elevation';
 
 /** Particle pass configuration; colours/sizes resolved by the host app. */
 export interface GpuParticleConfig {
@@ -48,6 +54,14 @@ export interface GpuParticleConfig {
 	opacity?: number;
 	/** Screen speed in px/s per m/s of wind (zoom-independent). @default 1.4 */
 	speedPxPerSec?: number;
+	/**
+	 * Speed gain per zoom level above `zoomSpeedFrom` (default 8), as a
+	 * fraction of the base speed: 0.25 gives x2.5 at zoom 14. Zoomed in, the
+	 * zoom-invariant screen speed reads as a near standstill against the fine
+	 * map detail. Default 0.
+	 */
+	zoomSpeedGain?: number;
+	zoomSpeedFrom?: number;
 	/** Trail persistence per frame at 60fps, 0..1. @default 0.96 */
 	fadeOpacity?: number;
 	/** Mean particle lifetime in seconds (randomised ±70%). @default 5 */
@@ -144,6 +158,25 @@ export interface ParticleRenderOptions {
 	 * instead of reseeding the population.
 	 */
 	budget?: number;
+	/**
+	 * Depth of the terrain surface the map draws the raster on (the surface
+	 * target's texture, drawing-buffer sized): attached to the trail images so
+	 * particles behind a ridge are hidden like the raster is.
+	 */
+	depthTexture?: WebGLTexture;
+	/**
+	 * Which ground is visible (terrain): particles on hidden ground respawn,
+	 * so the population redistributes onto the visible parts.
+	 */
+	visibility?: GpuVisibilityMap;
+	/**
+	 * Tilted views only: respawn uniformly over the screen instead of the
+	 * mercator window, which piles particles onto the horizon where one pixel
+	 * spans far more mercator area. Flat maps invert the mercator-plane
+	 * homography; over terrain `groundMap` (the surface target's screen-space
+	 * ground positions) is exact. Ignored on the globe.
+	 */
+	screenSpawn?: { groundMap?: WebGLTexture };
 }
 
 // ─── CPU wind components ─────────────────────────────────────────────────────
@@ -246,6 +279,12 @@ void main() {
 // position of its mercator point. Pass 2 (rewarp): the same mesh drawn
 // through the current projectTile, sampling the mercator-space image and
 // applying the trail decay.
+//
+// Terrain uses the same path on flat mercator: with the points drawn on the
+// relief the plane homography no longer describes the screen motion, but the
+// warp mesh lifted by the (camera-independent) elevation map does. Pass 1
+// evaluates the previous projection at the current elevation, which is the
+// same ground.
 
 /** Vertex shader body appended to the projection prelude for pass 1. */
 const UNWARP_VERTEX_BODY = `
@@ -255,7 +294,7 @@ uniform vec4 u_window;
 out vec4 v_prevClip;
 void main() {
 	vec2 merc = mix(u_window.xy, u_window.zw, a_uv);
-	v_prevClip = projectTile(merc);
+	v_prevClip = projectPoint(merc);
 	gl_Position = vec4(a_uv * 2.0 - 1.0, 0.0, 1.0);
 }
 `;
@@ -290,7 +329,7 @@ out vec2 v_wuv;
 void main() {
 	vec2 merc = mix(u_window.xy, u_window.zw, a_uv);
 	v_wuv = a_uv;
-	gl_Position = projectTile(merc);
+	gl_Position = projectPoint(merc);
 }
 `;
 
@@ -432,8 +471,31 @@ uniform float u_budget;    // alive share 0..1 (limited-area domain zoomed out)
 uniform float u_churn;     // aging multiplier; > 1 turns the population over
                            // quickly after a data-identity change
 uniform float u_globe;     // projection transition: 0 flat mercator, 1 globe
+// Terrain: ground visibility map (0 hidden behind a ridge, 1 visible) and
+// its rectangle (x0, y0, 1/w, 1/h) in mercator, laid out in the view's world
+// copies; enabled 0 leaves everything visible.
+uniform float u_visibilityEnabled;
+uniform sampler2D u_visibility;
+uniform vec4 u_visibilityRect;
+// Respawn distribution: 0 uniform over the mercator window; tilted views
+// draw uniformly over the SCREEN instead — 1 flat map (screen -> mercator
+// plane by the inverse homography), 2 terrain (screen-space ground map:
+// mercator position per pixel; y stays 0 where nothing was drawn, and no
+// ground lies on the mercator square's top edge).
+uniform float u_spawnMode;
+uniform mat3 u_spawnInv;
+uniform sampler2D u_ground;
 
 out vec4 outState;
+
+bool hiddenGround(vec2 pos) {
+	if (u_visibilityEnabled < 0.5) return false;
+	vec2 p = (pos - u_visibilityRect.xy) * u_visibilityRect.zw;
+	if (p.x < 0.0) p.x += u_visibilityRect.z;
+	else if (p.x > 1.0) p.x -= u_visibilityRect.z;
+	if (p.x < 0.0 || p.y < 0.0 || p.x > 1.0 || p.y > 1.0) return false;
+	return texture(u_visibility, p).r < 0.5;
+}
 
 // Integer hash (lowbias32). NOT the classic fract(sin(dot)) hash: that one
 // derives every draw from a single scalar, so a respawn's x and y were two
@@ -487,11 +549,35 @@ ${motion}
 	float life = u_maxAge * (0.3 + 1.4 * float(rng) * (1.0 / 4294967296.0));
 	rng = hashU(rng);
 	bool shed = float(rng) * (1.0 / 4294967296.0) < u_shed;
-	if (missing || outside || shed || age > life) {
+	// Hidden ground counts like missing data: the respawn retries until it
+	// lands on visible ground, so the population lives where it can be seen.
+	if (missing || outside || shed || age > life || hiddenGround(pos)) {
 		rng = hashU(rng);
 		float rx = float(rng) * (1.0 / 4294967296.0);
 		rng = hashU(rng);
 		float ry = float(rng) * (1.0 / 4294967296.0);
+		if (u_spawnMode > 0.5) {
+			bool sky;
+			vec2 candidate;
+			if (u_spawnMode > 1.5) {
+				vec2 g = texture(u_ground, vec2(rx, ry)).xy;
+				sky = g.y <= 0.0;
+				candidate = g;
+			} else {
+				vec3 m = u_spawnInv * vec3(rx * 2.0 - 1.0, ry * 2.0 - 1.0, 1.0);
+				sky = m.z <= 0.0;
+				candidate = m.xy / m.z;
+			}
+			float offC = fract(candidate.x - u_bounds.x);
+			if (sky || offC > spanX || candidate.y < u_bounds.y || candidate.y > u_bounds.w) {
+				// No usable ground under this pixel: park at the window's far
+				// edge (outside, age 0) and draw again next step.
+				outState = vec4(0.0, 1.0, 0.0, w);
+				return;
+			}
+			outState = vec4(fract(candidate.x), candidate.y, 0.0, w);
+			return;
+		}
 		float y = mix(u_bounds.y, u_bounds.w, ry);
 		if (u_globe > 0.0) {
 			// Equal-area vertical draw (uniform in sin lat): a mercator-uniform
@@ -516,7 +602,6 @@ ${motion}
 const POINT_VERTEX_BODY = `
 uniform sampler2D u_state;
 uniform int u_stateW;
-uniform float u_worldOffset;
 uniform float u_sizePx;
 
 out float v_alive;
@@ -526,17 +611,18 @@ void main() {
 	vec4 s = texelFetch(u_state, ivec2(gl_VertexID % u_stateW, gl_VertexID / u_stateW), 0);
 	v_alive = s.z > 0.0 ? 1.0 : 0.0;
 	v_merc = vec2(s.x, s.y);
-	gl_Position = projectTile(vec2(s.x + u_worldOffset, s.y));
+	gl_Position = projectSurfacePoint(vec2(s.x + u_worldOffset, s.y));
 	gl_PointSize = u_sizePx;
 }
 `;
 
-const pointVertexSource = (shaderData?: ProjectionShaderData): string => {
+const pointVertexSource = (shaderData?: ProjectionShaderData, elevated = false): string => {
 	if (shaderData) {
 		return `#version 300 es
 ${shaderData.vertexShaderPrelude}
 ${shaderData.define}
 precision highp sampler2D;
+${projectPointSource(elevated)}
 ${POINT_VERTEX_BODY}`;
 	}
 	return `#version 300 es
@@ -548,6 +634,7 @@ uniform mat4 u_matrix;
 vec4 projectTile(vec2 pos) {
 	return u_matrix * vec4(pos, 0.0, 1.0);
 }
+${projectPointSource(false)}
 ${POINT_VERTEX_BODY}`;
 };
 
@@ -592,7 +679,6 @@ void main() {
 const DASH_VERTEX_BODY = `
 uniform sampler2D u_state;
 uniform int u_stateW;
-uniform float u_worldOffset;
 uniform vec2 u_viewport; // device px
 uniform float u_sizePx;  // dash width, device px
 uniform float u_dashLen; // dash length, device px
@@ -620,18 +706,19 @@ void main() {
 	vec2 dir = vec2(sin(bearing), cos(bearing));
 	vec2 perp = vec2(-dir.y, dir.x);
 	vec2 off = dir * (corner.y * u_dashLen) + perp * (corner.x * u_sizePx);
-	vec4 clip = projectTile(vec2(s.x + u_worldOffset, s.y));
+	vec4 clip = projectSurfacePoint(vec2(s.x + u_worldOffset, s.y));
 	clip.xy += vec2(off.x, -off.y) * 2.0 / u_viewport * clip.w;
 	gl_Position = clip;
 }
 `;
 
-const dashVertexSource = (shaderData?: ProjectionShaderData): string => {
+const dashVertexSource = (shaderData?: ProjectionShaderData, elevated = false): string => {
 	if (shaderData) {
 		return `#version 300 es
 ${shaderData.vertexShaderPrelude}
 ${shaderData.define}
 precision highp sampler2D;
+${projectPointSource(elevated)}
 ${DASH_VERTEX_BODY}`;
 	}
 	return `#version 300 es
@@ -643,6 +730,7 @@ uniform mat4 u_matrix;
 vec4 projectTile(vec2 pos) {
 	return u_matrix * vec4(pos, 0.0, 1.0);
 }
+${projectPointSource(false)}
 ${DASH_VERTEX_BODY}`;
 };
 
@@ -718,6 +806,10 @@ const sameMat = (a: Float64Array, b: Float64Array): boolean => {
 
 // ─── Particle system ─────────────────────────────────────────────────────────
 
+/** Program cache identity: projection variant plus terrain. */
+const variantKey = (shaderData?: ProjectionShaderData, elevated = false): string =>
+	shaderData ? `${shaderData.variantName}${elevated ? '|elev' : ''}` : 'plain';
+
 interface ProgramInfo {
 	program: WebGLProgram;
 	uniforms: Map<string, WebGLUniformLocation>;
@@ -781,6 +873,8 @@ export class ParticleSystem {
 	private trailW = 0;
 	private trailH = 0;
 	private trailDirty = true;
+	/** Depth texture currently attached to the trail images. */
+	private trailDepth: WebGLTexture | undefined;
 
 	private updatePrograms = new Map<string, ProgramInfo>();
 	private static readonly UPDATE_PROGRAM_CACHE_MAX = 4;
@@ -845,6 +939,7 @@ export class ParticleSystem {
 
 		this.ensureState(opts);
 		this.ensureTrail();
+		this.attachTrailDepth(opts.depthTexture);
 		this.updateParticles(opts);
 		this.drawTrail(opts);
 
@@ -1030,6 +1125,18 @@ export class ParticleSystem {
 		}
 		this.warp = this.createTarget(w, h, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, null, gl.LINEAR);
 		this.trailDirty = true;
+		this.trailDepth = undefined;
+	}
+
+	/** Attach (or detach) the surface depth to both trail images. */
+	private attachTrailDepth(depth: WebGLTexture | undefined): void {
+		if (depth === this.trailDepth) return;
+		const gl = this.gl;
+		for (const fbo of this.trail!.fbos) {
+			gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+			gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, depth ?? null, 0);
+		}
+		this.trailDepth = depth;
 	}
 
 	/** Lazily built subdivided unit-square mesh for the globe warp passes. */
@@ -1084,16 +1191,19 @@ export class ParticleSystem {
 		cache: Map<string, ProgramInfo>,
 		shaderData: ProjectionShaderData,
 		body: string,
-		fragment: string
+		fragment: string,
+		elevated: boolean
 	): ProgramInfo {
-		let info = cache.get(shaderData.variantName);
+		const key = variantKey(shaderData, elevated);
+		let info = cache.get(key);
 		if (!info) {
 			const vertex = `#version 300 es
 ${shaderData.vertexShaderPrelude}
 ${shaderData.define}
+${projectPointSource(elevated)}
 ${body}`;
 			info = buildProgram(this.gl, vertex, fragment);
-			cache.set(shaderData.variantName, info);
+			cache.set(key, info);
 		}
 		return info;
 	}
@@ -1129,6 +1239,7 @@ ${body}`;
 		const gl = this.gl;
 		const trail = this.trail!;
 		const shaderData = opts.projection!.shaderData;
+		const elevation = opts.projection!.elevation;
 		const mesh = this.getWarpMesh();
 		gl.bindVertexArray(mesh.vao);
 
@@ -1137,13 +1248,15 @@ ${body}`;
 			this.unwarpPrograms,
 			shaderData,
 			UNWARP_VERTEX_BODY,
-			UNWARP_FRAGMENT
+			UNWARP_FRAGMENT,
+			elevation !== undefined
 		);
 		let u = (name: string): WebGLUniformLocation | null => unwarp.uniforms.get(name) ?? null;
 		gl.useProgram(unwarp.program);
 		gl.bindFramebuffer(gl.FRAMEBUFFER, this.warp!.fbo);
 		gl.viewport(0, 0, this.trailW, this.trailH);
 		this.uploadProjectionUniforms(u, prevData);
+		if (elevation) uploadElevationUniforms(gl, u, elevation, 1);
 		gl.uniform4f(u('u_window'), ...opts.bounds);
 		gl.activeTexture(gl.TEXTURE0);
 		gl.bindTexture(gl.TEXTURE_2D, trail.textures[trail.head]);
@@ -1156,7 +1269,8 @@ ${body}`;
 			this.rewarpPrograms,
 			shaderData,
 			REWARP_VERTEX_BODY,
-			REWARP_FRAGMENT
+			REWARP_FRAGMENT,
+			elevation !== undefined
 		);
 		u = (name: string): WebGLUniformLocation | null => rewarp.uniforms.get(name) ?? null;
 		gl.useProgram(rewarp.program);
@@ -1164,6 +1278,7 @@ ${body}`;
 		gl.clearColor(0, 0, 0, 0);
 		gl.clear(gl.COLOR_BUFFER_BIT);
 		this.uploadProjectionUniforms(u, opts.projection!.data);
+		if (elevation) uploadElevationUniforms(gl, u, elevation, 1);
 		gl.uniform4f(u('u_window'), ...opts.bounds);
 		gl.uniform1f(u('u_fade'), fadeOpacity);
 		gl.activeTexture(gl.TEXTURE0);
@@ -1204,21 +1319,21 @@ ${body}`;
 		return info;
 	}
 
-	private getPointProgram(shaderData?: ProjectionShaderData): ProgramInfo {
-		const key = shaderData?.variantName ?? 'plain';
+	private getPointProgram(shaderData?: ProjectionShaderData, elevated = false): ProgramInfo {
+		const key = variantKey(shaderData, elevated);
 		let info = this.pointPrograms.get(key);
 		if (!info) {
-			info = buildProgram(this.gl, pointVertexSource(shaderData), POINT_FRAGMENT);
+			info = buildProgram(this.gl, pointVertexSource(shaderData, elevated), POINT_FRAGMENT);
 			this.pointPrograms.set(key, info);
 		}
 		return info;
 	}
 
-	private getDashProgram(shaderData?: ProjectionShaderData): ProgramInfo {
-		const key = shaderData?.variantName ?? 'plain';
+	private getDashProgram(shaderData?: ProjectionShaderData, elevated = false): ProgramInfo {
+		const key = variantKey(shaderData, elevated);
 		let info = this.dashPrograms.get(key);
 		if (!info) {
-			info = buildProgram(this.gl, dashVertexSource(shaderData), DASH_FRAGMENT);
+			info = buildProgram(this.gl, dashVertexSource(shaderData, elevated), DASH_FRAGMENT);
 			this.dashPrograms.set(key, info);
 		}
 		return info;
@@ -1284,6 +1399,27 @@ ${body}`;
 		gl.uniform1f(u('u_shed'), shed);
 		gl.uniform1f(u('u_budget'), Math.min(1, Math.max(0, opts.budget ?? 1)));
 		gl.uniform1f(u('u_churn'), this.churnFactor(opts.config));
+		const visibility = opts.projection?.elevation ? opts.visibility : undefined;
+		gl.uniform1f(u('u_visibilityEnabled'), visibility ? 1 : 0);
+		if (visibility) {
+			bindTexture('u_visibility', visibility.texture);
+			gl.uniform4f(u('u_visibilityRect'), ...visibility.rect);
+		}
+		let spawnMode = 0;
+		if (opts.screenSpawn && opts.globe <= 0) {
+			if (opts.screenSpawn.groundMap) {
+				spawnMode = 2;
+				bindTexture('u_ground', opts.screenSpawn.groundMap);
+			} else {
+				const matrix = opts.projection?.data.mainMatrix ?? opts.matrix;
+				const inverse = matrix ? invert3(planeHomography(matrix)) : undefined;
+				if (inverse) {
+					spawnMode = 1;
+					gl.uniformMatrix3fv(u('u_spawnInv'), false, Float32Array.from(inverse));
+				}
+			}
+		}
+		gl.uniform1f(u('u_spawnMode'), spawnMode);
 
 		gl.drawArrays(gl.TRIANGLES, 0, 3);
 		state.head = 1 - state.head;
@@ -1302,13 +1438,15 @@ ${body}`;
 		// through mercator space with the real projectTile of both frames
 		// (warpTrail), so trails survive rotation, zoom and the transition too.
 		const p = opts.projection?.data;
+		const elevation = opts.projection?.elevation;
+		const elevated = elevation !== undefined && opts.projection !== undefined;
 		const onGlobe = (p?.projectionTransition ?? 0) > 0;
 		const matrix = p?.mainMatrix ?? opts.matrix ?? IDENTITY3;
 		let reproject: Float32Array = IDENTITY3;
 		let warpFrom: ProjectionSnapshot | undefined;
-		if (onGlobe && opts.projection) {
+		if ((onGlobe || elevated) && opts.projection) {
 			this.prevHomography = undefined;
-			const variant = opts.projection.shaderData.variantName;
+			const variant = variantKey(opts.projection.shaderData, elevated);
 			const cur = snapshotProjection(p!);
 			const prev = this.prevProjection;
 			if (!prev || prev.variant !== variant) {
@@ -1372,8 +1510,8 @@ ${body}`;
 		// round points, or motion-oriented dashes (waves, rain streaks).
 		const dash = opts.config.shape === 'dash';
 		const program = dash
-			? this.getDashProgram(opts.projection?.shaderData)
-			: this.getPointProgram(opts.projection?.shaderData);
+			? this.getDashProgram(opts.projection?.shaderData, elevated)
+			: this.getPointProgram(opts.projection?.shaderData, elevated);
 		const u = (name: string): WebGLUniformLocation | null => program.uniforms.get(name) ?? null;
 		gl.useProgram(program.program);
 		if (opts.projection) {
@@ -1387,6 +1525,8 @@ ${body}`;
 			gl.uniform4f(u('u_projection_tile_mercator_coords'), ...data.tileMercatorCoords);
 			gl.uniform4f(u('u_projection_clipping_plane'), ...data.clippingPlane);
 			gl.uniform1f(u('u_projection_transition'), data.projectionTransition);
+			// Units 0 and 1 hold the state and the clip mask.
+			if (elevation) uploadElevationUniforms(gl, u, elevation, 2);
 		} else {
 			gl.uniformMatrix4fv(u('u_matrix'), false, opts.matrix as Float32List);
 		}
@@ -1411,14 +1551,24 @@ ${body}`;
 
 		gl.enable(gl.BLEND);
 		gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+		// Over terrain the points sit on the raster surface (projectSurfacePoint)
+		// and test against its depth: a ridge hides the particles behind it.
+		const occlude = elevation !== undefined && opts.depthTexture !== undefined;
+		if (occlude) {
+			gl.enable(gl.DEPTH_TEST);
+			gl.depthFunc(gl.LEQUAL);
+			gl.depthMask(false);
+		}
 		for (const offset of opts.worldOffsets) {
 			gl.uniform1f(u('u_worldOffset'), offset);
+			if (elevation) uploadSurfaceQuad(gl, u, elevation, offset);
 			if (dash) {
 				gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.stateW * this.stateW);
 			} else {
 				gl.drawArrays(gl.POINTS, 0, this.stateW * this.stateW);
 			}
 		}
+		if (occlude) gl.disable(gl.DEPTH_TEST);
 		gl.disable(gl.BLEND);
 
 		trail.head = 1 - trail.head;

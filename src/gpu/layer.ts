@@ -62,6 +62,9 @@ import type {
 } from './renderer';
 import { activeSeamlessLayers, loadSeamlessLayer } from './seamless-data';
 import type { GpuSeamlessLayerData } from './seamless-data';
+import { SurfaceTarget } from './surface-target';
+import { TerrainElevationBuilder } from './terrain-elevation';
+import type { GpuElevationMap, TerrainSource } from './terrain-elevation';
 
 import type {
 	Bounds,
@@ -278,6 +281,10 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 	/** Valid time of the frame the current blend morphs from. */
 	private previousTimeMs: number | undefined;
 	private particleSystem: ParticleSystem | undefined;
+	/** Composites the map's terrain tiles into the elevation map (3D terrain). */
+	private elevationBuilder: TerrainElevationBuilder | undefined;
+	/** Offscreen target making the draped layer a solid surface (3D terrain). */
+	private surface: SurfaceTarget | undefined;
 	/** Last particle-update timestamp; 0 restarts the step clock. */
 	private particleLastTime = 0;
 	/** Identity of the field the particles advect through (seamless sub-layer
@@ -1117,6 +1124,10 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 	onRemove(): void {
 		this.particleSystem?.dispose();
 		this.particleSystem = undefined;
+		this.elevationBuilder?.dispose();
+		this.elevationBuilder = undefined;
+		this.surface?.dispose();
+		this.surface = undefined;
 		if (this.renderer && this.arrowInstances) {
 			this.renderer.deleteArrowInstances(this.arrowInstances);
 			this.arrowInstances = undefined;
@@ -1135,10 +1146,34 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 
 		// The map's own projectTile prelude renders mercator, globe and the
 		// transition between them; the fragment shader is projection-agnostic.
+		// With 3D terrain on, every pass lifts its vertices onto the ground:
+		// MapLibre drapes only its built-in layer types, a custom layer would
+		// stay a flat sheet at sea level.
+		const terrain = (this.map as { terrain?: TerrainSource | null }).terrain;
+		let elevation: GpuElevationMap | undefined;
+		if (terrain) {
+			this.elevationBuilder ??= new TerrainElevationBuilder(gl2);
+			const built = this.elevationBuilder.update(terrain);
+			if (built) {
+				// Mercator z unit: the world's circumference at the centre latitude
+				// (MapLibre's pixelsPerMeter / worldSize); the globe takes metres.
+				const transition = args.defaultProjectionData.projectionTransition;
+				const centreLat = (this.map.getCenter().lat * Math.PI) / 180;
+				const mercPerMetre = 1 / (2 * Math.PI * 6371008.8 * Math.cos(centreLat));
+				elevation = { ...built, scale: mercPerMetre + (1 - mercPerMetre) * transition };
+			}
+		}
 		const projection: GpuDrawOptions['projection'] = {
 			shaderData: args.shaderData,
-			data: args.defaultProjectionData
+			data: args.defaultProjectionData,
+			elevation
 		};
+		// Over terrain the passes render into an offscreen target with a depth
+		// pre-pass of the surface, so a ridge hides what lies behind it.
+		if (elevation) {
+			this.surface ??= new SurfaceTarget(gl2);
+			this.surface.begin(this.renderer, projection, this.worldOffsets(projection));
+		}
 
 		// A variable/domain switch dissolves: the outgoing visual renders
 		// underneath on the compensation curve b = p(1-e)/(1-p·e) while the new
@@ -1168,6 +1203,8 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		} else if (this.current) {
 			this.renderPlain(gl2, projection, this.current, opacity, false);
 		}
+
+		if (elevation) this.surface!.end();
 	}
 
 	private renderPlain(
@@ -1914,26 +1951,42 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 
 		// A fixed screen speed per m/s at every zoom: physically the flow slows
 		// hugely on screen when zooming in, visually it should just keep flowing.
-		const speedPxPerSec = config.speedPxPerSec ?? 1.4;
+		const speedPxPerSec =
+			(config.speedPxPerSec ?? 1.4) *
+			(1 + (config.zoomSpeedGain ?? 0) * Math.max(0, zoom - (config.zoomSpeedFrom ?? 8)));
 		const mercPerMps = (speedPxPerSec * dt) / (512 * Math.pow(2, zoom));
 
-		this.particleSystem.render({
-			layers,
-			prev,
-			mix,
-			projection,
-			config,
-			clipMask,
-			budget,
-			dtSeconds: dt,
-			mercPerMps,
-			bounds: [minX, minY, maxX, maxY],
-			globe: projection?.data.projectionTransition ?? 0,
-			opacity: opacity * (config.opacity ?? 0.8) * zoomFade,
-			sizeDevicePx: config.sizePx * map.getPixelRatio(),
-			dashLenDevicePx: (config.dashLengthPx ?? 8) * map.getPixelRatio(),
-			worldOffsets: this.worldOffsets(projection)
-		});
+		// Only a tilted camera skews the screen density of a mercator-uniform
+		// respawn; flat views keep the window draw (with its drift-in margin).
+		const tilted = map.getPitch() > 0.5;
+
+		// The trail composite is a screen-space image: never depth-tested
+		// against the terrain surface target.
+		const render = (): void =>
+			this.particleSystem!.render({
+				layers,
+				prev,
+				mix,
+				projection,
+				config,
+				clipMask,
+				budget,
+				dtSeconds: dt,
+				mercPerMps,
+				bounds: [minX, minY, maxX, maxY],
+				globe: projection?.data.projectionTransition ?? 0,
+				opacity: opacity * (config.opacity ?? 0.8) * zoomFade,
+				sizeDevicePx: config.sizePx * map.getPixelRatio(),
+				dashLenDevicePx: (config.dashLengthPx ?? 8) * map.getPixelRatio(),
+				worldOffsets: this.worldOffsets(projection),
+				depthTexture: projection?.elevation ? this.surface?.depthTexture : undefined,
+				visibility: projection?.elevation ? this.surface?.visibilityMapOfFrame : undefined,
+				screenSpawn: tilted
+					? { groundMap: projection?.elevation ? this.surface?.groundMap : undefined }
+					: undefined
+			});
+		if (projection?.elevation && this.surface) this.surface.withoutDepth(render);
+		else render();
 		map.triggerRepaint();
 	}
 
