@@ -94,17 +94,6 @@ export class WeatherMapLayerFileReader {
 		}
 	}
 
-	/** Find the first derivation rule that matches the given variable name. */
-	private findDerivationRule(variable: string): VariableDerivationRule | undefined {
-		return this.allDerivationRules.find((rule) => {
-			if (typeof rule.pattern === 'string') {
-				return variable.includes(rule.pattern);
-			} else {
-				return rule.pattern.test(variable);
-			}
-		});
-	}
-
 	/** Read variable data using a derivation rule. */
 	private async readWithDerivationRule(
 		reader: OmFileReader,
@@ -225,7 +214,7 @@ export class WeatherMapLayerFileReader {
 		signal?: AbortSignal
 	): Promise<Data> {
 		return this.withReader(omUrl, (reader) => {
-			const derivationRule = this.findDerivationRule(variable);
+			const derivationRule = findDerivationRule(variable, this.allDerivationRules);
 
 			if (derivationRule) {
 				return this.readWithDerivationRule(reader, variable, derivationRule, ranges, signal);
@@ -247,7 +236,7 @@ export class WeatherMapLayerFileReader {
 		signal?: AbortSignal
 	): Promise<void> {
 		await this.withReader(omUrl, async (reader) => {
-			const derivationRule = this.findDerivationRule(variable);
+			const derivationRule = findDerivationRule(variable, this.allDerivationRules);
 			const varsToPrefetch = derivationRule ? derivationRule.getSourceVars(variable) : [variable];
 
 			await Promise.all(
@@ -292,9 +281,15 @@ export class WeatherMapLayerFileReader {
 /**
  * Rule for deriving values and directions from one or two source variables.
  */
-interface VariableDerivationRule {
+export interface VariableDerivationRule {
 	/** Pattern to match variable names (string or RegExp) */
 	pattern: string | RegExp;
+
+	/**
+	 * What `process` fills in. Declared up front because consumers decide
+	 * whether to offer arrows for a variable before any data is read.
+	 */
+	provides: { directions: boolean };
 
 	/** Derive two variables from the requested variable. */
 	getSourceVars: (variable: string) => [string, string];
@@ -315,6 +310,25 @@ interface VariableDerivationRule {
 	process: (primary: Float32Array, secondary: Float32Array) => Data;
 }
 
+/** First rule whose pattern matches the variable name, if any. */
+const findDerivationRule = (
+	variable: string,
+	rules: VariableDerivationRule[]
+): VariableDerivationRule | undefined =>
+	rules.find((rule) =>
+		typeof rule.pattern === 'string' ? variable.includes(rule.pattern) : rule.pattern.test(variable)
+	);
+
+/**
+ * Whether reading `variable` yields a direction field, i.e. whether arrows
+ * can be rendered for it. Uses the same rule lookup as the reader, so a UI
+ * offering arrows stays in step with what the data can provide.
+ */
+export const variableHasDirections = (
+	variable: string,
+	rules: VariableDerivationRule[] = DEFAULT_DERIVATION_RULES
+): boolean => findDerivationRule(variable, rules)?.provides.directions ?? false;
+
 /**
  * Default derivation rules for common meteorological variables.
  */
@@ -322,6 +336,7 @@ const DEFAULT_DERIVATION_RULES: VariableDerivationRule[] = [
 	// UV wind components -> speed and direction
 	{
 		pattern: /_[uv]_(component|current)/,
+		provides: { directions: true },
 		// Derived magnitude; the u-component's stored scale factor is a good proxy
 		// for the speed's quantization step.
 		scaleFactor: 'primary',
@@ -353,6 +368,7 @@ const DEFAULT_DERIVATION_RULES: VariableDerivationRule[] = [
 	// Speed/Direction pairs (already stored separately)
 	{
 		pattern: /_(?:speed|direction)_/,
+		provides: { directions: true },
 		scaleFactor: 'primary',
 		getSourceVars: (variable: string) => [
 			variable.includes('_speed_') ? variable : variable.replace('_direction_', '_speed_'),
@@ -367,6 +383,7 @@ const DEFAULT_DERIVATION_RULES: VariableDerivationRule[] = [
 	// Wave height and direction
 	{
 		pattern: /wave_(?:height|direction)/,
+		provides: { directions: true },
 		scaleFactor: 'primary',
 		getSourceVars: (variable: string) => [
 			variable.replace('wave_direction', 'wave_height'),
