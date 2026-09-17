@@ -69,7 +69,9 @@ For a standalone example, see `examples/temperature.html`.
 <!-- x-release-please-end -->
 
 ```html
-<script>
+<script type="module">
+	import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.mjs';
+
 	// Standard MapLibre GL JS setup
 	// ...
 
