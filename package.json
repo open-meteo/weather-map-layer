@@ -1,7 +1,6 @@
 {
 	"name": "@openmeteo/weather-map-layer",
 	"type": "module",
-	"main": "dist/index.cjs",
 	"types": "dist/index.d.ts",
 	"author": "Open-Meteo <info@open-meteo.com>",
 	"version": "0.1.0",
@@ -9,8 +8,7 @@
 	"exports": {
 		".": {
 			"types": "./dist/index.d.ts",
-			"import": "./dist/index.mjs",
-			"require": "./dist/index.cjs"
+			"import": "./dist/index.mjs"
 		}
 	},
 	"repository": {
@@ -42,7 +40,6 @@
 	},
 	"scripts": {
 		"dev": "vite build --watch",
-		"dev:umd": "vite build --config vite.config.umd.ts --watch",
 		"test": "vitest",
 		"bench": "vitest bench --run",
 		"coverage": "vitest run --coverage",
@@ -50,12 +47,9 @@
 		"generate:colorscales": "tsx scripts/generate-colorscales.ts && prettier --write src/utils/color-scales.ts",
 		"generate:footprints": "tsx scripts/generate-domain-footprints.ts && prettier --write src/domain-footprints.ts",
 		"watch:colorscales": "npm-watch generate:colorscales",
-		"build:esm": "vite build",
-		"build:cjs": "vite build --config vite.config.cjs.ts",
-		"build:umd": "vite build --config vite.config.umd.ts",
-		"build": "npm run build:esm && npm run build:cjs && npm run build:umd",
+		"build": "vite build",
 		"prepare": "npm run build",
-		"serve": "concurrently --kill-others \"npm run dev:umd\" \"live-server --port=5173 --host=localhost --ignore=**/src/** --open=./examples/\""
+		"serve": "concurrently --kill-others \"npm run dev\" \"live-server --port=5173 --host=localhost --ignore=**/src/** --open=./examples/\""
 	},
 	"devDependencies": {
 		"@trivago/prettier-plugin-sort-imports": "^6.0.0",

@@ -6,15 +6,6 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 		<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-		<!-- x-release-please-start-version -->
-		<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.1.0/dist/index.js"></script>
-		<!-- x-release-please-end -->
-		<!-- Local development -->
-		<script>
-			if (location.hostname === 'localhost' || location.href.startsWith('file://')) {
-				document.write('<script src="../../dist/index.js"><\/script>');
-			}
-		</script>
 		<style>
 			html,
 			body,
@@ -27,7 +18,13 @@
 	</head>
 	<body>
 		<div id="map"></div>
-		<script>
+		<script type="module">
+			const OMWeatherMapLayer = await import(
+				location.hostname === 'localhost'
+					? '../../dist/index.mjs' // local development
+					: 'https://unpkg.com/@openmeteo/weather-map-layer@0.1.0/dist/index.mjs' // x-release-please-version
+			);
+
 			// Build the Leaflet adapter that intercepts "om://" requests and routes them through omProtocol.
 			const leafletAdapter = OMWeatherMapLayer.addLeafletProtocolSupport(L);
 
