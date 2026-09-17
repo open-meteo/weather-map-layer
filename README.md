@@ -58,12 +58,11 @@ map.on('load', () => {
 
 The package ships as an ES module only, so load it from a `<script type="module">`. For a standalone example, see `examples/temperature.html`.
 
+<!-- prettier-ignore -->
 ```html
 <script type="module">
-	import * as OMWeatherMapLayer from 'https://unpkg.com/@openmeteo/weather-map-layer@0.1.1/dist/index.mjs';
 	import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.mjs';
-
-	// x-release-please-version
+	import * as OMWeatherMapLayer from 'https://unpkg.com/@openmeteo/weather-map-layer@0.1.1/dist/index.mjs'; // x-release-please-version
 
 	// Standard MapLibre GL JS setup
 	// ...
