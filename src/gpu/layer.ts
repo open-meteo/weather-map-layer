@@ -1,5 +1,5 @@
 /**
- * Path B: a MapLibre custom layer that renders the weather field directly in
+ * A MapLibre custom layer that renders the weather field directly in
  * the map's WebGL2 context — no tiles, no worker round-trips, no bitmaps.
  *
  * The grid values live in float textures; every frame a fragment shader maps

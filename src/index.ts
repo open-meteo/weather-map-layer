@@ -57,18 +57,14 @@ export {
 	BARB_LATTICE
 } from './utils/constants';
 
-// GPU render paths (experimental, see src/gpu/README.md)
+// GPU custom layer (experimental, see src/gpu/README.md)
 
 export {
 	WeatherGpuLayer,
-	omProtocolGpu,
-	GpuTileRenderer,
-	getSharedTileRenderer,
 	isGpuSupported,
 	loadOmUrl,
 	WeatherGpuRenderer,
-	computeGridUniforms,
-	mercatorBoxMatrix
+	computeGridUniforms
 } from './gpu/index';
 export type {
 	WeatherGpuLayerOptions,

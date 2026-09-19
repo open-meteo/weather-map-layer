@@ -120,7 +120,7 @@ void main() {
  * (mercator, globe and the transition between them); the geometry must then be
  * a subdivided mesh so it can curve around the sphere. `elevated` lifts the
  * mesh onto the terrain (see terrain-elevation.ts). Without shaderData, a
- * plain matrix multiply serves the tile renderer and tests.
+ * plain matrix multiply serves the tests.
  */
 export const vertexSource = (shaderData?: ProjectionShaderData, elevated = false): string => {
 	if (shaderData) {
@@ -142,7 +142,7 @@ ${projectPointSource(false)}
 ${VERTEX_BODY}`;
 };
 
-/** The prelude-free variant (tile renderer, tests). */
+/** The prelude-free variant (tests). */
 export const VERTEX_SOURCE = vertexSource();
 
 // ─── Shared building blocks ──────────────────────────────────────────────────
@@ -1002,7 +1002,7 @@ ${spec.contours ? '	// Sampled before the divergent return below, so quad deriva
 	vec4 color = texture(u_lut, vec2(u_lutRange.z + t * u_lutRange.w, 0.5));
 	float a = color.a * u_opacity;
 	// Premultiplied output: matches both MapLibre's custom layer blend state and
-	// the default premultiplied WebGL canvas compositing of the tile renderer.
+	// the default premultiplied WebGL canvas compositing of a WebGL canvas.
 	fragColor = vec4(color.rgb * a, a);
 ${contourApply}${clipMaskApply}
 }`);

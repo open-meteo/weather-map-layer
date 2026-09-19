@@ -4,16 +4,13 @@ export { buildArrowAnchors, buildArrowInstances, arrowLengthFor } from './arrows
 export type { GpuArrowConfig, GpuArrowLevel, ArrowSampler } from './arrows';
 export { ParticleSystem, windComponentsOf } from './particles';
 export type { GpuParticleConfig, ParticleFieldLayer } from './particles';
-export { omProtocolGpu } from './om-protocol-gpu';
-export { GpuTileRenderer, getSharedTileRenderer } from './tile-renderer';
-export type { GpuTileRequest } from './tile-renderer';
-export { isGpuSupported, WeatherGpuRenderer, mercatorBoxMatrix } from './renderer';
+export { isGpuSupported, WeatherGpuRenderer } from './renderer';
 export type { GpuDrawOptions, GpuLayerDraw, GpuContourStyle, GpuContourDraw } from './renderer';
 export { TerrainElevationBuilder } from './terrain-elevation';
 export type { GpuElevationMap, TerrainSource } from './terrain-elevation';
 export { activeSeamlessLayers, loadSeamlessLayer } from './seamless-data';
 export type { GpuSeamlessLayerData } from './seamless-data';
-export { loadOmUrl, isGpuRenderable } from './data';
+export { loadOmUrl } from './data';
 export type { LoadedOmData } from './data';
 export { computeGridUniforms } from './grid-uniforms';
 export type { GpuGridUniforms } from './grid-uniforms';

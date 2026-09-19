@@ -21,14 +21,6 @@ export interface LoadedOmData {
 	ranges: DimensionRange[];
 }
 
-/** True when the GPU raster path can render this request. */
-export const isGpuRenderable = (request: ParsedRequest): boolean => {
-	// Polygon clipping renders via the in-shader mask (clip-mask.ts); no
-	// remaining request feature needs the CPU fallback.
-	void request;
-	return true;
-};
-
 /**
  * Resolves an om:// URL (meta-JSON forms included) and loads the variable data
  * through the shared protocol state.

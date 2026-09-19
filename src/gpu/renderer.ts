@@ -1,9 +1,6 @@
 /**
- * WebGL2 renderer core shared by the custom map layer (path B) and the GPU
- * tile renderer (path A). Owns the compiled program variants, the value/LUT
- * textures and the single draw routine; the two paths differ only in the
- * matrix they pass (map camera vs. per-tile ortho) and where the framebuffer
- * ends up (map canvas vs. OffscreenCanvas -> ImageBitmap).
+ * WebGL2 renderer core of the custom map layer. Owns the compiled program
+ * variants, the value/LUT textures and the single draw routine.
  *
  * A draw takes 1..N layers (finest-first); a plain domain is the single-layer
  * case, a seamless composite passes one entry per active sub-domain.
@@ -182,7 +179,7 @@ export interface GpuDrawOptions {
 	contours?: GpuContourDraw;
 }
 
-/** Feature check for both GPU paths. */
+/** Feature check for the GPU layer. */
 export const isGpuSupported = (): boolean => {
 	if (typeof OffscreenCanvas === 'undefined') return false;
 	try {
@@ -1342,22 +1339,4 @@ const unionQuad = (quads: [number, number, number, number][]): [number, number, 
 		y1 = Math.max(y1, qy1);
 	}
 	return [x0, y0, x1, y1];
-};
-
-/**
- * Column-major ortho matrix mapping the mercator box (x0..x1, y0..y1, y down)
- * to clip space with y0 at the top of the framebuffer — the per-tile "camera"
- * of the GPU tile renderer.
- */
-export const mercatorBoxMatrix = (x0: number, y0: number, x1: number, y1: number): Float32Array => {
-	const w = x1 - x0;
-	const h = y1 - y0;
-	// ndcX = 2 (mx - x0) / w - 1 ; ndcY = 1 - 2 (my - y0) / h
-	// prettier-ignore
-	return new Float32Array([
-		2 / w, 0, 0, 0,
-		0, -2 / h, 0, 0,
-		0, 0, 1, 0,
-		-1 - (2 * x0) / w, 1 + (2 * y0) / h, 0, 1
-	]);
 };

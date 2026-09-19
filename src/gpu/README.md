@@ -1,6 +1,6 @@
 # GPU render paths (experimental)
 
-This module explores rendering the weather field on the GPU. It is fully
+This module renders the weather field on the GPU. It is fully
 parallel to the CPU pipeline — nothing outside `src/gpu/` changed — and reuses
 the existing renderer-agnostic pieces:
 
@@ -17,7 +17,7 @@ Only the _rasterization step_ — per-pixel projection, interpolation and colour
 mapping — has a GPU twin: GLSL ports in `shader-source.ts` that mirror
 `grids/regular.ts` / `grids/projected.ts` / `grids/interpolations.ts` 1:1.
 
-## Path B (main focus): `WeatherGpuLayer` — tile-free custom layer
+## `WeatherGpuLayer` — tile-free custom layer
 
 A MapLibre `CustomLayerInterface` that draws the field straight into the map's
 GL context. The grid values sit in an `R32F` texture; a fragment shader on a
@@ -41,33 +41,17 @@ What this buys over the tile pipeline:
 - **No stale tiles** — zoom/pan re-evaluates every pixel each frame.
 - Foundation for per-frame effects (particles/streamlines) later.
 
-## Path A (benchmark companion): `omProtocolGpu` — GPU tile renderer
-
-A drop-in `om://` protocol handler that keeps the whole tile pipeline but
-renders each raster tile with the same shaders into an OffscreenCanvas
-(`tile-renderer.ts`), instead of the CPU worker's per-pixel loop. Requests the
-GPU cannot serve fall through to the original `omProtocol` unchanged: TileJSON,
-vector tiles, seamless domains, gaussian grids, polygon clipping, no-WebGL2.
-
-```js
-maplibregl.addProtocol('om', OMWeatherMapLayer.omProtocolGpu);
-```
-
-Path A exists to isolate variables in benchmarking: A vs CPU measures the raw
-rasterization speedup inside an identical architecture; B vs A measures what
-dropping the tile/bitmap machinery is worth.
-
 ## Current scope / known gaps
 
 - Grids: `regular`, all `projected*` types and the **reduced gaussian** grid
   (the flat value array is packed into a 2D texture; the per-row longitude
   count / index arithmetic of `grids/gaussian.ts` runs in the shader).
-- **Seamless composite domains** render natively in path B as one multi-layer
+- **Seamless composite domains** render natively as one multi-layer
   pass: per-layer sampling functions are generated into a single shader, the
   smooth-step edge weights (including the projected-grid edge distance and the
   NaN-distance refinement of `seamless-sampling.ts`) blend finest-first. Sub-
   layers load lazily per zoom level with the same viewport/lead-time gates as
-  the CPU handler. Path A (parked) keeps its CPU fallback for seamless.
+  the CPU handler.
 - **Wind arrows** (`setArrows`, gpu/arrows.ts): a hybrid pass in the same
   layer — the CPU samples speed/direction at a sparse screen lattice with the
   exact tile-worker samplers (incl. the seamless circular vector blend), the
@@ -110,8 +94,8 @@ dropping the tile/bitmap machinery is worth.
   no tile seams; they fade out where the grid resolution drops below ~2px per
   cell (the bilinear derivative speckles there). Labels stay on the CPU
   contour tiles.
-- Clipping: bounds only; polygon clipping falls back to CPU (path A).
-- **Globe projection**: path B compiles its vertex stage around MapLibre's
+- Clipping: rectangular bounds, and polygons through the in-shader mask (clip-mask.ts).
+- **Globe projection**: the layer compiles its vertex stage around MapLibre's
   per-projection `shaderData` prelude (`projectTile`), so mercator, globe and
   the transition all render natively; the quad is a 128×128 mesh so it curves
   around the sphere. Data poleward of the mercator clamp (±85.05°) leaves the
@@ -128,6 +112,4 @@ dropping the tile/bitmap machinery is worth.
 
 ## Benchmarks
 
-`examples/gpu/benchmark.html` renders identical tile sets through the CPU
-protocol and `omProtocolGpu`, reports ms/tile, and pixel-diffs the two outputs
-for parity; it also sweeps `WeatherGpuLayer` full-viewport frame times.
+`examples/gpu/benchmark.html` sweeps `WeatherGpuLayer` full-viewport frame times.
