@@ -9,20 +9,20 @@ export default defineConfig({
 			insertTypesEntry: true
 		})
 	],
-	optimizeDeps: {
-		exclude: ['@openmeteo/file-reader', '@openmeteo/file-format-wasm']
-	},
 	build: {
-		chunkSizeWarningLimit: 1200,
+		// The file reader and its WASM binary are bundled (base64-inlined) so the
+		// module is self-contained and importable straight from a CDN; the lazily
+		// loaded reader chunk therefore exceeds the default size limit.
+		chunkSizeWarningLimit: 4000,
+		lib: {
+			entry: 'src/index.ts',
+			formats: ['es'],
+			fileName: () => 'index.mjs'
+		},
 		rolldownOptions: {
-			external: ['@openmeteo/file-reader', '@openmeteo/file-format-wasm'],
-			input: {
-				index: 'src/index.ts'
-			},
 			output: {
-				entryFileNames: `[name].mjs`
-			},
-			preserveEntrySignatures: 'strict'
+				chunkFileNames: '[name].mjs'
+			}
 		}
 	}
 });
