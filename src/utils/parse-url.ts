@@ -10,7 +10,9 @@ import {
 
 import { DomainMetaDataJson, ParsedUrlComponents, TileIndex } from '../types';
 
-const parseTileIndex = (url: string): { tileIndex: TileIndex | null; remainingUrl: string } => {
+export const parseTileIndex = (
+	url: string
+): { tileIndex: TileIndex | null; remainingUrl: string } => {
 	const match = url.match(TILE_SUFFIX_REGEX);
 	if (!match) {
 		return { tileIndex: null, remainingUrl: url };
