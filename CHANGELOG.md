@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/open-meteo/weather-map-layer/compare/v0.1.1...v0.1.2) (2026-09-19)
+
+
+### Bug Fixes
+
+* bring the leaflet, openlayers and mapbox adapters up to date ([#332](https://github.com/open-meteo/weather-map-layer/issues/332)) ([056b4a5](https://github.com/open-meteo/weather-map-layer/commit/056b4a5a84a2d433584e24dec31c0676a36727fc))
+
 ## [0.1.1](https://github.com/open-meteo/weather-map-layer/compare/v0.1.0...v0.1.1) (2026-09-17)
 
 
