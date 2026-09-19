@@ -4,7 +4,7 @@
 	"main": "dist/index.cjs",
 	"types": "dist/index.d.ts",
 	"author": "Open-Meteo <info@open-meteo.com>",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"module": "dist/index.mjs",
 	"exports": {
 		".": {
@@ -55,7 +55,7 @@
 		"build:umd": "vite build --config vite.config.umd.ts",
 		"build": "npm run build:esm && npm run build:cjs && npm run build:umd",
 		"prepare": "npm run build",
-		"serve": "concurrently --kill-others \"npm run dev:umd\" \"live-server --port=3000 --host=localhost --ignore=**/src/** --open=./examples/\""
+		"serve": "concurrently --kill-others \"npm run dev:umd\" \"live-server --port=5173 --host=localhost --ignore=**/src/** --open=./examples/\""
 	},
 	"devDependencies": {
 		"@trivago/prettier-plugin-sort-imports": "^6.0.0",
@@ -85,7 +85,7 @@
 	"dependencies": {
 		"@mapbox/tilebelt": "^2.0.3",
 		"@mapbox/vector-tile": "^3.0.0",
-		"@openmeteo/file-reader": "^0.0.18",
+		"@openmeteo/file-reader": "^0.0.19",
 		"maplibre-gl": "^6.5.0",
 		"pbf": "^5.1.0",
 		"point-in-polygon-hao": "^1.2.4"
