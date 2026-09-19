@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Weather Map Layer - GPU Tile Renderer Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.css" />
+		<!-- x-release-please-start-version -->
+		<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.1.1/dist/index.js"></script>
+		<!-- x-release-please-end -->
+		<!-- Local development -->
+		<script>
+			if (location.hostname === 'localhost' || location.href.startsWith('file://')) {
+				document.write('<script src="../../dist/index.js"><\/script>');
+			}
+		</script>
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<script type="module">
+			import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.mjs';
+
+			// `gpu: true` keeps the tile pipeline as it is, only the raster tiles are
+			// rendered by a WebGL2 shader instead of the CPU worker loop. Vector tiles,
+			// polygon clipping and browsers without WebGL2 keep using the workers.
+			const omProtocolSettings = { ...OMWeatherMapLayer.defaultOmProtocolSettings, gpu: true };
+			maplibregl.addProtocol('om', (params, abortController) =>
+				OMWeatherMapLayer.omProtocol(params, abortController, omProtocolSettings)
+			);
+
+			const map = new maplibregl.Map({
+				container: 'map',
+				style: 'https://static-assets.open-meteo.com/map-assets/styles/minimal-planet-maps.json', // replace with your own style sheet
+				hash: true
+			});
+
+			const omUrl = `https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m`;
+
+			map.on('load', () => {
+				map.addSource('omFileSource', {
+					url: 'om://' + omUrl,
+					type: 'raster',
+					maxzoom: 12
+				});
+				map.addLayer(
+					{
+						id: 'omFileLayer',
+						type: 'raster',
+						source: 'omFileSource',
+						paint: {
+							'raster-opacity': 0.75
+						}
+					},
+					'waterway-tunnel'
+				);
+			});
+		</script>
+	</body>
+</html>
