@@ -7,6 +7,7 @@ import { describe, expect, test } from 'vitest';
 import type {
 	AnyProjectionGridData,
 	DimensionRange,
+	Domain,
 	InterpolationMethod,
 	LCCProjectionData,
 	ProjectionGridFromGeographicOrigin,
@@ -14,8 +15,9 @@ import type {
 	RotatedLatLonProjectionData
 } from '../types';
 
-const dmiDomain = domainOptions.find((d) => d.value === 'dmi_harmonie_arome_europe');
-const knmiDomain = domainOptions.find((d) => d.value === 'knmi_harmonie_arome_europe');
+// Both are concrete (non-seamless) domains, so they always carry a grid.
+const dmiDomain = domainOptions.find((d) => d.value === 'dmi_harmonie_arome_europe') as Domain;
+const knmiDomain = domainOptions.find((d) => d.value === 'knmi_harmonie_arome_europe') as Domain;
 
 test('Test LambertConformalConicProjection for DMI', () => {
 	const projectedGrid = dmiDomain?.grid as AnyProjectionGridData;
