@@ -173,7 +173,7 @@ Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Embedder-Policy: require-corp
 ```
 
-(`require-corp` is what the Open-Meteo maps app uses; every cross-origin resource then needs CORS or a `Cross-Origin-Resource-Policy` header. `credentialless` is a more lenient alternative where supported.) Without these headers the protocol still works, but every tile request has to copy the whole variable into a worker, which blocks the main thread noticeably while panning and zooming. `npm run serve` sends them (`scripts/serve-examples.cjs`); `crossOriginIsolated` in the console tells whether a page has them.
+(`require-corp` is what the Open-Meteo maps app uses; every cross-origin resource then needs CORS or a `Cross-Origin-Resource-Policy` header. `credentialless` is a more lenient alternative where supported.) Without these headers the protocol still works, but every tile request has to copy the whole variable into a worker, which blocks the main thread noticeably while panning and zooming. `npm run serve` sends them (`scripts/serve-examples.js`); `crossOriginIsolated` in the console tells whether a page has them.
 
 #### Maptiler SDK
 

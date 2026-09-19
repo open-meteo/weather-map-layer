@@ -55,7 +55,7 @@
 		"build:umd": "vite build --config vite.config.umd.ts",
 		"build": "npm run build:esm && npm run build:cjs && npm run build:umd",
 		"prepare": "npm run build",
-		"serve": "concurrently --kill-others \"npm run dev:umd\" \"node scripts/serve-examples.cjs\""
+		"serve": "concurrently --kill-others \"npm run dev:umd\" \"node scripts/serve-examples.js\""
 	},
 	"devDependencies": {
 		"@trivago/prettier-plugin-sort-imports": "^6.0.0",
