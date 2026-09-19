@@ -100,17 +100,6 @@ export class WeatherMapLayerFileReader {
 		}
 	}
 
-	/** Find the first derivation rule that matches the given variable name. */
-	private findDerivationRule(variable: string): VariableDerivationRule | undefined {
-		return this.allDerivationRules.find((rule) => {
-			if (typeof rule.pattern === 'string') {
-				return variable.includes(rule.pattern);
-			} else {
-				return rule.pattern.test(variable);
-			}
-		});
-	}
-
 	/** Read variable data using a derivation rule. */
 	private async readWithDerivationRule(
 		reader: OmFileReader,
@@ -231,7 +220,7 @@ export class WeatherMapLayerFileReader {
 		signal?: AbortSignal
 	): Promise<Data> {
 		return this.withReader(omUrl, (reader) => {
-			const derivationRule = this.findDerivationRule(variable);
+			const derivationRule = findDerivationRule(variable, this.allDerivationRules);
 
 			if (derivationRule) {
 				return this.readWithDerivationRule(reader, variable, derivationRule, ranges, signal);
@@ -281,7 +270,7 @@ export class WeatherMapLayerFileReader {
 
 	/** Dimensions ([ny, nx]) of a variable, or of its primary source when derived. */
 	private async readVariableDimensions(reader: OmFileReader, variable: string): Promise<number[]> {
-		const rule = this.findDerivationRule(variable);
+		const rule = findDerivationRule(variable, this.allDerivationRules);
 		const name = rule ? rule.getSourceVars(variable)[0] : variable;
 		const variableReader = await reader.getChildByName(name);
 		if (!variableReader) {
@@ -310,7 +299,7 @@ export class WeatherMapLayerFileReader {
 		signal?: AbortSignal
 	): Promise<void> {
 		await this.withReader(omUrl, async (reader) => {
-			const derivationRule = this.findDerivationRule(variable);
+			const derivationRule = findDerivationRule(variable, this.allDerivationRules);
 			const varsToPrefetch = derivationRule ? derivationRule.getSourceVars(variable) : [variable];
 
 			await Promise.all(
@@ -355,9 +344,18 @@ export class WeatherMapLayerFileReader {
 /**
  * Rule for deriving values and directions from one or two source variables.
  */
-interface VariableDerivationRule {
+export interface VariableDerivationRule {
 	/** Pattern to match variable names (string or RegExp) */
 	pattern: string | RegExp;
+
+	/**
+	 * What `process` fills in, declared up front because consumers decide
+	 * whether to offer arrows for a variable before any data is read. `barbs`
+	 * marks the values as a wind speed: barbs encode knots, so a variable
+	 * whose directions come with another quantity (wave height in metres,
+	 * current speed) is drawn with arrows only.
+	 */
+	provides: { directions: boolean; barbs: boolean };
 
 	/** Derive two variables from the requested variable. */
 	getSourceVars: (variable: string) => [string, string];
@@ -378,44 +376,76 @@ interface VariableDerivationRule {
 	process: (primary: Float32Array, secondary: Float32Array) => Data;
 }
 
+/** First rule whose pattern matches the variable name, if any. */
+const findDerivationRule = (
+	variable: string,
+	rules: VariableDerivationRule[]
+): VariableDerivationRule | undefined =>
+	rules.find((rule) =>
+		typeof rule.pattern === 'string' ? variable.includes(rule.pattern) : rule.pattern.test(variable)
+	);
+
+/**
+ * Whether reading `variable` yields a direction field, i.e. whether arrows
+ * can be rendered for it. Uses the same rule lookup as the reader, so a UI
+ * offering arrows stays in step with what the data can provide.
+ */
+export const variableHasDirections = (
+	variable: string,
+	rules: VariableDerivationRule[] = DEFAULT_DERIVATION_RULES
+): boolean => findDerivationRule(variable, rules)?.provides.directions ?? false;
+
+/**
+ * Whether `variable` can be drawn as station-model wind barbs: its values
+ * must be a wind speed, since barbs encode knots.
+ */
+export const variableSupportsBarbs = (
+	variable: string,
+	rules: VariableDerivationRule[] = DEFAULT_DERIVATION_RULES
+): boolean => findDerivationRule(variable, rules)?.provides.barbs ?? false;
+
+/** Vector magnitude and meteorological direction from u/v components. */
+const uvToSpeedAndDirection = (u: Float32Array, v: Float32Array): Data => {
+	const BufferConstructor = u.buffer.constructor as typeof ArrayBuffer;
+	const values = new Float32Array(new BufferConstructor(u.byteLength));
+	const directions = new Float32Array(new BufferConstructor(u.byteLength));
+
+	for (let i = 0; i < u.length; i++) {
+		values[i] = Math.sqrt(u[i] * u[i] + v[i] * v[i]);
+		directions[i] = (radiansToDegrees(fastAtan2(u[i], v[i])) + 180) % 360;
+	}
+
+	return { values, directions };
+};
+
+/** Rule for `_u_<postfix>` / `_v_<postfix>` pairs: each name maps to its sibling. */
+const uvRule = (postfix: string, barbs: boolean): VariableDerivationRule => ({
+	pattern: new RegExp(`_[uv]_${postfix}`),
+	provides: { directions: true, barbs },
+	// Derived magnitude; the u-component's stored scale factor is a good proxy
+	// for the speed's quantization step.
+	scaleFactor: 'primary',
+	getSourceVars: (variable: string) => [
+		variable.replace(`_v_${postfix}`, `_u_${postfix}`),
+		variable.replace(`_u_${postfix}`, `_v_${postfix}`)
+	],
+	process: uvToSpeedAndDirection
+});
+
 /**
  * Default derivation rules for common meteorological variables.
  */
 const DEFAULT_DERIVATION_RULES: VariableDerivationRule[] = [
-	// UV wind components -> speed and direction
-	{
-		pattern: /_[uv]_(component|current)/,
-		// Derived magnitude; the u-component's stored scale factor is a good proxy
-		// for the speed's quantization step.
-		scaleFactor: 'primary',
-		getSourceVars: (variable: string) => {
-			let postfix = '';
-			const match = variable.match(/_[uv]_(?<postfix>component|current)/);
-			if (match?.groups) {
-				postfix = match.groups.postfix;
-			}
-			return [
-				variable.replace(`_v_${postfix}`, `_u_${postfix}`),
-				variable.replace(`_u_${postfix}`, `_v_${postfix}`)
-			];
-		},
-		process: (u: Float32Array, v: Float32Array) => {
-			const BufferConstructor = u.buffer.constructor as typeof ArrayBuffer;
-			const values = new Float32Array(new BufferConstructor(u.byteLength));
-			const directions = new Float32Array(new BufferConstructor(u.byteLength));
+	// Wind components -> speed and direction
+	uvRule('component', true),
 
-			for (let i = 0; i < u.length; i++) {
-				values[i] = Math.sqrt(u[i] * u[i] + v[i] * v[i]);
-				directions[i] = (radiansToDegrees(fastAtan2(u[i], v[i])) + 180) % 360;
-			}
+	// Ocean currents -> speed and direction
+	uvRule('current', false),
 
-			return { values, directions };
-		}
-	},
-
-	// Speed/Direction pairs (already stored separately)
+	// Wind speed/direction pairs (already stored separately)
 	{
 		pattern: /_(?:speed|direction)_/,
+		provides: { directions: true, barbs: true },
 		scaleFactor: 'primary',
 		getSourceVars: (variable: string) => [
 			variable.includes('_speed_') ? variable : variable.replace('_direction_', '_speed_'),
@@ -430,6 +460,7 @@ const DEFAULT_DERIVATION_RULES: VariableDerivationRule[] = [
 	// Wave height and direction
 	{
 		pattern: /wave_(?:height|direction)/,
+		provides: { directions: true, barbs: false },
 		scaleFactor: 'primary',
 		getSourceVars: (variable: string) => [
 			variable.replace('wave_direction', 'wave_height'),

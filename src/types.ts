@@ -24,6 +24,9 @@ export interface DataIdentityOptions {
 
 export type InterpolationMethod = 'nearest' | 'linear' | 'cubic' | 'monotone';
 
+/** Shape drawn for directions: a plain arrow, or station-model wind barbs. */
+export type ArrowStyle = 'arrow' | 'barb';
+
 export type TileSize = 64 | 128 | 256 | 512 | 1024 | 2048;
 
 export interface RenderOptions {
@@ -33,6 +36,7 @@ export interface RenderOptions {
 	colorBlend: boolean;
 	drawGrid: boolean;
 	drawArrows: boolean;
+	arrowStyle: ArrowStyle;
 	drawContours: boolean;
 	intervals: number[];
 	colorScale: RenderableColorScale;
