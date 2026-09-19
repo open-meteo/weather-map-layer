@@ -1,11 +1,15 @@
+import { variableSupportsBarbs } from '../om-file-reader';
+
 import { currentBounds, setClippingBounds } from './bounds';
 import { type ResolvedClippingOptions, resolveClippingOptions } from './clipping';
 import {
+	DEFAULT_ARROW_STYLE,
 	DEFAULT_COLOR_BLEND,
 	DEFAULT_INTERPOLATION,
 	DEFAULT_INTERVAL,
 	DEFAULT_TILE_SIZE,
 	RESOLVE_DOMAIN_REGEX,
+	VALID_ARROW_STYLES,
 	VALID_INTERPOLATIONS,
 	VALID_TILE_SIZES
 } from './constants';
@@ -14,6 +18,7 @@ import { getColorScale, resolveColorScale } from './styling';
 
 import type {
 	AnyDomain,
+	ArrowStyle,
 	ClippingOptions,
 	ColorScales,
 	DataIdentityOptions,
@@ -133,6 +138,13 @@ const defaultResolveRenderOptions = (
 
 	const drawGrid = params.get('grid') === 'true';
 	const drawArrows = params.get('arrows') === 'true';
+	const requestedArrowStyle = parseArrowStyle(params.get('arrow_style'));
+	// Barbs encode knots, so a variable whose directions come with another
+	// quantity (waves, currents) is drawn with arrows whatever was requested
+	const arrowStyle =
+		requestedArrowStyle === 'barb' && !variableSupportsBarbs(dataOptions.variable)
+			? 'arrow'
+			: requestedArrowStyle;
 	const drawContours = params.get('contours') === 'true';
 
 	return {
@@ -141,6 +153,7 @@ const defaultResolveRenderOptions = (
 		colorBlend,
 		drawGrid,
 		drawArrows,
+		arrowStyle,
 		drawContours,
 		colorScale,
 		intervals
@@ -153,6 +166,14 @@ const parseTileSize = (value: string | null): TileSize => {
 		throw new Error(`Invalid tile size, please use one of: ${VALID_TILE_SIZES.join(', ')}`);
 	}
 	return tileSize as TileSize;
+};
+
+const parseArrowStyle = (value: string | null): ArrowStyle => {
+	const arrowStyle = value ?? DEFAULT_ARROW_STYLE;
+	if (!VALID_ARROW_STYLES.includes(arrowStyle as ArrowStyle)) {
+		throw new Error(`Invalid arrow style, please use one of: ${VALID_ARROW_STYLES.join(', ')}`);
+	}
+	return arrowStyle as ArrowStyle;
 };
 
 const parseInterpolation = (value: string | null): InterpolationMethod => {

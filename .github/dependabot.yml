@@ -9,7 +9,7 @@ updates:
     allow:
       - dependency-type: direct
     commit-message:
-      prefix: 'fix: '
+      prefix: 'chore(deps): '
     cooldown:
       default-days: 7
     groups:
@@ -23,6 +23,6 @@ updates:
       interval: weekly
       time: '10:00'
     commit-message:
-      prefix: 'fix: '
+      prefix: 'chore(deps): '
     cooldown:
       default-days: 7

@@ -13,6 +13,7 @@ import {
 	sampleBlendedVector
 } from './utils/seamless-sampling';
 import { makeColorSampler } from './utils/styling';
+import { generateWindBarbs } from './utils/wind-barbs';
 
 import { GridFactory } from './grids/index';
 
@@ -178,7 +179,8 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 			generateGridPoints(pbf, gridSources, x, y, z, clippingOptions);
 		}
 		if (renderOptions.drawArrows && directions) {
-			generateArrows(pbf, sampleVector, x, y, z, clippingOptions);
+			const draw = renderOptions.arrowStyle === 'barb' ? generateWindBarbs : generateArrows;
+			draw(pbf, sampleVector, x, y, z, clippingOptions);
 		}
 		if (renderOptions.drawContours) {
 			generateContours(

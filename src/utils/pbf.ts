@@ -1,6 +1,6 @@
 import { PbfWriter } from 'pbf';
 
-interface Feature {
+export interface Feature {
 	id: number;
 	type: number;
 	properties: Record<string, unknown>;
