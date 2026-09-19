@@ -146,6 +146,8 @@ export interface TileRequest {
 	ranges: DimensionRange[];
 	clippingOptions: ResolvedClippingOptions | undefined;
 	signal?: AbortSignal;
+	/** Rasterise on the worker's WebGL2 context instead of the pixel loop (raster tiles only). */
+	gpu?: boolean;
 }
 
 export type WorkerRequest = TileRequest;

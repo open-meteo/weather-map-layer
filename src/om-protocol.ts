@@ -7,7 +7,7 @@ import { parseMetaJson } from './utils/parse-url';
 import { COLOR_SCALES_WITH_ALIASES as defaultColorScales } from './utils/styling';
 
 import { domainOptions as defaultDomainOptions } from './domains';
-import { getSharedTileRenderer, isGpuSupported } from './gpu/tile-renderer';
+import { isGpuSupported } from './gpu/tile-renderer';
 import { GridFactory } from './grids/index';
 import { defaultFileReaderConfig } from './om-file-reader';
 import { ensureData, getOrCreateState, getProtocolInstance } from './om-protocol-state';
@@ -93,25 +93,14 @@ export const omProtocol = async (
 		throw new Error(`Tile coordinates required for ${params.type} request`);
 	}
 
-	// Polygon clipping is rasterised per pixel by the CPU worker only
-	if (
-		settings.gpu &&
+	// Polygon clipping is rasterised per pixel by the CPU loop only
+	const gpu =
+		settings.gpu === true &&
 		params.type === 'image' &&
 		!request.clippingOptions?.polygons &&
-		isGpuSupported()
-	) {
-		const bitmap = getSharedTileRenderer().renderTile({
-			tileIndex: request.tileIndex,
-			data,
-			ranges: state.ranges,
-			domain: request.dataOptions.domain,
-			renderOptions: request.renderOptions,
-			clipBounds: request.clippingOptions?.bounds
-		});
-		return { data: bitmap };
-	}
+		isGpuSupported();
 
-	const tileResult = await requestTile(url, request, data, state, params.type, signal);
+	const tileResult = await requestTile(url, request, data, state, params.type, signal, gpu);
 
 	if (tileResult.cancelled || !tileResult.data) {
 		return { data: null };
@@ -141,7 +130,8 @@ const requestTile = async (
 	data: Data,
 	state: OmUrlState,
 	type: 'image' | 'arrayBuffer',
-	signal?: AbortSignal
+	signal?: AbortSignal,
+	gpu = false
 ): TilePromise => {
 	if (!request.tileIndex) {
 		throw new Error('Tile coordinates required for tile request');
@@ -174,7 +164,8 @@ const requestTile = async (
 		dataOptions: request.dataOptions,
 		renderOptions: request.renderOptions,
 		clippingOptions: request.clippingOptions,
-		signal
+		signal,
+		gpu
 	});
 };
 

@@ -158,7 +158,9 @@ For the vector source examples there is the `examples/vector` sub-directory with
 
 ## GPU tile rendering
 
-`gpu: true` in the protocol settings rasterises the raster tiles with a WebGL2 shader instead of the CPU worker pool. The tile pipeline stays exactly the same (URLs, TileJSON, data loading, partial ranges, vector tiles), only the per-pixel projection, interpolation and colour mapping move to the GPU; the shaders are a 1:1 port of the CPU grid and interpolation code, so both draw the same picture up to fp32 rounding. Vector tiles, polygon clipping and browsers without WebGL2 keep using the workers automatically.
+`gpu: true` in the protocol settings rasterises the raster tiles with a WebGL2 shader instead of the CPU pixel loop. The tile pipeline stays exactly the same (URLs, TileJSON, data loading, partial ranges, vector tiles, worker pool, cancellation), only the per-pixel projection, interpolation and colour mapping move to the GPU; the shaders are a 1:1 port of the CPU grid and interpolation code, so both draw the same picture up to fp32 rounding. Vector tiles, polygon clipping and browsers without WebGL2 keep using the pixel loop automatically.
+
+GPU tiles are rendered by one of the tile workers on its own WebGL2 context, never on the main thread. The values of a data array are uploaded to that worker once (not once per tile, which matters on pages without cross-origin isolation where every message clones them), tiles are queued and dropped when the map cancels them, and each tile is fenced so the worker never waits for the GPU.
 
 ```ts
 const omProtocolSettings = { ...OMWeatherMapLayer.defaultOmProtocolSettings, gpu: true };

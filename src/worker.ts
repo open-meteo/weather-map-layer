@@ -9,6 +9,7 @@ import { halfQuantum as computeHalfQuantum, tile2lat, tile2lon } from './utils/m
 import { makeColorSampler } from './utils/styling';
 import { generateWindBarbs } from './utils/wind-barbs';
 
+import { acceptGpuTile, cancelGpuTile } from './gpu/tile-worker';
 import { GridFactory } from './grids/index';
 
 import { WorkerRequest } from './types';
@@ -18,6 +19,7 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 
 	// Handle cancellation messages
 	if (message.data.type === 'cancel') {
+		cancelGpuTile(key);
 		postMessage({ type: 'cancelled', key });
 		return;
 	}
@@ -31,6 +33,9 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 	const colorBlend = message.data.renderOptions.colorBlend;
 	const colorScale = message.data.renderOptions.colorScale;
 	const clippingOptions = message.data.clippingOptions;
+
+	// GPU-flagged raster tiles skip the pixel loop (unless the worker has no WebGL2)
+	if (acceptGpuTile(message.data)) return;
 
 	if (!values) {
 		throw new Error('No values provided');

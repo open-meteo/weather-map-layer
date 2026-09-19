@@ -1,3 +1,5 @@
+import { GpuTileRouting } from './gpu/tile-pool';
+import type { GpuWorkerResponse } from './gpu/tile-pool';
 // @ts-expect-error worker import
 import TileWorker from './worker?worker&inline';
 
@@ -12,8 +14,10 @@ export class WorkerPool {
 		{
 			subscribers: Array<{ resolve: (tile: TileResult) => void; reject: (error: Error) => void }>;
 			worker: Worker;
+			request: Omit<TileRequest, 'signal'>;
 		}
 	>();
+	private gpu = new GpuTileRouting();
 
 	constructor() {
 		if (typeof window === 'undefined' || typeof Worker === 'undefined') {
@@ -32,7 +36,15 @@ export class WorkerPool {
 	}
 
 	private handleMessage(message: MessageEvent): void {
-		const data = message.data as WorkerResponse;
+		const data = message.data as WorkerResponse | GpuWorkerResponse;
+
+		if (this.gpu.isResponse(data)) {
+			this.gpu.handleResponse(data, (key) => {
+				const p = this.pendingRequests.get(key);
+				if (p) p.worker.postMessage(this.gpu.message(p.request));
+			});
+			return;
+		}
 
 		const pending = this.pendingRequests.get(data.key);
 
@@ -98,20 +110,22 @@ export class WorkerPool {
 		let pending = this.pendingRequests.get(key);
 
 		if (!pending) {
-			const worker = this.getNextWorker();
+			// GPU requests share one worker: one GL context, one texture cache
+			const worker = this.gpu.accepts(request) ? this.workers[0] : this.getNextWorker();
 			if (!worker) {
 				return Promise.reject(new Error('No workers available (likely running in SSR)'));
 			}
 
+			// Don't send the signal object to the worker (it's not transferable)
+			const { signal: _signal, ...requestWithoutSignal } = request;
 			pending = {
 				subscribers: [],
-				worker
+				worker,
+				request: requestWithoutSignal
 			};
 			this.pendingRequests.set(key, pending);
 
-			// Don't send the signal object to the worker (it's not transferable)
-			const { signal: _signal, ...requestWithoutSignal } = request;
-			worker.postMessage(requestWithoutSignal);
+			worker.postMessage(this.gpu.message(requestWithoutSignal));
 		}
 
 		return new Promise<TileResult>((resolve, reject) => {
