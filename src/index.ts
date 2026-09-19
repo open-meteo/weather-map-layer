@@ -26,6 +26,7 @@ export {
 export { updateCurrentBounds } from './utils/bounds';
 export { createClippingTester } from './utils/clipping';
 export { domainStep, closestModelRun } from './utils/model-runs';
+export { variableHasDirections, variableSupportsBarbs } from './om-file-reader';
 export { getCachedResolvedClipping } from './utils/parse-request';
 export { getColor, getColorScale } from './utils/styling';
 export { solarPosition, sunElevationSine } from './utils/sun';
@@ -84,3 +85,5 @@ export type {
 	SeamlessLayer,
 	SunShadowOptions
 } from './types';
+
+export type { VariableDerivationRule } from './om-file-reader';

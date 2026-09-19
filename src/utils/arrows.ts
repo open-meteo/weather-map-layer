@@ -1,9 +1,10 @@
 import { PbfWriter } from 'pbf';
 
-import { type ResolvedClippingOptions, createClippingTester } from './clipping';
+import type { ResolvedClippingOptions } from './clipping';
 import { ARROW_LATTICE, VECTOR_TILE_EXTENT } from './constants';
-import { degreesToRadians, rotatePoint, tile2lat, tile2lon } from './math';
-import { command, writeLayer, zigzag } from './pbf';
+import { forEachLatticePoint } from './lattice';
+import { degreesToRadians, rotatePoint } from './math';
+import { type Feature, command, writeLayer, zigzag } from './pbf';
 import type { VectorSampler } from './seamless-sampling';
 
 export const generateArrows = (
@@ -23,133 +24,118 @@ export const generateArrows = (
 		arrows = 40;
 	}
 
-	const features = [];
+	const features: Feature[] = [];
 	const size = extent / arrows;
 
 	let cursor = [0, 0];
-	const isInsideClip = createClippingTester(clippingOptions);
 
-	// Stepped by index rather than by accumulating `size`, which drifts. The
-	// far edge is included: a shape there is clipped to its own tile, and the
-	// neighbouring tile draws the other half of it.
-	for (let row = 0; row <= arrows; row++) {
-		const tileY = (row * extent) / arrows;
-		const lat = tile2lat(y + tileY / extent, z);
-		for (let column = 0; column <= arrows; column++) {
-			const tileX = (column * extent) / arrows;
-			const lon = tile2lon(x + tileX / extent, z);
+	forEachLatticePoint(arrows, x, y, z, extent, clippingOptions, (tileX, tileY, lat, lon) => {
+		// correct center would be (- size / 2 ), but it looks way better on the edges when center is far end of box
+		// const center = [tileX - size / 2, tileY - size / 2];
+		const center = [tileX, tileY];
+		const geom = [];
 
-			// correct center would be (- size / 2 ), but it looks way better on the edges when center is far end of box
-			// const center = [tileX - size / 2, tileY - size / 2];
-			const center = [tileX, tileY];
-			const geom = [];
+		const { value: speed, direction: directionDeg } = sampleVector(lat, lon);
+		const direction = degreesToRadians(directionDeg + 180);
 
-			if (isInsideClip && !isInsideClip(lon, lat)) {
-				continue;
-			}
+		const properties: { value?: number; direction?: number } = {
+			value: speed,
+			direction: direction
+		};
 
-			const { value: speed, direction: directionDeg } = sampleVector(lat, lon);
-			const direction = degreesToRadians(directionDeg + 180);
-
-			const properties: { value?: number; direction?: number } = {
-				value: speed,
-				direction: direction
-			};
-
-			const rotation = direction;
-			let length = 0.85;
-			if (speed < 20) {
-				length = 0.8;
-			}
-			if (speed < 10) {
-				length = 0.75;
-			}
-			if (speed < 5) {
-				length = 0.7;
-			}
-			if (speed < 3) {
-				length = 0.6;
-			}
-			if (speed < 2) {
-				length = 0.55;
-			}
-			if (speed < 1) {
-				length = 0.5;
-			}
-
-			// left arrow head
-			const [xt0, yt0] = rotatePoint(
-				center[0],
-				center[1],
-				rotation,
-				center[0] - 0.13 * size,
-				center[1] - ((size * length) / 2 - size * 0.22)
-			);
-			geom.push(command(1, 1)); // MoveTo
-			geom.push(zigzag(xt0));
-			geom.push(zigzag(yt0));
-			cursor = [xt0, yt0];
-
-			// arrow head middle
-			let [xt1, yt1] = rotatePoint(
-				center[0],
-				center[1],
-				rotation,
-				center[0],
-				center[1] - (size * length) / 2
-			);
-			geom.push(command(2, 1)); // LineTo
-			geom.push(zigzag(xt1 - cursor[0]));
-			geom.push(zigzag(yt1 - cursor[1]));
-			cursor = [xt1, yt1];
-
-			// right arrow head
-			[xt1, yt1] = rotatePoint(
-				center[0],
-				center[1],
-				rotation,
-				center[0] + 0.13 * size,
-				center[1] - ((size * length) / 2 - size * 0.22)
-			);
-			geom.push(command(2, 1)); // LineTo
-			geom.push(zigzag(xt1 - cursor[0]));
-			geom.push(zigzag(yt1 - cursor[1]));
-			cursor = [xt1, yt1];
-
-			// arrow head middle
-			[xt1, yt1] = rotatePoint(
-				center[0],
-				center[1],
-				rotation,
-				center[0],
-				center[1] - (size * length) / 2
-			);
-			geom.push(command(1, 1)); // MoveTo
-			geom.push(zigzag(xt1 - cursor[0]));
-			geom.push(zigzag(yt1 - cursor[1]));
-			cursor = [xt1, yt1];
-
-			// arrow bottom middle
-			[xt1, yt1] = rotatePoint(
-				center[0],
-				center[1],
-				rotation,
-				center[0],
-				center[1] + (size * length) / 2
-			);
-			geom.push(command(2, 1)); // LineTo
-			geom.push(zigzag(xt1 - cursor[0]));
-			geom.push(zigzag(yt1 - cursor[1]));
-			cursor = [xt1, yt1];
-
-			features.push({
-				id: tileX + tileY,
-				type: 2, // 2 = LineString
-				properties: properties,
-				geom: geom
-			});
+		const rotation = direction;
+		let length = 0.85;
+		if (speed < 20) {
+			length = 0.8;
 		}
-	}
+		if (speed < 10) {
+			length = 0.75;
+		}
+		if (speed < 5) {
+			length = 0.7;
+		}
+		if (speed < 3) {
+			length = 0.6;
+		}
+		if (speed < 2) {
+			length = 0.55;
+		}
+		if (speed < 1) {
+			length = 0.5;
+		}
+
+		// left arrow head
+		const [xt0, yt0] = rotatePoint(
+			center[0],
+			center[1],
+			rotation,
+			center[0] - 0.13 * size,
+			center[1] - ((size * length) / 2 - size * 0.22)
+		);
+		geom.push(command(1, 1)); // MoveTo
+		geom.push(zigzag(xt0));
+		geom.push(zigzag(yt0));
+		cursor = [xt0, yt0];
+
+		// arrow head middle
+		let [xt1, yt1] = rotatePoint(
+			center[0],
+			center[1],
+			rotation,
+			center[0],
+			center[1] - (size * length) / 2
+		);
+		geom.push(command(2, 1)); // LineTo
+		geom.push(zigzag(xt1 - cursor[0]));
+		geom.push(zigzag(yt1 - cursor[1]));
+		cursor = [xt1, yt1];
+
+		// right arrow head
+		[xt1, yt1] = rotatePoint(
+			center[0],
+			center[1],
+			rotation,
+			center[0] + 0.13 * size,
+			center[1] - ((size * length) / 2 - size * 0.22)
+		);
+		geom.push(command(2, 1)); // LineTo
+		geom.push(zigzag(xt1 - cursor[0]));
+		geom.push(zigzag(yt1 - cursor[1]));
+		cursor = [xt1, yt1];
+
+		// arrow head middle
+		[xt1, yt1] = rotatePoint(
+			center[0],
+			center[1],
+			rotation,
+			center[0],
+			center[1] - (size * length) / 2
+		);
+		geom.push(command(1, 1)); // MoveTo
+		geom.push(zigzag(xt1 - cursor[0]));
+		geom.push(zigzag(yt1 - cursor[1]));
+		cursor = [xt1, yt1];
+
+		// arrow bottom middle
+		[xt1, yt1] = rotatePoint(
+			center[0],
+			center[1],
+			rotation,
+			center[0],
+			center[1] + (size * length) / 2
+		);
+		geom.push(command(2, 1)); // LineTo
+		geom.push(zigzag(xt1 - cursor[0]));
+		geom.push(zigzag(yt1 - cursor[1]));
+		cursor = [xt1, yt1];
+
+		features.push({
+			id: tileX + tileY,
+			type: 2, // 2 = LineString
+			properties: properties,
+			geom: geom
+		});
+	});
 
 	// write Layer
 	pbf.writeMessage(3, writeLayer, {
