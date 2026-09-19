@@ -8,8 +8,12 @@ import {
 } from '@openmeteo/file-reader';
 
 import { fastAtan2, radiansToDegrees } from './utils/math';
+import { wktToGridData } from './utils/wkt';
 
-import type { Data, DimensionRange } from './types';
+import type { Data, DimensionRange, GridData } from './types';
+
+/** Grid definitions are memoized per file URL; every timestep is a new URL. */
+const GRID_DATA_CACHE_MAX = 32;
 
 /**
  * Configuration options for the WeatherMapLayerFileReader.
@@ -51,6 +55,8 @@ export class WeatherMapLayerFileReader {
 	private readonly allDerivationRules: VariableDerivationRule[];
 	/** Memoizes one backend per URL, so repeat reads skip the HEAD request. */
 	private readonly backendPool: OmHttpBackendPool;
+	/** Grid definitions by file URL, see `readGridData`. */
+	private readonly gridDataCache = new Map<string, Promise<GridData>>();
 
 	constructor(config: FileReaderConfig = {}) {
 		this.config = {
@@ -222,6 +228,63 @@ export class WeatherMapLayerFileReader {
 				return this.readSimpleVariable(reader, variable, ranges, signal);
 			}
 		});
+	}
+
+	/**
+	 * Read the grid definition of the given .om file from the dimensions of
+	 * `variable` (or of its primary source variable when it is derived) and the
+	 * file's `crs_wkt` attribute. Every tile request of a file resolves its grid,
+	 * so the result is memoized per URL; failures are not kept.
+	 */
+	async readGridData(omUrl: string, variable: string): Promise<GridData> {
+		const cached = this.gridDataCache.get(omUrl);
+		if (cached) {
+			return cached;
+		}
+
+		const gridData = this.withReader(omUrl, async (reader) => {
+			const dimensions = await this.readVariableDimensions(reader, variable);
+			const crsReader = await reader.getChildByName('crs_wkt');
+			if (!crsReader) {
+				throw new Error(`No crs_wkt attribute in ${omUrl}`);
+			}
+			try {
+				const wkt = crsReader.readScalar<string>(OmDataType.String);
+				if (!wkt) {
+					throw new Error(`Empty crs_wkt attribute in ${omUrl}`);
+				}
+				const [ny, nx] = dimensions;
+				return wktToGridData(wkt, nx, ny);
+			} finally {
+				crsReader.dispose();
+			}
+		});
+		gridData.catch(() => this.gridDataCache.delete(omUrl));
+
+		this.gridDataCache.set(omUrl, gridData);
+		if (this.gridDataCache.size > GRID_DATA_CACHE_MAX) {
+			this.gridDataCache.delete(this.gridDataCache.keys().next().value!);
+		}
+		return gridData;
+	}
+
+	/** Dimensions ([ny, nx]) of a variable, or of its primary source when derived. */
+	private async readVariableDimensions(reader: OmFileReader, variable: string): Promise<number[]> {
+		const rule = findDerivationRule(variable, this.allDerivationRules);
+		const name = rule ? rule.getSourceVars(variable)[0] : variable;
+		const variableReader = await reader.getChildByName(name);
+		if (!variableReader) {
+			throw new Error(`Variable: ${name} not found`);
+		}
+		try {
+			const dimensions = variableReader.getDimensions();
+			if (dimensions.length !== 2) {
+				throw new Error(`Variable ${name} is not a 2D grid: dimensions ${dimensions.join('x')}`);
+			}
+			return dimensions;
+		} finally {
+			variableReader.dispose();
+		}
 	}
 
 	/**

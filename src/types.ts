@@ -10,7 +10,14 @@ export interface OmProtocolInstance {
 }
 
 export interface DataIdentityOptions {
-	domain: Domain;
+	/**
+	 * Catalogue entry of the file's domain, when the URL names one that is in
+	 * `domainOptions`. Undefined for files from unknown domains, which are
+	 * georeferenced from their own `crs_wkt` attribute instead.
+	 */
+	domain?: Domain;
+	/** Grid the data is georeferenced with: the domain's, or the file's own. */
+	grid: GridData;
 	variable: string;
 	bounds: Bounds | undefined;
 }
@@ -60,14 +67,21 @@ export interface OmUrlState {
 	lastAccess: number;
 }
 
+export interface ResolvedRequest {
+	dataOptions: DataIdentityOptions;
+	renderOptions: RenderOptions;
+}
+
 /**
  * Custom resolver function type.
- * Receives parsed URL components and settings, returns resolved identity and options.
+ * Receives parsed URL components, the settings and the file reader (to read
+ * grid information from the file itself), returns resolved identity and options.
  */
 export type RequestResolver = (
 	urlComponents: ParsedUrlComponents,
-	settings: OmProtocolSettings
-) => { dataOptions: DataIdentityOptions; renderOptions: RenderOptions };
+	settings: OmProtocolSettings,
+	reader: WeatherMapLayerFileReader
+) => ResolvedRequest | Promise<ResolvedRequest>;
 
 export type PostReadCallback =
 	((omFileReader: WeatherMapLayerFileReader, data: Data, state: OmUrlState) => void) | undefined;
