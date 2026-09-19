@@ -89,6 +89,15 @@ export interface OmProtocolSettings {
 	maxStatesWithData?: number;
 
 	/**
+	 * Rasterise raster tiles with a WebGL2 shader instead of the CPU worker
+	 * pool. Same tile pipeline, same picture up to fp32 rounding; only the
+	 * per-pixel projection, interpolation and colour mapping move to the GPU.
+	 * Vector tiles, polygon clipping and browsers without WebGL2 keep using
+	 * the workers. @default false
+	 */
+	gpu?: boolean;
+
+	/**
 	 * Optional custom resolver for URL settings.
 	 * Receives parsed URL components and returns resolved settings.
 	 * Default implementation uses standard query param parsing.
@@ -137,6 +146,8 @@ export interface TileRequest {
 	ranges: DimensionRange[];
 	clippingOptions: ResolvedClippingOptions | undefined;
 	signal?: AbortSignal;
+	/** Rasterise on the worker's WebGL2 context instead of the pixel loop (raster tiles only). */
+	gpu?: boolean;
 }
 
 export type WorkerRequest = TileRequest;
