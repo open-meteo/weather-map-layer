@@ -143,8 +143,10 @@ describe('addLeafletProtocolSupport', () => {
 				zIndex: 10
 			}) as unknown as MockLayerInstance;
 
-			// The mock GridLayer stores options in _options
-			expect(layer._options.tileSize).toBe(256);
+			// The mock GridLayer stores options in _options; the protocol's 512 px
+			// tiles are requested one zoom level up to match MapLibre density
+			expect(layer._options.tileSize).toBe(512);
+			expect(layer._options.zoomOffset).toBe(-1);
 			expect(layer._options.opacity).toBe(0.5);
 			expect(layer._options.zIndex).toBe(10);
 		});
@@ -154,10 +156,12 @@ describe('addLeafletProtocolSupport', () => {
 			adapter.addProtocol('om', createMockHandler());
 
 			const layer = adapter.createTileLayer('om://example.com/tiles.json', {
-				tileSize: 512
+				tileSize: 256,
+				zoomOffset: 0
 			}) as unknown as MockLayerInstance;
 
-			expect(layer._options.tileSize).toBe(512);
+			expect(layer._options.tileSize).toBe(256);
+			expect(layer._options.zoomOffset).toBe(0);
 		});
 	});
 
@@ -185,7 +189,8 @@ describe('addLeafletProtocolSupport', () => {
 			// style should not be forwarded to GridLayer options
 			expect(layer._options.style).toBeUndefined();
 			expect(layer._options.opacity).toBe(0.8);
-			expect(layer._options.tileSize).toBe(256);
+			expect(layer._options.tileSize).toBe(512);
+			expect(layer._options.zoomOffset).toBe(-1);
 		});
 
 		it('uses default vector style when no style is provided', () => {

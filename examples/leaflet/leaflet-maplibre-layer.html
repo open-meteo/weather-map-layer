@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Weather Map Layer - Leaflet with MapLibre Layers Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+		<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.css" />
+		<!-- x-release-please-start-version -->
+		<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.1.1/dist/index.js"></script>
+		<!-- x-release-please-end -->
+		<!-- Local development -->
+		<script>
+			if (location.hostname === 'localhost' || location.href.startsWith('file://')) {
+				document.write('<script src="../../dist/index.js"><\/script>');
+			}
+		</script>
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<!-- A Leaflet map whose basemap AND weather layers are drawn by MapLibre through the
+		     maplibre-gl-leaflet plugin. MapLibre supports the om:// protocol natively (addProtocol),
+		     so the Leaflet adapter is not used at all: the raster is a GPU texture and the arrows
+		     are native vector tiles, which is far cheaper than canvas tiles per Leaflet GridLayer.
+		     Compare with leaflet-vector.html, where the weather layers are native Leaflet GridLayers.
+		     MapLibre 6 ships as ES module while the plugin expects it as the global `maplibregl`,
+		     hence the module script. -->
+		<script type="module">
+			import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.mjs';
+
+			window.maplibregl = maplibregl;
+			await import('https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js');
+
+			// Register the 'om' protocol with MapLibre itself.
+			maplibregl.addProtocol('om', OMWeatherMapLayer.omProtocol);
+
+			// The map starts zoomed in: the first bounds update below decides the data window
+			// the protocol reads, and a world view reads the whole grid.
+			const map = L.map('map').setView([50, 10], 5);
+			map.attributionControl.setPrefix('<a href="https://leafletjs.com">Leaflet</a>');
+
+			// Keep the protocol informed of the current viewport bounds.
+			function updateBounds() {
+				const b = map.getBounds();
+				OMWeatherMapLayer.updateCurrentBounds([
+					b.getWest(),
+					b.getSouth(),
+					b.getEast(),
+					b.getNorth()
+				]);
+			}
+			map.on('moveend', updateBounds);
+			updateBounds();
+
+			const glLayer = L.maplibreGL({
+				style: 'https://static-assets.open-meteo.com/map-assets/styles/minimal-planet-maps.json', // replace with your own style sheet
+				attribution:
+					'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+			}).addTo(map);
+
+			// Both layers share the same model / time step; the vector source appends `&arrows=true`.
+			const omUrl = `https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=wind_u_component_10m`;
+
+			// From here on this is a plain MapLibre map, exactly as in the MapLibre examples.
+			const glMap = glLayer.getMaplibreMap();
+			glMap.on('load', () => {
+				glMap.addSource('omRasterSource', {
+					type: 'raster',
+					url: 'om://' + omUrl,
+					tileSize: 512
+				});
+				glMap.addLayer(
+					{
+						id: 'omRasterLayer',
+						type: 'raster',
+						source: 'omRasterSource',
+						paint: {
+							'raster-opacity': 0.75
+						}
+					},
+					'waterway-tunnel'
+				);
+
+				glMap.addSource('omVectorSource', {
+					type: 'vector',
+					url: 'om://' + omUrl + '&arrows=true'
+				});
+				glMap.addLayer(
+					{
+						id: 'omVectorLayer',
+						type: 'line',
+						source: 'omVectorSource',
+						'source-layer': 'wind-arrows',
+						paint: {
+							'line-color': [
+								'step',
+								['to-number', ['get', 'value'], 0],
+								'rgba(0,0,0, 0.2)',
+								3,
+								'rgba(0,0,0, 0.4)',
+								5,
+								'rgba(0,0,0, 0.6)'
+							],
+							'line-width': 2
+						},
+						layout: {
+							'line-cap': 'round'
+						}
+					},
+					'place_label_other'
+				);
+			});
+		</script>
+	</body>
+</html>

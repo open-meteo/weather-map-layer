@@ -178,7 +178,8 @@ describe('addOpenLayersProtocolSupport', () => {
 
 			expect(source._options.transition).toBe(200);
 			expect(source._options.wrapX).toBe(true);
-			expect(source._options.tileSize).toBe(256);
+			// the protocol renders 512 px tiles
+			expect(source._options.tileSize).toBe(512);
 		});
 
 		it('custom options override defaults', () => {
@@ -186,13 +187,32 @@ describe('addOpenLayersProtocolSupport', () => {
 			adapter.addProtocol('om', createMockHandler());
 
 			const source = adapter.createRasterSource('om://example.com/tiles.json', {
-				tileSize: 512
+				tileSize: 256
 			}) as unknown as MockSourceInstance;
 
-			expect(source._options.tileSize).toBe(512);
+			expect(source._options.tileSize).toBe(256);
 		});
 
-		it('loader calls the protocol handler for tile data', async () => {
+		it('loader calls the protocol handler and hands OL straight-alpha pixels', async () => {
+			// OL premultiplies in its tile shader, so the loader has to unpack the
+			// protocol's (premultiplied) bitmap through a 2D canvas first
+			const pixels = new Uint8ClampedArray(2 * 2 * 4);
+			const drawImage = vi.fn();
+			const close = vi.fn();
+			vi.stubGlobal(
+				'OffscreenCanvas',
+				class {
+					constructor(
+						public width: number,
+						public height: number
+					) {}
+					getContext() {
+						return { drawImage, getImageData: () => ({ data: pixels }) };
+					}
+				}
+			);
+			const bitmap = Object.assign(new ImageBitmap(), { width: 2, height: 2, close });
+
 			const adapter = addOpenLayersProtocolSupport(ol);
 			const handler = vi
 				.fn()
@@ -202,9 +222,7 @@ describe('addOpenLayersProtocolSupport', () => {
 						attribution: '© Test'
 					}
 				})
-				.mockResolvedValueOnce({
-					data: new ImageBitmap()
-				});
+				.mockResolvedValueOnce({ data: bitmap });
 			adapter.addProtocol('om', handler);
 
 			const source = adapter.createRasterSource(
@@ -217,10 +235,13 @@ describe('addOpenLayersProtocolSupport', () => {
 			await vi.waitFor(() => expect(handler).toHaveBeenCalledTimes(1));
 
 			// Now the tile load only needs the image call.
-			await loader(5, 10, 15, { signal: new AbortController().signal });
+			const result = await loader(5, 10, 15, { signal: new AbortController().signal });
 
 			// 1 TileJSON (eager) + 1 tile image
 			expect(handler).toHaveBeenCalledTimes(2);
+			expect(drawImage).toHaveBeenCalledWith(bitmap, 0, 0);
+			expect(close).toHaveBeenCalled();
+			expect(result).toBe(pixels);
 		});
 	});
 
