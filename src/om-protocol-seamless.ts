@@ -242,14 +242,16 @@ export const handleSeamlessRequest = async (
 				bounds: request.dataOptions.bounds
 			};
 
-			// The cap must cover every sub-layer of this composite, or loading the
-			// finest layers would evict the coarser ones within a single request.
 			const state = getOrCreateState(
 				instance.stateByKey,
 				concreteKey,
 				concreteDataOptions,
 				concreteBaseUrl,
-				Math.max(settings.maxStatesWithData ?? DEFAULT_MAX_STATES_WITH_DATA, activeLayers.length)
+				// One composite costs a state per active layer, so the cap the
+				// caller expressed in variables has to be multiplied by them.
+				// Left at the plain cap, every tile request would evict the
+				// sub-layers the next one still needs and re-read them.
+				(settings.maxStatesWithData ?? DEFAULT_MAX_STATES_WITH_DATA) * activeLayers.length
 			);
 
 			let data: Data;
