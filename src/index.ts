@@ -18,6 +18,7 @@ export {
 export { updateCurrentBounds } from './utils/bounds';
 export { createClippingTester } from './utils/clipping';
 export { domainStep, closestModelRun } from './utils/model-runs';
+export { variableHasDirections, variableSupportsBarbs } from './om-file-reader';
 export { getCachedResolvedClipping } from './utils/parse-request';
 export { getColor, getColorScale } from './utils/styling';
 export { solarPosition, sunElevationSine } from './utils/sun';
@@ -33,7 +34,17 @@ export { defaultOmProtocolSettings } from './om-protocol';
 export { domainOptions, domainGroups } from './domains';
 export { getDomainBoundary } from './domain-footprints';
 export { variableOptions, levelGroupVariables } from './utils/variables';
-export { VARIABLE_PREFIX, LEVEL_PREFIX, LEVEL_REGEX, LEVEL_UNIT_REGEX } from './utils/constants';
+export {
+	VARIABLE_PREFIX,
+	LEVEL_PREFIX,
+	LEVEL_REGEX,
+	LEVEL_UNIT_REGEX,
+	VALID_ARROW_STYLES,
+	DEFAULT_ARROW_STYLE,
+	TILE_PX,
+	ARROW_LATTICE,
+	BARB_LATTICE
+} from './utils/constants';
 
 // Adapters
 
@@ -44,6 +55,7 @@ export { addOpenLayersProtocolSupport } from './adapters/openlayers';
 // Types
 
 export type {
+	ArrowStyle,
 	ClippingOptions,
 	Data,
 	Domain,
@@ -59,4 +71,4 @@ export type {
 	SunShadowOptions
 } from './types';
 
-export type { WeatherMapLayerFileReader } from './om-file-reader';
+export type { VariableDerivationRule, WeatherMapLayerFileReader } from './om-file-reader';
