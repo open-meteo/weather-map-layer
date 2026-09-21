@@ -9,20 +9,24 @@ export default defineConfig({
 			insertTypesEntry: true
 		})
 	],
+	// Asset URLs are resolved relative to the chunk that references them, so the
+	// package works from any directory (node_modules, a CDN path), not a site root.
+	base: './',
 	build: {
-		// The file reader and its WASM binary are bundled (base64-inlined) so the
-		// module is self-contained and importable straight from a CDN; the lazily
-		// loaded reader chunk therefore exceeds the default size limit.
-		chunkSizeWarningLimit: 4000,
-		lib: {
-			entry: 'src/index.ts',
-			formats: ['es'],
-			fileName: () => 'index.mjs'
-		},
+		// Not a `lib` build: lib mode always inlines assets, which would turn the
+		// file reader's WASM binary into a 2.8 MB base64 data URL. As a separate
+		// file it transfers a third smaller, compiles while it streams in and can
+		// be kept compiled in the browser cache.
+		assetsInlineLimit: 0,
+		modulePreload: false,
 		rolldownOptions: {
+			input: { index: 'src/index.ts' },
 			output: {
-				chunkFileNames: '[name].mjs'
-			}
+				entryFileNames: '[name].mjs',
+				chunkFileNames: '[name].mjs',
+				assetFileNames: '[name][extname]'
+			},
+			preserveEntrySignatures: 'strict'
 		}
 	}
 });
