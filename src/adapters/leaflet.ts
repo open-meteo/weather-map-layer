@@ -80,6 +80,7 @@ interface LeafletInternalTile {
 
 /** Leaflet GridLayer instance (only the properties this adapter uses). */
 interface LeafletGridLayerInstance {
+	options: { zoomOffset?: number };
 	getTileSize(): { x: number; y: number };
 	/** Internal tile cache keyed by `"x:y:z"`. */
 	_tiles: Record<string, LeafletInternalTile>;
@@ -167,6 +168,23 @@ export interface LeafletProtocolAdapter extends ProtocolAdapter {
 /** The default vector tile extent used by the PBF encoder. */
 const VECTOR_TILE_EXTENT = 4096;
 
+/**
+ * The protocol renders 512 px tiles and sizes its arrow/barb lattice for
+ * them, as MapLibre requests. Leaflet's native 256 px tiles would fetch a
+ * zoom level deeper for the same view, giving twice the vector density and
+ * four times the raster work; 512 px tiles one zoom level up reproduce the
+ * MapLibre look 1:1.
+ */
+const TILE_LAYER_DEFAULTS = { tileSize: 512, zoomOffset: -1, crossOrigin: true };
+
+/**
+ * Zoom level to request for a tile. `zoomOffset` is a `TileLayer` option that
+ * `GridLayer` does not apply itself: `coords.z` is always the map zoom, so a
+ * 512 px layer has to shift it here, exactly as `TileLayer._getZoomForUrl`.
+ */
+const urlZoom = (layer: LeafletGridLayerInstance, coords: LeafletCoords): number =>
+	coords.z + (layer.options.zoomOffset ?? 0);
+
 /** Default arrow style: semi-transparent dark lines, width based on wind speed. */
 const defaultVectorStyle: LeafletVectorStyleFn = (properties) => {
 	const value = Number(properties['value']) || 0;
@@ -202,6 +220,11 @@ export const addLeafletProtocolSupport = (L: LeafletLib): LeafletProtocolAdapter
 	 * Resolves styles via the user's `styleFn` and converts geometry to pixel
 	 * coordinates. The result can be passed to the worker or the main-thread
 	 * fallback for canvas rendering.
+	 *
+	 * Geometry is drawn exactly where the tile puts it. The protocol lays
+	 * arrows and barbs out on a lattice whose far edge is shared with the
+	 * neighbouring tile, so each tile draws its half of an edge shape and the
+	 * seam only lines up when nothing is rescaled or thinned here.
 	 */
 	const extractRenderFeatures = (
 		vectorTile: VectorTile,
@@ -210,23 +233,11 @@ export const addLeafletProtocolSupport = (L: LeafletLib): LeafletProtocolAdapter
 	): ExtractedFeatures => {
 		const scale = tileSize / VECTOR_TILE_EXTENT;
 		const features: RenderFeature[] = [];
-		let clip = false;
 
 		for (const layerName of Object.keys(vectorTile.layers)) {
 			const layer = vectorTile.layers[layerName];
 
-			const gridN = Math.round(Math.sqrt(layer.length));
-			const isArrowGrid = gridN >= 2 && gridN * gridN === layer.length;
-			const cellSize = isArrowGrid ? VECTOR_TILE_EXTENT / gridN : 0;
-			if (isArrowGrid) clip = true;
-
 			for (let i = 0; i < layer.length; i++) {
-				if (isArrowGrid) {
-					const gridRow = Math.floor(i / gridN);
-					const gridCol = i % gridN;
-					if (gridRow % 2 !== 1 || gridCol % 2 !== 1) continue;
-				}
-
 				const feature = layer.feature(i);
 				// Inject the MVT layer name as `layer` so style functions can filter by source layer
 				const props: Record<string, unknown> = { layer: layerName, ...feature.properties };
@@ -249,11 +260,6 @@ export const addLeafletProtocolSupport = (L: LeafletLib): LeafletProtocolAdapter
 
 				const geometry = feature.loadGeometry();
 
-				const gridRow = isArrowGrid ? Math.floor(i / gridN) : 0;
-				const gridCol = isArrowGrid ? i % gridN : 0;
-				const centerX = gridCol * cellSize;
-				const centerY = gridRow * cellSize;
-
 				let renderType = feature.type;
 				// Point
 				if (renderType === 1) {
@@ -269,10 +275,7 @@ export const addLeafletProtocolSupport = (L: LeafletLib): LeafletProtocolAdapter
 				for (const ring of geometry) {
 					const coords: number[] = [];
 					for (const pt of ring) {
-						coords.push(
-							isArrowGrid ? ((pt.x - centerX) * 2 + centerX) * scale : pt.x * scale,
-							isArrowGrid ? ((pt.y - centerY) * 2 + centerY) * scale : pt.y * scale
-						);
+						coords.push(pt.x * scale, pt.y * scale);
 					}
 					rings.push(coords);
 				}
@@ -281,7 +284,7 @@ export const addLeafletProtocolSupport = (L: LeafletLib): LeafletProtocolAdapter
 					type: renderType as 1 | 2 | 3,
 					rings,
 					strokeStyle,
-					lineWidth: isArrowGrid ? rawLineWidth * 2 : rawLineWidth,
+					lineWidth: rawLineWidth,
 					lineCap,
 					globalAlpha,
 					fill: renderType === 3 && !!style.strokeStyle,
@@ -290,7 +293,7 @@ export const addLeafletProtocolSupport = (L: LeafletLib): LeafletProtocolAdapter
 			}
 		}
 
-		return { features, clip };
+		return { features };
 	};
 
 	return {
@@ -326,7 +329,7 @@ export const addLeafletProtocolSupport = (L: LeafletLib): LeafletProtocolAdapter
 						.then(({ tileTemplate }) => {
 							if (abortController.signal.aborted) return;
 
-							const url = buildTileUrl(tileTemplate, coords.z, coords.x, coords.y);
+							const url = buildTileUrl(tileTemplate, urlZoom(this, coords), coords.x, coords.y);
 							const tileProtocol = extractProtocol(url) ?? extractProtocol(tileJsonUrl)!;
 							const { handler, settings } = registry.get(tileProtocol);
 
@@ -409,8 +412,7 @@ export const addLeafletProtocolSupport = (L: LeafletLib): LeafletProtocolAdapter
 			});
 
 			return new OmRasterGridLayer({
-				tileSize: 256,
-				crossOrigin: true,
+				...TILE_LAYER_DEFAULTS,
 				...leafletOptions
 			});
 		},
@@ -443,7 +445,7 @@ export const addLeafletProtocolSupport = (L: LeafletLib): LeafletProtocolAdapter
 						.then(({ tileTemplate }) => {
 							if (abortController.signal.aborted) return;
 
-							const url = buildTileUrl(tileTemplate, coords.z, coords.x, coords.y);
+							const url = buildTileUrl(tileTemplate, urlZoom(this, coords), coords.x, coords.y);
 							const tileProtocol = extractProtocol(url) ?? extractProtocol(tileJsonUrl)!;
 							const { handler, settings } = registry.get(tileProtocol);
 
@@ -533,8 +535,7 @@ export const addLeafletProtocolSupport = (L: LeafletLib): LeafletProtocolAdapter
 			});
 
 			return new OmVectorGridLayer({
-				tileSize: 256,
-				crossOrigin: true,
+				...TILE_LAYER_DEFAULTS,
 				...restOptions
 			});
 		}

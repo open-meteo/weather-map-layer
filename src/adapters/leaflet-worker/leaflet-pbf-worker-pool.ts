@@ -33,8 +33,6 @@ export interface RenderFeature {
 /** Result from extracting render features from a decoded vector tile. */
 export interface ExtractedFeatures {
 	features: RenderFeature[];
-	/** Whether to clip rendering to the tile bounds (arrow-grid layers). */
-	clip: boolean;
 }
 
 // ── Worker pool ──────────────────────────────────────────────────────
@@ -94,7 +92,6 @@ export const renderInWorker = (
 			type: 'render',
 			id,
 			tileSize,
-			clip: extracted.clip,
 			features: extracted.features
 		});
 	});

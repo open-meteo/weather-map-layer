@@ -6,6 +6,8 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol/ol.css" />
 		<script src="https://cdn.jsdelivr.net/npm/ol/dist/ol.js"></script>
+		<!-- Basemap only: ol-mapbox-style renders a MapLibre style sheet with OpenLayers' own vector rendering. The weather layers need none of it. -->
+		<script src="https://unpkg.com/ol-mapbox-style@13.5.1/dist/olms.js"></script>
 		<style>
 			html,
 			body,
@@ -47,18 +49,19 @@
 				})
 			});
 
+			const basemap = new ol.layer.Group();
+			olms.apply(
+				basemap,
+				'https://static-assets.open-meteo.com/map-assets/styles/minimal-planet-maps.json'
+			); // replace with your own style sheet
+
 			const map = new ol.Map({
 				target: 'map',
 				layers: [
-					// CARTO base map
-					new ol.layer.Tile({
-						source: new ol.source.XYZ({
-							url: 'https://{a-d}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-							attributions:
-								'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors ' +
-								'&copy; <a href="https://carto.com/attributions">CARTO</a>'
-						})
-					}),
+					// Basemap: the same MapLibre style sheet as the other examples, rendered natively
+					// by ol-mapbox-style into this group. The weather layers below are plain
+					// OpenLayers sources, the protocol and its adapter do not depend on it.
+					basemap,
 					// Raster layer: wind-speed colour fill (DataTile → WebGLTile)
 					new ol.layer.WebGLTile({
 						source: rasterSource,

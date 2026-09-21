@@ -49,7 +49,7 @@
 		"watch:colorscales": "npm-watch generate:colorscales",
 		"build": "vite build",
 		"prepare": "npm run build",
-		"serve": "concurrently --kill-others \"npm run dev\" \"live-server --port=5173 --host=localhost --ignore=**/src/** --open=./examples/\""
+		"serve": "concurrently --kill-others \"npm run dev\" \"node scripts/serve-examples.js\""
 	},
 	"devDependencies": {
 		"@trivago/prettier-plugin-sort-imports": "^6.0.0",
