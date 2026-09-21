@@ -27,5 +27,13 @@ export default defineConfig({
 			},
 			preserveEntrySignatures: 'strict'
 		}
+	},
+	worker: {
+		// The tile worker is a plain file next to the module, like the WASM binary.
+		rolldownOptions: {
+			output: {
+				entryFileNames: '[name].js'
+			}
+		}
 	}
 });

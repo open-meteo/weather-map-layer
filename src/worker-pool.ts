@@ -1,7 +1,23 @@
 // @ts-expect-error worker import
-import TileWorker from './worker?worker&inline';
+import tileWorkerUrl from './worker?worker&url';
 
 import { TilePromise, TileRequest, TileResult, WorkerResponse } from './types';
+
+/**
+ * The tile worker ships as its own file next to the module, so it is cached
+ * and parsed like any other script instead of being embedded in the bundle.
+ * A worker script must be same-origin: when the library itself is loaded
+ * cross-origin (e.g. straight from unpkg) the worker is bootstrapped from a
+ * same-origin blob that imports the real script.
+ */
+const createTileWorker = (): Worker => {
+	const url = new URL(tileWorkerUrl, import.meta.url);
+	if (url.origin === self.location.origin) return new Worker(url);
+	const shim = new Blob([`importScripts(${JSON.stringify(url.href)});`], {
+		type: 'text/javascript'
+	});
+	return new Worker(URL.createObjectURL(shim));
+};
 
 export class WorkerPool {
 	private workers: Worker[] = [];
@@ -21,10 +37,10 @@ export class WorkerPool {
 			return;
 		}
 		// Cap the pool: beyond ~8 workers tile rendering is bandwidth-bound, and
-		// every inline worker duplicates the bundled module graph in memory.
+		// every worker holds its own copy of the tile-rendering code in memory.
 		const workerCount = Math.min(8, navigator.hardwareConcurrency || 4);
 		for (let i = 0; i < workerCount; i++) {
-			const worker = new TileWorker();
+			const worker = createTileWorker();
 			worker.onmessage = (message: MessageEvent) => this.handleMessage(message);
 			worker.onerror = (error: ErrorEvent) => this.handleError(error);
 			this.workers.push(worker);
