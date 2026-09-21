@@ -54,9 +54,11 @@ map.on('load', () => {
 });
 ```
 
+The file reader's WebAssembly binary ships as a separate file next to the module (`dist/om_reader_wasm.web.wasm`), referenced with `new URL('om_reader_wasm.web.wasm', import.meta.url)`. Bundlers that understand that pattern (Vite, webpack 5, Rollup, Parcel) copy it into their output as an asset without configuration. It is fetched on the first data read, not at import time.
+
 ### HTML / UNPKG
 
-The package ships as an ES module only, so load it from a `<script type="module">`. For a standalone example, see `examples/temperature.html`.
+The package ships as an ES module only, so load it from a `<script type="module">`. The `.wasm` binary is fetched from the same directory on the first data read. For a standalone example, see `examples/temperature.html`.
 
 <!-- prettier-ignore -->
 ```html
