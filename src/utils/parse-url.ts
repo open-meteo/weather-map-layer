@@ -5,7 +5,6 @@ import {
 	DATA_RELEVANT_PARAMS,
 	DOMAIN_META_REGEX,
 	OM_PREFIX_REGEX,
-	RESOLVE_DOMAIN_REGEX,
 	TILE_SUFFIX_REGEX,
 	TIME_STEP_REGEX
 } from './constants';
@@ -80,8 +79,9 @@ const metaDataCache = new Map<string, Promise<DomainMetaDataJson>>();
  */
 const resolveJsonFetchUrl = (jsonUrl: string, domainOptions?: AnyDomain[]): string => {
 	if (!domainOptions) return jsonUrl;
-	const domainMatch = jsonUrl.match(RESOLVE_DOMAIN_REGEX);
-	const urlDomainValue = domainMatch?.groups?.domain;
+	// The meta regex, not RESOLVE_DOMAIN_REGEX: that one only matches `.om`
+	// paths, so a `{meta}.json` URL would never be rewritten
+	const urlDomainValue = jsonUrl.match(DOMAIN_META_REGEX)?.groups?.domain;
 	if (!urlDomainValue) return jsonUrl;
 	const domain = domainOptions.find((d) => d.value === urlDomainValue);
 	if (!domain || !isSeamlessDomain(domain)) return jsonUrl;

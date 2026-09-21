@@ -391,6 +391,33 @@ describe('SeamlessDomain – URL substitution', () => {
 		expect(urls[1]).toContain('/test_eu/');
 		expect(urls[2]).toContain('/test_global/');
 	});
+
+	it('fetches a seamless {meta}.json from the global backing domain', async () => {
+		const { normalizeUrl } = await import('../utils/parse-url');
+		const fetched: string[] = [];
+		vi.stubGlobal('fetch', async (url: string) => {
+			fetched.push(url);
+			return {
+				ok: true,
+				json: async () => ({
+					reference_time: '2025-01-01T00:00:00Z',
+					valid_times: ['2025-01-01T00:00Z']
+				})
+			};
+		});
+		try {
+			const url = await normalizeUrl(
+				'om://https://example.com/data_spatial/test_seamless/latest.json?variable=temperature_2m',
+				makeSettings().domainOptions
+			);
+			// The server only knows concrete domains; the resolved .om URL keeps
+			// the seamless one so the protocol can fan it out per layer
+			expect(fetched).toEqual(['https://example.com/data_spatial/test_global/latest.json']);
+			expect(url).toContain('/test_seamless/2025/01/01/0000Z/2025-01-01T0000.om');
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
 });
 
 describe('SeamlessDomain – error handling', () => {
