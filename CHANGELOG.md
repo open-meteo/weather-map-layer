@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.0](https://github.com/open-meteo/weather-map-layer/compare/v0.1.1...v0.2.0) (2026-09-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* esm only ([#329](https://github.com/open-meteo/weather-map-layer/issues/329))
+
+### Features
+
+* esm only ([#329](https://github.com/open-meteo/weather-map-layer/issues/329)) ([06d1e49](https://github.com/open-meteo/weather-map-layer/commit/06d1e493c2b57ffd46dd3118736bc3b31e507684))
+
+
+### Bug Fixes
+
+* add ukmo ensemble domains ([#335](https://github.com/open-meteo/weather-map-layer/issues/335)) ([648ca86](https://github.com/open-meteo/weather-map-layer/commit/648ca86f7e0c0ccdefceb05afe5d1abfff4de5d2))
+* bring the leaflet, openlayers and mapbox adapters up to date ([#332](https://github.com/open-meteo/weather-map-layer/issues/332)) ([056b4a5](https://github.com/open-meteo/weather-map-layer/commit/056b4a5a84a2d433584e24dec31c0676a36727fc))
+
 ## [0.1.1](https://github.com/open-meteo/weather-map-layer/compare/v0.1.0...v0.1.1) (2026-09-17)
 
 
