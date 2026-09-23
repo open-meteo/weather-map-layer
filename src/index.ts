@@ -19,6 +19,8 @@ export { getColor, getColorScale } from './utils/styling';
 // Classes
 
 export { GridFactory } from './grids/index';
+export { WebGLWeatherDataSource } from './webgl/data-source';
+export type { WebGLWindData } from './webgl/data-source';
 // The block caches for `fileReaderConfig.cache`. Re-exported because the file
 // reader is bundled into this module: importing them from
 // `@openmeteo/file-reader` directly would give a consumer a second copy of it.
@@ -67,5 +69,11 @@ export type {
 	RenderableColorScale
 } from './types';
 
-export type { VariableDerivationRule, WeatherMapLayerFileReader } from './om-file-reader';
+export type {
+	FileReaderConfig,
+	VariableDerivationRule,
+	WeatherMapLayerFileReader
+} from './om-file-reader';
 export type { BlockCache } from '@openmeteo/file-reader';
+export * from './webgl-raster-layer';
+export * from './webgl-wind-layer';
