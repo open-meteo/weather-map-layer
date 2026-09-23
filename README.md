@@ -54,23 +54,17 @@ map.on('load', () => {
 });
 ```
 
+Two files ship next to the module and are referenced with `new URL(..., import.meta.url)`: the tile render worker (`dist/worker.js`) and the file reader's WebAssembly binary (`dist/om_file_format.web.wasm`). Bundlers that understand that pattern (Vite, webpack 5, Rollup, Parcel) copy them into their output as assets without configuration. The worker starts with the protocol; the binary is fetched on the first data read, not at import time.
+
 ### HTML / UNPKG
 
-For a standalone example, see `examples/temperature.html`.
+The package ships as an ES module only, so load it from a `<script type="module">`. The render worker and the `.wasm` binary are fetched from the same directory; the worker is started through a same-origin blob when the module comes from another origin, as a worker script itself must be same-origin. For a standalone example, see `examples/temperature.html`.
 
-<!-- x-release-please-start-version -->
-
-```html
-...
-<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.1.1/dist/index.js"></script>
-...
-```
-
-<!-- x-release-please-end -->
-
+<!-- prettier-ignore -->
 ```html
 <script type="module">
 	import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.mjs';
+	import * as OMWeatherMapLayer from 'https://unpkg.com/@openmeteo/weather-map-layer@0.2.0/dist/index.mjs'; // x-release-please-version
 
 	// Standard MapLibre GL JS setup
 	// ...
