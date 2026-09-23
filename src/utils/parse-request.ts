@@ -1,3 +1,4 @@
+import { getLocalOmFile } from '../local-files';
 import { variableSupportsBarbs } from '../om-file-reader';
 
 import { currentBounds, setClippingBounds } from './bounds';
@@ -86,6 +87,26 @@ const defaultResolveDataIdentity = (
 ): DataIdentityOptions => {
 	const { baseUrl, params } = urlComponents;
 
+	const variable = params.get('variable');
+	if (!variable) {
+		throw new Error(`Variable is required but not defined`);
+	}
+
+	// A registered local file has no domain to look up: it stands in as its
+	// own, with the grid read from its crs_wkt on registration
+	const local = getLocalOmFile(baseUrl);
+	if (local) {
+		const grid = local.grids.get(variable);
+		if (!grid) {
+			throw new Error(`Variable ${variable} not found in local file`);
+		}
+		return {
+			domain: { value: baseUrl, grid, time_interval: 'hourly', model_interval: 'hourly' },
+			variable,
+			bounds: currentBounds
+		};
+	}
+
 	const domainValue = baseUrl.match(RESOLVE_DOMAIN_REGEX)?.groups?.domain;
 
 	if (!domainValue) {
@@ -96,14 +117,7 @@ const defaultResolveDataIdentity = (
 		throw new Error(`Invalid domain: ${domainValue}`);
 	}
 
-	const variable = params.get('variable');
-	if (!variable) {
-		throw new Error(`Variable is required but not defined`);
-	}
-
-	const mapBounds = currentBounds;
-
-	return { domain, variable, bounds: mapBounds };
+	return { domain, variable, bounds: currentBounds };
 };
 
 const defaultResolveRenderOptions = (
