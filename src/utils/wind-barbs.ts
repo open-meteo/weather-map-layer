@@ -13,10 +13,11 @@
  */
 import { PbfWriter } from 'pbf';
 
-import { type ResolvedClippingOptions, createClippingTester } from './clipping';
+import type { ResolvedClippingOptions } from './clipping';
 import { BARB_LATTICE, VECTOR_TILE_EXTENT } from './constants';
-import { degreesToRadians, rotatePoint, tile2lat, tile2lon } from './math';
-import { command, writeLayer, zigzag } from './pbf';
+import { forEachLatticePoint } from './lattice';
+import { degreesToRadians, rotatePoint } from './math';
+import { type Feature, command, writeLayer, zigzag } from './pbf';
 import type { VectorSampler } from './seamless-sampling';
 
 const MS_TO_KNOTS = 1.9438445;
@@ -109,135 +110,120 @@ export const generateWindBarbs = (
 		barbs = 28;
 	}
 
-	const features = [];
+	const features: Feature[] = [];
 	// Pennants go into their own polygon layer so they can be drawn solid; the
 	// outline below keeps them visible to anything styling only the lines
-	const pennantFeatures = [];
+	const pennantFeatures: Feature[] = [];
 	const size = extent / barbs;
-	const isInsideClip = createClippingTester(clippingOptions);
 
-	// Stepped by index rather than by accumulating `size`, which drifts. The
-	// far edge is included: a shape there is clipped to its own tile, and the
-	// neighbouring tile draws the other half of it.
-	for (let row = 0; row <= barbs; row++) {
-		const tileY = (row * extent) / barbs;
-		const lat = tile2lat(y + tileY / extent, z);
-		for (let column = 0; column <= barbs; column++) {
-			const tileX = (column * extent) / barbs;
-			const lon = tile2lon(x + tileX / extent, z);
-
-			if (isInsideClip && !isInsideClip(lon, lat)) {
-				continue;
-			}
-
-			const { value: speed, direction: directionDeg } = sampleVector(lat, lon);
-			const knots = speed * MS_TO_KNOTS;
-			if (!isFinite(knots)) {
-				continue;
-			}
-
-			// The staff points at where the wind comes from, so the rotation is the
-			// direction as is (an arrow adds 180° to point the other way)
-			const rotation = degreesToRadians(directionDeg);
-			// The `direction` property keeps the arrow convention (downwind, i.e.
-			// direction + 180°) so consumers see the same value whatever the
-			// `arrow_style`; only the geometry uses the upwind rotation.
-			const direction = rotation + Math.PI;
-			const centre = [tileX, tileY];
-			// Barbs sit on the left of the staff, mirrored south of the equator
-			const side = lat >= 0 ? 1 : -1;
-
-			// Local frame: the staff runs up the y axis, the end carrying the
-			// barbs at -STAFF_HALF. Rounded here so the deltas below stay exact
-			// once zigzagged.
-			const point = (across: number, along: number): number[] => {
-				const [px, py] = rotatePoint(
-					centre[0],
-					centre[1],
-					rotation,
-					centre[0] + across * FIT * size * side,
-					centre[1] + along * FIT * size
-				);
-				return [Math.round(px), Math.round(py)];
-			};
-
-			const geom: number[] = [];
-			let cursor = [0, 0];
-			const moveTo = (p: number[]): void => {
-				geom.push(command(1, 1));
-				geom.push(zigzag(p[0] - cursor[0]));
-				geom.push(zigzag(p[1] - cursor[1]));
-				cursor = p;
-			};
-			const lineTo = (p: number[]): void => {
-				geom.push(command(2, 1));
-				geom.push(zigzag(p[0] - cursor[0]));
-				geom.push(zigzag(p[1] - cursor[1]));
-				cursor = p;
-			};
-
-			if (knots < CIRCLE_KNOTS) {
-				// Calm: a ring inside a ring, where the staff would start
-				const corners = 12;
-				for (const radius of [CALM_RADIUS, CALM_INNER_RADIUS]) {
-					for (let i = 0; i <= corners; i++) {
-						const angle = (i / corners) * 2 * Math.PI;
-						const p = point(radius * Math.sin(angle), radius * Math.cos(angle));
-						if (i === 0) moveTo(p);
-						else lineTo(p);
-					}
-				}
-			} else {
-				// Staff, drawn from the downwind end into the wind
-				moveTo(point(0, STAFF_HALF));
-				lineTo(point(0, -STAFF_HALF));
-			}
-
-			const { pennants, full, half } = barbCounts(knots);
-			// A pennant is as wide as it is tall, so it takes two slots. A lone
-			// half barb is set one slot in from the end, as it is when printed.
-			const lonely = half === 1 && pennants === 0 && full === 0;
-			const slots = pennants * 2 + full + half + (lonely ? 1 : 0);
-			const step = Math.min(SLOT_STEP, BARB_SPAN / Math.max(1, slots));
-
-			// Barbs from the end of the staff inward, strongest first. Their
-			// tips lean out past their root, away from the middle of the staff.
-			let along = -STAFF_HALF + (lonely ? step : 0);
-			for (let i = 0; i < pennants; i++) {
-				const ring = [
-					point(0, along),
-					point(BARB_LENGTH, along - BARB_LEAN),
-					point(0, along + 2 * step)
-				];
-				moveTo(ring[0]);
-				lineTo(ring[1]);
-				lineTo(ring[2]);
-				pennantFeatures.push({
-					id: tileX + tileY + i,
-					type: 3, // 3 = Polygon
-					properties: { value: speed, direction },
-					geom: ringGeometry(ring)
-				});
-				along += 2 * step;
-			}
-			for (let i = 0; i < full; i++) {
-				moveTo(point(0, along));
-				lineTo(point(BARB_LENGTH, along - BARB_LEAN));
-				along += step;
-			}
-			if (half) {
-				moveTo(point(0, along));
-				lineTo(point(BARB_LENGTH / 2, along - BARB_LEAN / 2));
-			}
-
-			features.push({
-				id: tileX + tileY,
-				type: 2, // 2 = LineString
-				properties: { value: speed, direction },
-				geom: geom
-			});
+	forEachLatticePoint(barbs, x, y, z, extent, clippingOptions, (tileX, tileY, lat, lon) => {
+		const { value: speed, direction: directionDeg } = sampleVector(lat, lon);
+		const knots = speed * MS_TO_KNOTS;
+		if (!isFinite(knots)) {
+			return;
 		}
-	}
+
+		// The staff points at where the wind comes from, so the rotation is the
+		// direction as is (an arrow adds 180° to point the other way)
+		const rotation = degreesToRadians(directionDeg);
+		// The `direction` property keeps the arrow convention (downwind, i.e.
+		// direction + 180°) so consumers see the same value whatever the
+		// `arrow_style`; only the geometry uses the upwind rotation.
+		const direction = rotation + Math.PI;
+		const centre = [tileX, tileY];
+		// Barbs sit on the left of the staff, mirrored south of the equator
+		const side = lat >= 0 ? 1 : -1;
+
+		// Local frame: the staff runs up the y axis, the end carrying the
+		// barbs at -STAFF_HALF. Rounded here so the deltas below stay exact
+		// once zigzagged.
+		const point = (across: number, along: number): number[] => {
+			const [px, py] = rotatePoint(
+				centre[0],
+				centre[1],
+				rotation,
+				centre[0] + across * FIT * size * side,
+				centre[1] + along * FIT * size
+			);
+			return [Math.round(px), Math.round(py)];
+		};
+
+		const geom: number[] = [];
+		let cursor = [0, 0];
+		const moveTo = (p: number[]): void => {
+			geom.push(command(1, 1));
+			geom.push(zigzag(p[0] - cursor[0]));
+			geom.push(zigzag(p[1] - cursor[1]));
+			cursor = p;
+		};
+		const lineTo = (p: number[]): void => {
+			geom.push(command(2, 1));
+			geom.push(zigzag(p[0] - cursor[0]));
+			geom.push(zigzag(p[1] - cursor[1]));
+			cursor = p;
+		};
+
+		if (knots < CIRCLE_KNOTS) {
+			// Calm: a ring inside a ring, where the staff would start
+			const corners = 12;
+			for (const radius of [CALM_RADIUS, CALM_INNER_RADIUS]) {
+				for (let i = 0; i <= corners; i++) {
+					const angle = (i / corners) * 2 * Math.PI;
+					const p = point(radius * Math.sin(angle), radius * Math.cos(angle));
+					if (i === 0) moveTo(p);
+					else lineTo(p);
+				}
+			}
+		} else {
+			// Staff, drawn from the downwind end into the wind
+			moveTo(point(0, STAFF_HALF));
+			lineTo(point(0, -STAFF_HALF));
+		}
+
+		const { pennants, full, half } = barbCounts(knots);
+		// A pennant is as wide as it is tall, so it takes two slots. A lone
+		// half barb is set one slot in from the end, as it is when printed.
+		const lonely = half === 1 && pennants === 0 && full === 0;
+		const slots = pennants * 2 + full + half + (lonely ? 1 : 0);
+		const step = Math.min(SLOT_STEP, BARB_SPAN / Math.max(1, slots));
+
+		// Barbs from the end of the staff inward, strongest first. Their
+		// tips lean out past their root, away from the middle of the staff.
+		let along = -STAFF_HALF + (lonely ? step : 0);
+		for (let i = 0; i < pennants; i++) {
+			const ring = [
+				point(0, along),
+				point(BARB_LENGTH, along - BARB_LEAN),
+				point(0, along + 2 * step)
+			];
+			moveTo(ring[0]);
+			lineTo(ring[1]);
+			lineTo(ring[2]);
+			pennantFeatures.push({
+				id: tileX + tileY + i,
+				type: 3, // 3 = Polygon
+				properties: { value: speed, direction },
+				geom: ringGeometry(ring)
+			});
+			along += 2 * step;
+		}
+		for (let i = 0; i < full; i++) {
+			moveTo(point(0, along));
+			lineTo(point(BARB_LENGTH, along - BARB_LEAN));
+			along += step;
+		}
+		if (half) {
+			moveTo(point(0, along));
+			lineTo(point(BARB_LENGTH / 2, along - BARB_LEAN / 2));
+		}
+
+		features.push({
+			id: tileX + tileY,
+			type: 2, // 2 = LineString
+			properties: { value: speed, direction },
+			geom: geom
+		});
+	});
 
 	// write Layer
 	pbf.writeMessage(3, writeLayer, {

@@ -27,6 +27,7 @@ export {
 export { updateCurrentBounds } from './utils/bounds';
 export { createClippingTester } from './utils/clipping';
 export { domainStep, closestModelRun } from './utils/model-runs';
+export { variableHasDirections, variableSupportsBarbs } from './om-file-reader';
 export { getCachedResolvedClipping } from './utils/parse-request';
 export { getColor, getColorScale } from './utils/styling';
 export { solarPosition, sunElevationSine } from './utils/sun';
@@ -34,7 +35,10 @@ export { solarPosition, sunElevationSine } from './utils/sun';
 // Classes
 
 export { GridFactory } from './grids/index';
-export { WeatherMapLayerFileReader } from './om-file-reader';
+// The block caches for `fileReaderConfig.cache`. Re-exported because the file
+// reader is bundled into this module: importing them from
+// `@openmeteo/file-reader` directly would give a consumer a second copy of it.
+export { BrowserBlockCache, LruBlockCache } from '@openmeteo/file-reader';
 
 // Objects / Constants
 
@@ -108,3 +112,9 @@ export type {
 	SeamlessLayer,
 	SunShadowOptions
 } from './types';
+
+export type { VariableDerivationRule } from './om-file-reader';
+// A value export, not type-only as on main: the GPU prefetch path constructs
+// its own reader instances rather than going through the protocol state.
+export { WeatherMapLayerFileReader } from './om-file-reader';
+export type { BlockCache } from '@openmeteo/file-reader';

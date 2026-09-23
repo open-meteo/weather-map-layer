@@ -1,3 +1,5 @@
+import { variableSupportsBarbs } from '../om-file-reader';
+
 import { currentBounds, setClippingBounds } from './bounds';
 import { type ResolvedClippingOptions, resolveClippingOptions } from './clipping';
 import {
@@ -140,7 +142,13 @@ const defaultResolveRenderOptions = (
 
 	const drawGrid = params.get('grid') === 'true';
 	const drawArrows = params.get('arrows') === 'true';
-	const arrowStyle = parseArrowStyle(params.get('arrow_style'));
+	const requestedArrowStyle = parseArrowStyle(params.get('arrow_style'));
+	// Barbs encode knots, so a variable whose directions come with another
+	// quantity (waves, currents) is drawn with arrows whatever was requested
+	const arrowStyle =
+		requestedArrowStyle === 'barb' && !variableSupportsBarbs(dataOptions.variable)
+			? 'arrow'
+			: requestedArrowStyle;
 	const arrowRender = parseArrowRender(params.get('arrow_render'));
 	const arrowPoints = parseArrowPoints(params.get('arrow_points'));
 	const drawContours = params.get('contours') === 'true';

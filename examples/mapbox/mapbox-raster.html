@@ -4,17 +4,8 @@
 		<title>Open-Meteo Weather Map Layer - Mapbox GL Example</title>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<link rel="stylesheet" href="https://unpkg.com/mapbox-gl@3.20.0/dist/mapbox-gl.css" />
-		<script src="https://unpkg.com/mapbox-gl@3.20.0/dist/mapbox-gl.js"></script>
-		<!-- x-release-please-start-version -->
-		<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.1.0/dist/index.js"></script>
-		<!-- x-release-please-end -->
-		<!-- Local development -->
-		<script>
-			if (location.hostname === 'localhost' || location.href.startsWith('file://')) {
-				document.write('<script src="../../dist/index.js"><\/script>');
-			}
-		</script>
+		<link rel="stylesheet" href="https://unpkg.com/mapbox-gl@3.30.0/dist/mapbox-gl.css" />
+		<script src="https://unpkg.com/mapbox-gl@3.30.0/dist/mapbox-gl.js"></script>
 		<style>
 			html,
 			body,
@@ -27,11 +18,17 @@
 	</head>
 	<body>
 		<div id="map"></div>
-		<script>
+		<script type="module">
+			const OMWeatherMapLayer = await import(
+				location.hostname === 'localhost'
+					? '../../dist/index.mjs' // local development
+					: 'https://unpkg.com/@openmeteo/weather-map-layer@0.2.0/dist/index.mjs' // x-release-please-version
+			);
+
 			mapboxgl.accessToken = 'XXX'; // replace with your Mapbox access token
 
-			// This builds the custom source type class that intercepts "om://" requests and routes them through omProtocol.
-			const mapboxAdapter = OMWeatherMapLayer.addMapboxProtocolSupport(mapboxgl);
+			// The adapter turns "om://" URLs into Mapbox custom sources whose tiles are rendered by omProtocol.
+			const mapboxAdapter = OMWeatherMapLayer.addMapboxProtocolSupport();
 
 			// Register the 'om' protocol handler (same as MapLibre's addProtocol).
 			mapboxAdapter.addProtocol('om', OMWeatherMapLayer.omProtocol);
@@ -41,13 +38,6 @@
 				style: 'https://static-assets.open-meteo.com/map-assets/styles/minimal-planet-maps.json', // replace with your own style sheet
 				hash: true
 			});
-
-			// Register the custom source type with the map instance. Sources using this protocol must declare  type: 'raster-om'  instead of 'raster'.
-			map.addSourceType(
-				'raster-om',
-				mapboxAdapter.rasterSourceType,
-				(e) => e && console.error('Failed to register raster-om source type', e)
-			);
 
 			map.on('dataloading', () => {
 				const bounds = map.getBounds();
@@ -62,12 +52,11 @@
 			// const omUrl = `om://https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon/2025/06/06/1200Z/2025-06-06T1200.om?variable=temperature_2m`;
 
 			map.on('load', () => {
-				map.addSource('omFileSource', {
-					// Use 'raster-om' (the custom type registered above) - NOT plain 'raster'.
-					url: 'om://' + omUrl,
-					type: 'raster-om',
-					maxzoom: 12
-				});
+				// A custom raster source (Mapbox's CustomSourceInterface), added like any other source.
+				map.addSource(
+					'omFileSource',
+					mapboxAdapter.createRasterSource('om://' + omUrl, { attribution: '© Open-Meteo' })
+				);
 				map.addLayer(
 					{
 						id: 'omFileLayer',

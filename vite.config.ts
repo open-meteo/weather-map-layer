@@ -31,23 +31,31 @@ export default defineConfig({
 			insertTypesEntry: true
 		})
 	],
-	worker: {
-		plugins: () => [injectedWorkerWasmUrl()]
-	},
-	optimizeDeps: {
-		exclude: ['@openmeteo/file-reader', '@openmeteo/file-format-wasm']
-	},
+	// Asset URLs are resolved relative to the chunk that references them, so the
+	// package works from any directory (node_modules, a CDN path), not a site root.
+	base: './',
 	build: {
-		chunkSizeWarningLimit: 1200,
+		modulePreload: false,
 		rolldownOptions: {
-			external: ['@openmeteo/file-reader', '@openmeteo/file-format-wasm'],
-			input: {
-				index: 'src/index.ts'
-			},
+			// A plain entry rather than `build.lib`: lib mode always inlines assets,
+			// which would turn the file reader's WASM binary into a 2.8 MB base64
+			// data URL. As a separate file it transfers a third smaller, compiles
+			// while it streams in and can be kept compiled in the browser cache.
+			input: { index: 'src/index.ts' },
 			output: {
-				entryFileNames: `[name].mjs`
+				entryFileNames: '[name].mjs',
+				chunkFileNames: '[name].mjs',
+				assetFileNames: '[name][extname]'
 			},
 			preserveEntrySignatures: 'strict'
+		}
+	},
+	worker: {
+		// The tile worker is a plain file next to the module, like the WASM binary.
+		rolldownOptions: {
+			output: {
+				entryFileNames: '[name].js'
+			}
 		}
 	}
 });

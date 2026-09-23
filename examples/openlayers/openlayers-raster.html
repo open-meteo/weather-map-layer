@@ -6,15 +6,8 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol/ol.css" />
 		<script src="https://cdn.jsdelivr.net/npm/ol/dist/ol.js"></script>
-		<!-- x-release-please-start-version -->
-		<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.1.0/dist/index.js"></script>
-		<!-- x-release-please-end -->
-		<!-- Local development -->
-		<script>
-			if (location.hostname === 'localhost' || location.href.startsWith('file://')) {
-				document.write('<script src="../../dist/index.js"><\/script>');
-			}
-		</script>
+		<!-- Basemap only: ol-mapbox-style renders a MapLibre style sheet with OpenLayers' own vector rendering. The weather layer needs none of it. -->
+		<script src="https://unpkg.com/ol-mapbox-style@13.5.1/dist/olms.js"></script>
 		<style>
 			html,
 			body,
@@ -27,7 +20,13 @@
 	</head>
 	<body>
 		<div id="map"></div>
-		<script>
+		<script type="module">
+			const OMWeatherMapLayer = await import(
+				location.hostname === 'localhost'
+					? '../../dist/index.mjs' // local development
+					: 'https://unpkg.com/@openmeteo/weather-map-layer@0.2.0/dist/index.mjs' // x-release-please-version
+			);
+
 			const olAdapter = OMWeatherMapLayer.addOpenLayersProtocolSupport(ol);
 
 			// Register the 'om' protocol handler (same as MapLibre's addProtocol).
@@ -38,18 +37,19 @@
 
 			const rasterSource = olAdapter.createRasterSource('om://' + omUrl);
 
+			const basemap = new ol.layer.Group();
+			olms.apply(
+				basemap,
+				'https://static-assets.open-meteo.com/map-assets/styles/minimal-planet-maps.json'
+			); // replace with your own style sheet
+
 			const map = new ol.Map({
 				target: 'map',
 				layers: [
-					// CARTO base map
-					new ol.layer.Tile({
-						source: new ol.source.XYZ({
-							url: 'https://{a-d}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-							attributions:
-								'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors ' +
-								'&copy; <a href="https://carto.com/attributions">CARTO</a>'
-						})
-					}),
+					// Basemap: the same MapLibre style sheet as the other examples, rendered natively
+					// by ol-mapbox-style into this group. The weather layer below is a plain
+					// OpenLayers DataTile source, the protocol and its adapter do not depend on it.
+					basemap,
 					// Weather raster layer — use WebGLTile to render DataTile sources
 					new ol.layer.WebGLTile({
 						source: rasterSource,

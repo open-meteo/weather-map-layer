@@ -54,22 +54,18 @@ map.on('load', () => {
 });
 ```
 
+Two files ship next to the module and are referenced with `new URL(..., import.meta.url)`: the tile render worker (`dist/worker.js`) and the file reader's WebAssembly binary (`dist/om_file_format.web.wasm`). Bundlers that understand that pattern (Vite, webpack 5, Rollup, Parcel) copy them into their output as assets without configuration. The worker starts with the protocol; the binary is fetched on the first data read, not at import time.
+
 ### HTML / UNPKG
 
-For a standalone example, see `examples/temperature.html`.
+The package ships as an ES module only, so load it from a `<script type="module">`. The render worker and the `.wasm` binary are fetched from the same directory; the worker is started through a same-origin blob when the module comes from another origin, as a worker script itself must be same-origin. For a standalone example, see `examples/temperature.html`.
 
-<!-- x-release-please-start-version -->
-
+<!-- prettier-ignore -->
 ```html
-...
-<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.1.0/dist/index.js"></script>
-...
-```
+<script type="module">
+	import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.mjs';
+	import * as OMWeatherMapLayer from 'https://unpkg.com/@openmeteo/weather-map-layer@0.2.0/dist/index.mjs'; // x-release-please-version
 
-<!-- x-release-please-end -->
-
-```html
-<script>
 	// Standard MapLibre GL JS setup
 	// ...
 
@@ -157,7 +153,22 @@ For the vector source examples there is the `examples/vector` sub-directory with
 
 ## Framework Adapters
 
-The core `omProtocol` handler is designed for MapLibre GL JS, but this package also ships adapters for **Mapbox GL JS**, **Leaflet** and **OpenLayers**. Each adapter provides `addProtocol` / `removeProtocol` plus factory methods for creating map-library-native source or layer objects.
+The core `omProtocol` handler is designed for MapLibre GL JS, but this package also ships adapters for **Mapbox GL JS**, **Leaflet** and **OpenLayers**. Each adapter provides `addProtocol` / `removeProtocol` plus factory methods for creating map-library-native source or layer objects. See `examples/leaflet`, `examples/openlayers` and `examples/mapbox`.
+
+- **Leaflet** – `addLeafletProtocolSupport(L)` gives `createTileLayer` and `createVectorTileLayer`, both plain `L.GridLayer`s. They default to `tileSize: 512, zoomOffset: -1`: the protocol renders 512 px tiles and sizes its arrow/barb lattice for them, so this reproduces the MapLibre look 1:1. Pass `tileSize: 256, zoomOffset: 0` for 256 px tiles.
+- **OpenLayers** – `addOpenLayersProtocolSupport(ol)` gives `createRasterSource` (a `DataTile` source for `WebGLTile` layers) and `createVectorTileSource` (an MVT `VectorTile` source).
+- **Mapbox GL JS** – `addMapboxProtocolSupport()` gives `createRasterSource`, a `type: 'custom'` raster source for `map.addSource`, and `addVectorSource(map, sourceId, url)`, which keeps a GeoJSON source in sync with the vector tiles of the viewport (Mapbox custom sources carry raster data only). Style layers select their features with a filter on the `layer` property, e.g. `['==', ['get', 'layer'], 'wind-arrows']`, instead of `source-layer`.
+
+#### Cross-origin isolation
+
+The protocol shares the decoded weather data with its render workers through `SharedArrayBuffer`, which browsers only enable on cross-origin isolated pages. Serve your page with
+
+```
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+(`require-corp` is what the Open-Meteo maps app uses; every cross-origin resource then needs CORS or a `Cross-Origin-Resource-Policy` header. `credentialless` is a more lenient alternative where supported.) Without these headers the protocol still works, but every tile request has to copy the whole variable into a worker, which blocks the main thread noticeably while panning and zooming. `npm run serve` sends them (`scripts/serve-examples.js`); `crossOriginIsolated` in the console tells whether a page has them.
 
 #### Maptiler SDK
 

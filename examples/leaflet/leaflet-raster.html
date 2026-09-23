@@ -6,15 +6,8 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 		<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-		<!-- x-release-please-start-version -->
-		<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.1.0/dist/index.js"></script>
-		<!-- x-release-please-end -->
-		<!-- Local development -->
-		<script>
-			if (location.hostname === 'localhost' || location.href.startsWith('file://')) {
-				document.write('<script src="../../dist/index.js"><\/script>');
-			}
-		</script>
+		<!-- Basemap only: MapLibre + the maplibre-gl-leaflet plugin render a vector style sheet as the Leaflet base layer (see the end of the module script). The weather layer needs neither. -->
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.css" />
 		<style>
 			html,
 			body,
@@ -27,15 +20,23 @@
 	</head>
 	<body>
 		<div id="map"></div>
-		<script>
+		<script type="module">
+			const OMWeatherMapLayer = await import(
+				location.hostname === 'localhost'
+					? '../../dist/index.mjs' // local development
+					: 'https://unpkg.com/@openmeteo/weather-map-layer@0.2.0/dist/index.mjs' // x-release-please-version
+			);
+
 			// Builds a custom L.TileLayer subclass that intercepts "om://" URLs and routes them through omProtocol.
 			const leafletAdapter = OMWeatherMapLayer.addLeafletProtocolSupport(L);
 
 			// Register the 'om' protocol handler (same as MapLibre's addProtocol).
 			leafletAdapter.addProtocol('om', OMWeatherMapLayer.omProtocol);
 
-			// Create the map with a standard base layer.
-			const map = L.map('map').setView([0, 0], 2);
+			// Create the map. It starts zoomed in: the first bounds update below decides the
+			// data window the protocol reads, and a world view reads the whole grid.
+			const map = L.map('map').setView([50, 10], 5);
+			map.attributionControl.setPrefix('<a href="https://leafletjs.com">Leaflet</a>');
 
 			// Keep the protocol informed of the current viewport bounds.
 			function updateBounds() {
@@ -50,13 +51,6 @@
 			map.on('moveend', updateBounds);
 			updateBounds();
 
-			L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-				attribution:
-					'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors ' +
-					'&copy; <a href="https://carto.com/attributions">CARTO</a>',
-				maxZoom: 19
-			}).addTo(map);
-
 			// Create the om:// tile layer. The URL points at a TileJSON endpoint, tile templates and bounds are resolved automatically from the response.
 			const omUrl = `https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m`;
 
@@ -65,6 +59,24 @@
 					opacity: 0.75
 				})
 				.addTo(map);
+
+			// Basemap only: a MapLibre style sheet drawn by the maplibre-gl-leaflet plugin, so any own
+			// vector style can be used. The plugin is used for nothing but this base layer; the weather
+			// layer above is a plain Leaflet GridLayer, the protocol and its adapter fully support
+			// native Leaflet and do not depend on MapLibre.
+			// MapLibre 6 ships as ES module while the plugin expects it as the global `maplibregl`.
+			window.maplibregl = await import('https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.mjs');
+			await import('https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js');
+
+			// The basemap is added after the weather layer, so it gets its own pane below the
+			// tile pane to stay underneath it.
+			map.createPane('basemap').style.zIndex = 150;
+			L.maplibreGL({
+				pane: 'basemap',
+				style: 'https://static-assets.open-meteo.com/map-assets/styles/minimal-planet-maps.json', // replace with your own style sheet
+				attribution:
+					'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+			}).addTo(map);
 		</script>
 	</body>
 </html>

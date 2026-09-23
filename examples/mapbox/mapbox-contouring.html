@@ -4,17 +4,8 @@
 		<title>Open-Meteo Weather Map Layer - Mapbox GL Contouring on Colorscale Example</title>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<link rel="stylesheet" href="https://unpkg.com/mapbox-gl@3.20.0/dist/mapbox-gl.css" />
-		<script src="https://unpkg.com/mapbox-gl@3.20.0/dist/mapbox-gl.js"></script>
-		<!-- x-release-please-start-version -->
-		<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.1.0/dist/index.js"></script>
-		<!-- x-release-please-end -->
-		<!-- Local development -->
-		<script>
-			if (location.hostname === 'localhost' || location.href.startsWith('file://')) {
-				document.write('<script src="../../dist/index.js"><\/script>');
-			}
-		</script>
+		<link rel="stylesheet" href="https://unpkg.com/mapbox-gl@3.30.0/dist/mapbox-gl.css" />
+		<script src="https://unpkg.com/mapbox-gl@3.30.0/dist/mapbox-gl.js"></script>
 		<style>
 			html,
 			body,
@@ -27,10 +18,18 @@
 	</head>
 	<body>
 		<div id="map"></div>
-		<script>
+		<script type="module">
+			const OMWeatherMapLayer = await import(
+				location.hostname === 'localhost'
+					? '../../dist/index.mjs' // local development
+					: 'https://unpkg.com/@openmeteo/weather-map-layer@0.2.0/dist/index.mjs' // x-release-please-version
+			);
+
 			mapboxgl.accessToken = 'XXX'; // replace with your Mapbox access token
 
-			const mapboxAdapter = OMWeatherMapLayer.addMapboxProtocolSupport(mapboxgl);
+			// The adapter turns "om://" URLs into Mapbox sources whose tiles are rendered by omProtocol:
+			// a custom raster source, and a GeoJSON source fed with the vector tiles of the viewport.
+			const mapboxAdapter = OMWeatherMapLayer.addMapboxProtocolSupport();
 			mapboxAdapter.addProtocol('om', OMWeatherMapLayer.omProtocol);
 
 			const map = new mapboxgl.Map({
@@ -38,18 +37,6 @@
 				style: 'https://static-assets.open-meteo.com/map-assets/styles/minimal-planet-maps.json', // replace with your own style sheet
 				hash: true
 			});
-
-			map.addSourceType(
-				'raster-om',
-				mapboxAdapter.rasterSourceType,
-				(e) => e && console.error('Failed to register raster-om source type', e)
-			);
-
-			map.addSourceType(
-				'vector-om',
-				mapboxAdapter.vectorSourceType,
-				(e) => e && console.error('Failed to register vector-om source type', e)
-			);
 
 			map.on('dataloading', () => {
 				const bounds = map.getBounds();
@@ -61,11 +48,11 @@
 			const omUrl = `https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=precipitation&contours=true`;
 
 			map.on('load', () => {
-				map.addSource('omFileRasterSource', {
-					url: 'om://' + omUrl,
-					type: 'raster-om',
-					maxzoom: 12
-				});
+				// Raster: a custom source (Mapbox's CustomSourceInterface), added like any other source.
+				map.addSource(
+					'omFileRasterSource',
+					mapboxAdapter.createRasterSource('om://' + omUrl, { attribution: '© Open-Meteo' })
+				);
 
 				map.addLayer(
 					{
@@ -79,17 +66,17 @@
 					'waterway-tunnel'
 				);
 
-				map.addSource('omFileVectorSource', {
-					url: 'om://' + omUrl,
-					type: 'vector-om'
-				});
+				// Contours: Mapbox custom sources carry raster data only, so the contour tiles covering
+				// the viewport are decoded into a GeoJSON source that follows the map on every moveend.
+				// The line layer selects the 'contours' features by their `layer` property.
+				mapboxAdapter.addVectorSource(map, 'omFileVectorSource', 'om://' + omUrl);
 
 				map.addLayer(
 					{
 						id: 'omFileVectorLayer',
 						type: 'line',
 						source: 'omFileVectorSource',
-						'source-layer': 'contours',
+						filter: ['==', ['get', 'layer'], 'contours'],
 						paint: {
 							'line-color': 'rgba(0,0,0,0.85)',
 							'line-width': 1
