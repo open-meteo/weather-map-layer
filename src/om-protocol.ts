@@ -7,6 +7,7 @@ import { parseMetaJson } from './utils/parse-url';
 import { COLOR_SCALES_WITH_ALIASES as defaultColorScales } from './utils/styling';
 
 import { domainOptions as defaultDomainOptions } from './domains';
+import { isGpuSupported } from './gpu/tile-renderer';
 import { GridFactory } from './grids/index';
 import { defaultFileReaderConfig } from './om-file-reader';
 import { ensureData, getOrCreateState, getProtocolInstance } from './om-protocol-state';
@@ -35,6 +36,7 @@ export const defaultOmProtocolSettings: OmProtocolSettings = {
 	clippingOptions: undefined,
 	colorScales: defaultColorScales,
 	domainOptions: defaultDomainOptions,
+	gpu: false,
 
 	resolveRequest: defaultResolveRequest,
 	postReadCallback: undefined
@@ -91,7 +93,14 @@ export const omProtocol = async (
 		throw new Error(`Tile coordinates required for ${params.type} request`);
 	}
 
-	const tileResult = await requestTile(url, request, data, state, params.type, signal);
+	// Polygon clipping is rasterised per pixel by the CPU loop only
+	const gpu =
+		settings.gpu === true &&
+		params.type === 'image' &&
+		!request.clippingOptions?.polygons &&
+		isGpuSupported();
+
+	const tileResult = await requestTile(url, request, data, state, params.type, signal, gpu);
 
 	if (tileResult.cancelled || !tileResult.data) {
 		return { data: null };
@@ -121,7 +130,8 @@ const requestTile = async (
 	data: Data,
 	state: OmUrlState,
 	type: 'image' | 'arrayBuffer',
-	signal?: AbortSignal
+	signal?: AbortSignal,
+	gpu = false
 ): TilePromise => {
 	if (!request.tileIndex) {
 		throw new Error('Tile coordinates required for tile request');
@@ -154,7 +164,8 @@ const requestTile = async (
 		dataOptions: request.dataOptions,
 		renderOptions: request.renderOptions,
 		clippingOptions: request.clippingOptions,
-		signal
+		signal,
+		gpu
 	});
 };
 

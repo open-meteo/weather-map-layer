@@ -150,6 +150,21 @@ For the vector source examples there is the `examples/vector` sub-directory with
 - `examples/vector/temperature-labels.html` – displays all grid points for a model, using value data to show temperature labels.
 - `examples/vector/wind-arrows.html` – displays wind map with directional arrows.
 
+## GPU tile rendering
+
+`gpu: true` in the protocol settings rasterises the raster tiles with a WebGL2 shader instead of the CPU pixel loop. The tile pipeline stays exactly the same (URLs, TileJSON, data loading, partial ranges, vector tiles, worker pool, cancellation), only the per-pixel projection, interpolation and colour mapping move to the GPU; the shaders are a 1:1 port of the CPU grid and interpolation code, so both draw the same picture up to fp32 rounding. Vector tiles, polygon clipping and browsers without WebGL2 keep using the pixel loop automatically.
+
+GPU tiles are rendered by one of the tile workers on its own WebGL2 context, never on the main thread. The values of a data array are uploaded to that worker once (not once per tile, which matters on pages without cross-origin isolation where every message clones them), tiles are queued and dropped when the map cancels them, and each tile is fenced so the worker never waits for the GPU.
+
+```ts
+const omProtocolSettings = { ...OMWeatherMapLayer.defaultOmProtocolSettings, gpu: true };
+maplibregl.addProtocol('om', (params, abortController) =>
+	OMWeatherMapLayer.omProtocol(params, abortController, omProtocolSettings)
+);
+```
+
+`examples/gpu/tile-protocol.html` shows it on a map; `examples/gpu/benchmark.html` renders identical tile sets through both rasterisers, reports ms/tile, pixel-diffs the outputs, and runs a scripted frantic zoom/pan sequence on a full map view with each backend (frames, longest main-thread gap, long tasks, tile requests/aborts, settle time). Banded (non-blended) colour scales sample a 2048-texel LUT, so band edges are quantised to `range/2048`.
+
 ## Framework Adapters
 
 The core `omProtocol` handler is designed for MapLibre GL JS, but this package also ships adapters for **Mapbox GL JS**, **Leaflet** and **OpenLayers**. Each adapter provides `addProtocol` / `removeProtocol` plus factory methods for creating map-library-native source or layer objects. See `examples/leaflet`, `examples/openlayers` and `examples/mapbox`.
