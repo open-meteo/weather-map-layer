@@ -1,70 +1,81 @@
 /**
  * Unit tests for the Mapbox GL JS adapter (addMapboxProtocolSupport).
  *
- * These tests exercise the adapter's public API in isolation using a minimal
- * mock of the Mapbox GL JS library surface — no real Mapbox dependency required.
+ * The adapter builds a `CustomSourceInterface` raster source and a
+ * viewport-synced GeoJSON vector source; both are exercised against a mock
+ * protocol handler and a minimal mock of the Mapbox `Map` surface.
  */
-import type { MapboxLib } from '../../adapters/mapbox';
 import { addMapboxProtocolSupport } from '../../adapters/mapbox';
+import type { MapboxMapLike } from '../../adapters/mapbox';
+import { command, writeLayer, zigzag } from '../../utils/pbf';
+import { PbfWriter } from 'pbf';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Construct a minimal mock of the Mapbox GL JS namespace. */
-const createMockMapbox = (): MapboxLib => {
-	class MockRasterSource {
-		_options?: Record<string, unknown>;
-		options?: Record<string, unknown>;
-		url?: string;
-		tiles?: string[];
-		scheme?: string;
-		fire = vi.fn();
-
-		constructor(...args: unknown[]) {
-			const opts = (args[1] ?? args[0]) as Record<string, unknown> | undefined;
-			this._options = opts ? { ...opts } : {};
-			this.url = opts?.['url'] as string | undefined;
-		}
-
-		load() {
-			/* no-op base */
-		}
-		loadTile(_tile: unknown, callback: (err?: Error | null) => void) {
-			callback(null);
-		}
-	}
-
-	class MockVectorSource extends MockRasterSource {
-		constructor(...args: unknown[]) {
-			super(...args);
-		}
-	}
-
-	return {
-		Style: {
-			getSourceType(type: 'raster' | 'vector') {
-				if (type === 'vector')
-					return MockVectorSource as unknown as ReturnType<MapboxLib['Style']['getSourceType']>;
-				return MockRasterSource as unknown as ReturnType<MapboxLib['Style']['getSourceType']>;
-			}
-		}
-	};
+const TILEJSON = {
+	tiles: ['om://example.com/{z}/{x}/{y}'],
+	attribution: '© Open-Meteo',
+	minzoom: 0,
+	maxzoom: 12,
+	bounds: [-180, -90, 180, 90]
 };
 
-/** Create a mock protocol handler that returns predictable TileJSON. */
-const createMockHandler = (overrides: Record<string, unknown> = {}) => {
-	const tileJson = {
-		tiles: ['om://example.com/{z}/{x}/{y}.png'],
-		attribution: '© Open-Meteo',
-		minzoom: 0,
-		maxzoom: 12,
-		bounds: [-180, -90, 180, 90],
-		...overrides
-	};
+/** A protocol handler answering TileJSON, then the given tile data for every tile. */
+const createMockHandler = (tileData: () => unknown = () => null) =>
+	vi.fn(async (params: { url: string; type: string }) =>
+		params.type === 'json' ? { data: TILEJSON } : { data: tileData() }
+	);
 
-	return vi.fn().mockResolvedValue({ data: tileJson });
+/** One MVT tile with a single 2-point line in layer `wind-arrows`. */
+const makeVectorTile = (): ArrayBuffer => {
+	const pbf = new PbfWriter();
+	pbf.writeMessage(3, writeLayer, {
+		name: 'wind-arrows',
+		extent: 4096,
+		features: [
+			{
+				id: 1,
+				type: 2, // LineString
+				properties: { value: 3.5 },
+				geom: [command(1, 1), zigzag(1024), zigzag(1024), command(2, 1), zigzag(512), zigzag(0)]
+			}
+		]
+	});
+	const bytes = pbf.finish();
+	return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+};
+
+interface MockMap extends MapboxMapLike {
+	sources: Map<string, Record<string, unknown>>;
+	setData: ReturnType<typeof vi.fn>;
+	listeners: Map<string, () => void>;
+}
+
+/** A Mapbox map showing the world at zoom 1. */
+const createMockMap = (zoom = 1): MockMap => {
+	const sources = new Map<string, Record<string, unknown>>();
+	const setData = vi.fn();
+	const listeners = new Map<string, () => void>();
+	return {
+		sources,
+		setData,
+		listeners,
+		getZoom: () => zoom,
+		getBounds: () => ({
+			getWest: () => -180,
+			getSouth: () => -85,
+			getEast: () => 180,
+			getNorth: () => 85
+		}),
+		addSource: (id, source) => sources.set(id, source),
+		removeSource: (id) => sources.delete(id),
+		getSource: (id) => (sources.has(id) ? { setData } : undefined),
+		on: (type, listener) => listeners.set(type, listener),
+		off: (type) => listeners.delete(type)
+	};
 };
 
 // ---------------------------------------------------------------------------
@@ -72,241 +83,238 @@ const createMockHandler = (overrides: Record<string, unknown> = {}) => {
 // ---------------------------------------------------------------------------
 
 describe('addMapboxProtocolSupport', () => {
-	let mapboxgl: MapboxLib;
-
 	beforeEach(() => {
-		mapboxgl = createMockMapbox();
+		// Stub the browser global unavailable in Node.
+		vi.stubGlobal('ImageBitmap', class ImageBitmap {});
 	});
 
 	afterEach(() => {
 		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
 	});
 
-	// ── Constructor validation ────────────────────────────────────────────
-
-	describe('constructor validation', () => {
-		it('throws when mapboxgl is null', () => {
-			expect(() => addMapboxProtocolSupport(null as unknown as MapboxLib)).toThrow(
-				'mapboxgl.Style.getSourceType is not available'
-			);
-		});
-
-		it('returns an adapter with the expected interface', () => {
-			const adapter = addMapboxProtocolSupport(mapboxgl);
-			expect(adapter).toHaveProperty('addProtocol');
-			expect(adapter).toHaveProperty('removeProtocol');
-			expect(adapter).toHaveProperty('rasterSourceType');
-			expect(adapter).toHaveProperty('vectorSourceType');
-			expect(typeof adapter.addProtocol).toBe('function');
-			expect(typeof adapter.removeProtocol).toBe('function');
-		});
+	it('returns an adapter with the expected interface', () => {
+		const adapter = addMapboxProtocolSupport();
+		expect(typeof adapter.addProtocol).toBe('function');
+		expect(typeof adapter.removeProtocol).toBe('function');
+		expect(typeof adapter.createRasterSource).toBe('function');
+		expect(typeof adapter.addVectorSource).toBe('function');
 	});
-
-	// ── Protocol registration ─────────────────────────────────────────────
 
 	describe('addProtocol / removeProtocol', () => {
 		it('registers and unregisters a protocol without error', () => {
-			const adapter = addMapboxProtocolSupport(mapboxgl);
-			const handler = createMockHandler();
-
-			expect(() => adapter.addProtocol('om', handler)).not.toThrow();
+			const adapter = addMapboxProtocolSupport();
+			expect(() => adapter.addProtocol('om', createMockHandler())).not.toThrow();
 			expect(() => adapter.removeProtocol('om')).not.toThrow();
 		});
 
-		it('allows overwriting a protocol with a different handler', () => {
-			const adapter = addMapboxProtocolSupport(mapboxgl);
-			const handler1 = createMockHandler();
-			const handler2 = createMockHandler();
-
-			adapter.addProtocol('om', handler1);
-			expect(() => adapter.addProtocol('om', handler2)).not.toThrow();
-		});
-
 		it('removing a non-existent protocol does not throw', () => {
-			const adapter = addMapboxProtocolSupport(mapboxgl);
+			const adapter = addMapboxProtocolSupport();
 			expect(() => adapter.removeProtocol('nonexistent')).not.toThrow();
 		});
 	});
 
-	// ── Source types ──────────────────────────────────────────────────────
+	// ── createRasterSource ────────────────────────────────────────────────
 
-	describe('rasterSourceType', () => {
-		it('is a constructor function', () => {
-			const adapter = addMapboxProtocolSupport(mapboxgl);
-			expect(typeof adapter.rasterSourceType).toBe('function');
-		});
+	describe('createRasterSource', () => {
+		it('builds a custom raster source with the protocol tile defaults', () => {
+			const adapter = addMapboxProtocolSupport();
+			adapter.addProtocol('om', createMockHandler());
 
-		it('can be instantiated', () => {
-			const adapter = addMapboxProtocolSupport(mapboxgl);
-			// Mapbox passes (id, options, dispatcher, eventedParent) to source constructors
-			const source = new adapter.rasterSourceType('test-id', {
-				url: 'om://example.com/tiles.json',
-				type: 'raster'
-			});
-			expect(source).toBeDefined();
-			expect(typeof source.load).toBe('function');
+			const source = adapter.createRasterSource('om://example.com/tiles.json');
+
+			expect(source.type).toBe('custom');
+			expect(source.dataType).toBe('raster');
+			expect(source.tileSize).toBe(512);
+			expect(source.minzoom).toBe(0);
+			expect(source.maxzoom).toBe(12);
 			expect(typeof source.loadTile).toBe('function');
 		});
-	});
 
-	describe('vectorSourceType', () => {
-		it('is a constructor function', () => {
-			const adapter = addMapboxProtocolSupport(mapboxgl);
-			expect(typeof adapter.vectorSourceType).toBe('function');
-		});
+		it('forwards options onto the source', () => {
+			const adapter = addMapboxProtocolSupport();
+			adapter.addProtocol('om', createMockHandler());
 
-		it('can be instantiated', () => {
-			const adapter = addMapboxProtocolSupport(mapboxgl);
-			const source = new adapter.vectorSourceType('test-id', {
-				url: 'om://example.com/tiles.json',
-				type: 'vector'
+			const source = adapter.createRasterSource('om://example.com/tiles.json', {
+				maxzoom: 8,
+				attribution: '© Test',
+				bounds: [-10, -20, 30, 40]
 			});
-			expect(source).toBeDefined();
-			expect(typeof source.load).toBe('function');
-			expect(typeof source.loadTile).toBe('function');
+
+			expect(source.maxzoom).toBe(8);
+			expect(source.attribution).toBe('© Test');
+			expect(source.bounds).toEqual([-10, -20, 30, 40]);
 		});
-	});
 
-	// ── load() with custom protocol ──────────────────────────────────────
-
-	describe('source load()', () => {
-		it('raster source load() calls the registered protocol handler for TileJSON', async () => {
-			const adapter = addMapboxProtocolSupport(mapboxgl);
-			const handler = createMockHandler();
+		it('loadTile resolves the TileJSON, then hands the protocol bitmap to Mapbox', async () => {
+			const bitmap = new ImageBitmap();
+			const handler = createMockHandler(() => bitmap);
+			const adapter = addMapboxProtocolSupport();
 			adapter.addProtocol('om', handler);
 
-			const source = new adapter.rasterSourceType('test-id', {
-				url: 'om://example.com/tiles.json',
-				type: 'raster'
-			});
-			source.load();
+			const source = adapter.createRasterSource('om://example.com/tiles.json');
+			const result = await source.loadTile(
+				{ z: 5, x: 10, y: 15 },
+				{ signal: new AbortController().signal }
+			);
 
-			// Wait for async handler resolution
-			await vi.waitFor(() => {
-				expect(handler).toHaveBeenCalledTimes(1);
-			});
-
+			expect(result).toBe(bitmap);
 			expect(handler).toHaveBeenCalledWith(
 				{ url: 'om://example.com/tiles.json', type: 'json' },
 				expect.any(AbortController),
 				undefined
 			);
-		});
-
-		it('vector source load() calls the registered protocol handler for TileJSON', async () => {
-			const adapter = addMapboxProtocolSupport(mapboxgl);
-			const handler = createMockHandler();
-			adapter.addProtocol('om', handler);
-
-			const source = new adapter.vectorSourceType('test-id', {
-				url: 'om://example.com/tiles.json',
-				type: 'vector'
-			});
-			source.load();
-
-			await vi.waitFor(() => {
-				expect(handler).toHaveBeenCalledTimes(1);
-			});
-		});
-
-		it('load() with no registered handler fires an error event', () => {
-			const adapter = addMapboxProtocolSupport(mapboxgl);
-			// Register nothing
-
-			const source = new adapter.rasterSourceType('test-id', {
-				url: 'om://example.com/tiles.json',
-				type: 'raster'
-			});
-
-			const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-			source.load();
-
-			expect(consoleSpy).toHaveBeenCalledWith(
-				'[mapbox-adapter] No handler registered for protocol: "om"'
+			expect(handler).toHaveBeenLastCalledWith(
+				{ url: 'om://example.com/5/10/15', type: 'image' },
+				expect.any(AbortController),
+				undefined
 			);
-			expect(source.fire).toHaveBeenCalledWith('error', {
-				error: expect.objectContaining({
-					message: '[mapbox-adapter] No handler registered for protocol: "om"'
-				})
-			});
-			consoleSpy.mockRestore();
 		});
 
-		it('load() patches source options with TileJSON metadata', async () => {
-			const adapter = addMapboxProtocolSupport(mapboxgl);
-			const handler = createMockHandler({
-				tiles: ['om://example.com/{z}/{x}/{y}.png'],
-				bounds: [-10, -20, 30, 40],
-				minzoom: 2,
-				maxzoom: 10,
-				attribution: '© Test'
+		it('loadTile resolves to null when the protocol has no data for the tile', async () => {
+			const adapter = addMapboxProtocolSupport();
+			adapter.addProtocol(
+				'om',
+				createMockHandler(() => null)
+			);
+
+			const source = adapter.createRasterSource('om://example.com/tiles.json');
+			const result = await source.loadTile(
+				{ z: 5, x: 10, y: 15 },
+				{ signal: new AbortController().signal }
+			);
+
+			expect(result).toBeNull();
+		});
+
+		it("loadTile forwards Mapbox's abort to the handler's controller", async () => {
+			let handlerController: AbortController | undefined;
+			const handler = vi.fn(async (params: { type: string }, controller: AbortController) => {
+				if (params.type === 'json') return { data: TILEJSON };
+				handlerController = controller;
+				return { data: new ImageBitmap() };
 			});
+			const adapter = addMapboxProtocolSupport();
 			adapter.addProtocol('om', handler);
 
-			const source = new adapter.rasterSourceType('test-id', {
-				url: 'om://example.com/tiles.json',
-				type: 'raster'
-			});
-			source.load();
+			const source = adapter.createRasterSource('om://example.com/tiles.json');
+			const mapboxAbort = new AbortController();
+			await source.loadTile({ z: 5, x: 10, y: 15 }, { signal: mapboxAbort.signal });
 
-			await vi.waitFor(() => {
-				expect(handler).toHaveBeenCalled();
-			});
+			expect(handlerController?.signal.aborted).toBe(false);
+			mapboxAbort.abort();
+			expect(handlerController?.signal.aborted).toBe(true);
+		});
 
-			// The handler resolves TileJSON and patches _options
-			const opts = source._options ?? source.options;
-			expect(opts?.['tiles']).toEqual(['om://example.com/{z}/{x}/{y}.png']);
-			expect(opts?.['bounds']).toEqual([-10, -20, 30, 40]);
-			expect(opts?.['minzoom']).toBe(2);
-			expect(opts?.['maxzoom']).toBe(10);
-			expect(opts?.['url']).toBeUndefined();
+		it('loadTile rejects unsupported tile data', async () => {
+			const adapter = addMapboxProtocolSupport();
+			adapter.addProtocol(
+				'om',
+				createMockHandler(() => 'not a bitmap')
+			);
+
+			const source = adapter.createRasterSource('om://example.com/tiles.json');
+			await expect(
+				source.loadTile({ z: 5, x: 10, y: 15 }, { signal: new AbortController().signal })
+			).rejects.toThrow('Unsupported raster tile data type');
 		});
 	});
 
-	// ── Error handling in load() ──────────────────────────────────────────
+	// ── addVectorSource ───────────────────────────────────────────────────
 
-	describe('load() error handling', () => {
-		it('fires error event when handler returns no data', async () => {
-			const adapter = addMapboxProtocolSupport(mapboxgl);
-			const handler = vi.fn().mockResolvedValue({ data: null });
-			adapter.addProtocol('om', handler);
+	describe('addVectorSource', () => {
+		it('adds an exact-geometry GeoJSON source and follows moveend', () => {
+			const adapter = addMapboxProtocolSupport();
+			adapter.addProtocol('om', createMockHandler());
+			const map = createMockMap();
 
-			const source = new adapter.rasterSourceType('test-id', {
-				url: 'om://example.com/tiles.json',
-				type: 'raster'
-			});
+			adapter.addVectorSource(map, 'arrows', 'om://example.com/tiles.json?arrows=true');
 
-			const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-			source.load();
-
-			await vi.waitFor(() => {
-				expect(consoleSpy).toHaveBeenCalled();
-			});
-
-			consoleSpy.mockRestore();
+			const source = map.sources.get('arrows');
+			expect(source?.['type']).toBe('geojson');
+			expect(source?.['tolerance']).toBe(0);
+			expect(map.listeners.has('moveend')).toBe(true);
 		});
 
-		it('fires error event when handler rejects', async () => {
-			const adapter = addMapboxProtocolSupport(mapboxgl);
-			const handler = vi.fn().mockRejectedValue(new Error('Network error'));
+		it('fetches the tiles covering the viewport and merges them as GeoJSON with the layer name', async () => {
+			const handler = createMockHandler(makeVectorTile);
+			const adapter = addMapboxProtocolSupport();
 			adapter.addProtocol('om', handler);
+			const map = createMockMap(1);
 
-			const source = new adapter.rasterSourceType('test-id', {
-				url: 'om://example.com/tiles.json',
-				type: 'raster'
+			const handle = adapter.addVectorSource(
+				map,
+				'arrows',
+				'om://example.com/tiles.json?arrows=true'
+			);
+			await handle.refresh();
+
+			// The world at zoom 1 is 2×2 tiles, requested through the TileJSON's template
+			const tileCalls = handler.mock.calls.filter(([params]) => params.type === 'arrayBuffer');
+			expect(tileCalls.map(([params]) => params.url).sort()).toEqual([
+				'om://example.com/1/0/0',
+				'om://example.com/1/0/1',
+				'om://example.com/1/1/0',
+				'om://example.com/1/1/1'
+			]);
+
+			const collection = map.setData.mock.lastCall?.[0] as {
+				type: string;
+				features: {
+					properties: Record<string, unknown>;
+					geometry: { type: string; coordinates: number[][] };
+				}[];
+			};
+			expect(collection.type).toBe('FeatureCollection');
+			expect(collection.features).toHaveLength(4);
+			const feature = collection.features[0];
+			expect(feature.properties).toEqual({ layer: 'wind-arrows', value: 3.5 });
+			expect(feature.geometry.type).toBe('LineString');
+			// Tile 1/0/0 spans lon -180..0, lat 0..85; a point a quarter into the tile
+			expect(feature.geometry.coordinates[0][0]).toBeCloseTo(-135, 5);
+			expect(feature.geometry.coordinates[0][1]).toBeGreaterThan(0);
+		});
+
+		it('skips empty tiles', async () => {
+			const adapter = addMapboxProtocolSupport();
+			adapter.addProtocol(
+				'om',
+				createMockHandler(() => new ArrayBuffer(0))
+			);
+			const map = createMockMap(1);
+
+			const handle = adapter.addVectorSource(map, 'arrows', 'om://example.com/tiles.json');
+			await handle.refresh();
+
+			const collection = map.setData.mock.lastCall?.[0] as { features: unknown[] };
+			expect(collection.features).toEqual([]);
+		});
+
+		it('clamps the tile zoom to the TileJSON range', async () => {
+			const handler = createMockHandler(makeVectorTile);
+			const adapter = addMapboxProtocolSupport();
+			adapter.addProtocol('om', handler);
+			const map = createMockMap(15.7);
+
+			const handle = adapter.addVectorSource(map, 'arrows', 'om://example.com/tiles.json', {
+				maxzoom: 3
 			});
+			await handle.refresh();
 
-			const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-			source.load();
+			const tileCalls = handler.mock.calls.filter(([params]) => params.type === 'arrayBuffer');
+			expect(tileCalls.every(([params]) => params.url.includes('/3/'))).toBe(true);
+		});
 
-			await vi.waitFor(() => {
-				expect(consoleSpy).toHaveBeenCalledWith(
-					'[mapbox-adapter] Error fetching TileJSON:',
-					expect.any(Error)
-				);
-			});
+		it('remove() stops following the map and removes the source', () => {
+			const adapter = addMapboxProtocolSupport();
+			adapter.addProtocol('om', createMockHandler());
+			const map = createMockMap();
 
-			consoleSpy.mockRestore();
+			const handle = adapter.addVectorSource(map, 'arrows', 'om://example.com/tiles.json');
+			handle.remove();
+
+			expect(map.listeners.has('moveend')).toBe(false);
+			expect(map.sources.has('arrows')).toBe(false);
 		});
 	});
 });

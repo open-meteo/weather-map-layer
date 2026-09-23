@@ -1483,5 +1483,43 @@ export const domainOptions: Array<AnyDomain> = [
 		time_interval: 'hourly',
 		model_interval: '3_hourly',
 		windUVComponents: false
+	},
+	{
+		value: 'ukmo_global_ensemble_20km',
+		label: 'UK Met Office 20km Ensemble',
+		grid: {
+			type: 'regular',
+			nx: 1280,
+			ny: 960,
+			latMin: -90,
+			lonMin: -180,
+			dx: 360 / 1280,
+			dy: 180 / 960,
+			zoom: 1
+		},
+		time_interval: 'hourly',
+		model_interval: '6_hourly'
+	},
+	{
+		value: 'ukmo_uk_ensemble_2km',
+		label: 'UK Met Office 2km Ensemble',
+		grid: {
+			type: 'projectedFromProjectedOrigin',
+			nx: 1042,
+			ny: 970,
+			latitudeProjectionOrigin: -1036000,
+			longitudeProjectionOrigin: -1158000,
+			dx: 2000,
+			dy: 2000,
+			zoom: 4,
+			projection: {
+				λ0: -2.5,
+				ϕ1: 54.9,
+				radius: 6371229,
+				name: 'LambertAzimuthalEqualAreaProjection'
+			}
+		},
+		time_interval: 'hourly',
+		model_interval: 'hourly'
 	}
 ];
