@@ -12,12 +12,11 @@ interface RenderFeature {
 interface RenderMessage {
 	id: number;
 	tileSize: number;
-	clip: boolean;
 	features: RenderFeature[];
 }
 
 self.onmessage = (e: MessageEvent<RenderMessage>): void => {
-	const { id, tileSize, clip, features } = e.data;
+	const { id, tileSize, features } = e.data;
 	const canvas = new OffscreenCanvas(tileSize, tileSize);
 	const ctx = canvas.getContext('2d');
 	if (!ctx) {
@@ -25,16 +24,12 @@ self.onmessage = (e: MessageEvent<RenderMessage>): void => {
 		return;
 	}
 
-	if (clip) {
-		ctx.save();
-		ctx.beginPath();
-		ctx.rect(0, 0, tileSize, tileSize);
-		ctx.clip();
-	}
-
 	for (let i = 0; i < features.length; i++) {
 		const f = features[i];
 		ctx.strokeStyle = f.strokeStyle;
+		// Filled shapes (barb pennants, points) take the stroke colour so they
+		// match the lines they belong to
+		ctx.fillStyle = f.strokeStyle;
 		ctx.lineWidth = f.lineWidth;
 		ctx.lineCap = f.lineCap as CanvasLineCap;
 		ctx.globalAlpha = f.globalAlpha;
@@ -63,7 +58,6 @@ self.onmessage = (e: MessageEvent<RenderMessage>): void => {
 		}
 	}
 
-	if (clip) ctx.restore();
 	ctx.globalAlpha = 1;
 
 	const bitmap = canvas.transferToImageBitmap();

@@ -1,7 +1,3 @@
-// ── Worker import ───────────────────────────────────────────────────
-// @ts-expect-error Vite worker import
-import LeafletPbfWorker from './leaflet-pbf-worker?worker&inline';
-
 /**
  * Web Worker pool for offloading vector tile canvas rendering.
  *
@@ -33,8 +29,6 @@ export interface RenderFeature {
 /** Result from extracting render features from a decoded vector tile. */
 export interface ExtractedFeatures {
 	features: RenderFeature[];
-	/** Whether to clip rendering to the tile bounds (arrow-grid layers). */
-	clip: boolean;
 }
 
 // ── Worker pool ──────────────────────────────────────────────────────
@@ -44,7 +38,7 @@ const pending = new Map<
 	{ resolve: (bitmap: ImageBitmap | null) => void; reject: (error: Error) => void }
 >();
 
-let pool: Worker[] | null = null;
+let pool: Promise<Worker[]> | null = null;
 let nextWorker = 0;
 let nextId = 0;
 
@@ -57,20 +51,30 @@ const onWorkerMessage = (e: MessageEvent): void => {
 	}
 };
 
-const ensurePool = (): Worker[] => {
+const ensurePool = (): Promise<Worker[]> => {
 	if (pool) return pool;
-	const count = Math.min(
-		typeof navigator !== 'undefined' && navigator.hardwareConcurrency
-			? navigator.hardwareConcurrency
-			: 2,
-		4
-	);
-	pool = [];
-	for (let i = 0; i < count; i++) {
-		const w = new LeafletPbfWorker() as Worker;
-		w.onmessage = onWorkerMessage;
-		pool.push(w);
-	}
+	// Imported lazily: `?worker&inline` embeds the worker bundle as a string and
+	// turns it into a Blob when its module is evaluated, so a static import
+	// would ship and instantiate it for every consumer of the library, Leaflet
+	// user or not. As a dynamic import it is a separate chunk that only the
+	// first Leaflet vector tile pulls in.
+	// @ts-expect-error Vite worker import
+	const workerModule = import('./leaflet-pbf-worker?worker&inline');
+	pool = workerModule.then(({ default: LeafletPbfWorker }) => {
+		const count = Math.min(
+			typeof navigator !== 'undefined' && navigator.hardwareConcurrency
+				? navigator.hardwareConcurrency
+				: 2,
+			4
+		);
+		const workers: Worker[] = [];
+		for (let i = 0; i < count; i++) {
+			const w = new LeafletPbfWorker() as Worker;
+			w.onmessage = onWorkerMessage;
+			workers.push(w);
+		}
+		return workers;
+	});
 	return pool;
 };
 
@@ -80,11 +84,11 @@ const ensurePool = (): Worker[] => {
  * Render pre-processed features in a web worker.
  * Returns a transferable `ImageBitmap` that can be drawn onto a DOM canvas.
  */
-export const renderInWorker = (
+export const renderInWorker = async (
 	tileSize: number,
 	extracted: ExtractedFeatures
 ): Promise<ImageBitmap | null> => {
-	const workers = ensurePool();
+	const workers = await ensurePool();
 	const id = nextId++;
 	const worker = workers[nextWorker++ % workers.length];
 
@@ -94,7 +98,6 @@ export const renderInWorker = (
 			type: 'render',
 			id,
 			tileSize,
-			clip: extracted.clip,
 			features: extracted.features
 		});
 	});
