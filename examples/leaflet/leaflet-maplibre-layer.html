@@ -7,15 +7,6 @@
 		<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 		<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.css" />
-		<!-- x-release-please-start-version -->
-		<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.1.1/dist/index.js"></script>
-		<!-- x-release-please-end -->
-		<!-- Local development -->
-		<script>
-			if (location.hostname === 'localhost' || location.href.startsWith('file://')) {
-				document.write('<script src="../../dist/index.js"><\/script>');
-			}
-		</script>
 		<style>
 			html,
 			body,
@@ -37,6 +28,12 @@
 		     hence the module script. -->
 		<script type="module">
 			import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.mjs';
+
+			const OMWeatherMapLayer = await import(
+				location.hostname === 'localhost'
+					? '../../dist/index.mjs' // local development
+					: 'https://unpkg.com/@openmeteo/weather-map-layer@0.2.0/dist/index.mjs' // x-release-please-version
+			);
 
 			window.maplibregl = maplibregl;
 			await import('https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js');
