@@ -110,7 +110,7 @@ export const getOrCreateState = (
 		// else we need to create a new state
 	}
 
-	const ranges = getRanges(dataOptions.domain.grid, dataOptions.bounds);
+	const ranges = getRanges(dataOptions.grid, dataOptions.bounds);
 	const state: OmUrlState = {
 		dataOptions,
 		ranges,
@@ -235,7 +235,7 @@ export const getValueFromLatLong = async (
 		return { value: NaN };
 	}
 
-	const grid = GridFactory.create(state.dataOptions.domain.grid, state.ranges);
+	const grid = GridFactory.create(state.dataOptions.grid, state.ranges);
 	const lonNormalized = normalizeLon(lon);
 	// Sample with the same interpolation the tiles are rendered with (encoded in
 	// the URL) so the popup value matches the pixel under the cursor.
