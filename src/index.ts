@@ -26,6 +26,10 @@ export { solarPosition, sunElevationSine } from './utils/sun';
 // Classes
 
 export { GridFactory } from './grids/index';
+// The block caches for `fileReaderConfig.cache`. Re-exported because the file
+// reader is bundled into this module: importing them from
+// `@openmeteo/file-reader` directly would give a consumer a second copy of it.
+export { BrowserBlockCache, LruBlockCache } from '@openmeteo/file-reader';
 
 // Objects / Constants
 
@@ -72,3 +76,4 @@ export type {
 } from './types';
 
 export type { VariableDerivationRule, WeatherMapLayerFileReader } from './om-file-reader';
+export type { BlockCache } from '@openmeteo/file-reader';

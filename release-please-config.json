@@ -45,6 +45,7 @@
 		"examples/leaflet/leaflet-raster.html",
 		"examples/leaflet/leaflet-vector.html",
 		"examples/leaflet/leaflet-contouring.html",
+		"examples/leaflet/leaflet-maplibre-layer.html",
 
 		"examples/openlayers/openlayers-raster.html",
 		"examples/openlayers/openlayers-vector.html",
