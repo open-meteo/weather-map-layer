@@ -8,6 +8,7 @@ import {
 	TilePromise,
 	TileRequest,
 	TileResult,
+	WorkerBufferRequest,
 	WorkerInitRequest,
 	WorkerResponse
 } from './types';
@@ -39,6 +40,7 @@ const createTileWorker = (): Worker => {
 export class WorkerPool {
 	private workers: Worker[] = [];
 	private nextWorker = 0;
+	private readonly sharedKeys = new Set<string>();
 	/** Stores pending tile requests by key to avoid duplicate requests for the same tile */
 	private pendingRequests = new Map<
 		string,
@@ -66,6 +68,17 @@ export class WorkerPool {
 			worker.postMessage(init);
 			this.workers.push(worker);
 		}
+	}
+
+	/**
+	 * Hands a buffer to every worker once. Messages are delivered in order, so
+	 * a buffer shared before a tile request is available when the tile renders.
+	 */
+	public share(key: string, buffer: ArrayBufferLike): void {
+		if (this.sharedKeys.has(key)) return;
+		this.sharedKeys.add(key);
+		const message: WorkerBufferRequest = { type: 'buffer', key, buffer };
+		for (const worker of this.workers) worker.postMessage(message);
 	}
 
 	private handleMessage(message: MessageEvent): void {

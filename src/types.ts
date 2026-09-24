@@ -145,7 +145,22 @@ export interface WorkerInitRequest {
 	assets: PackageAssets;
 }
 
-export type WorkerRequest = TileRequest | WorkerInitRequest;
+/**
+ * A buffer every worker needs (a grid's geometry), sent once per worker: a
+ * SharedArrayBuffer is passed by reference, anything else is cloned.
+ */
+export interface WorkerBufferRequest {
+	type: 'buffer';
+	key: string;
+	buffer: ArrayBufferLike;
+}
+
+export interface SharedBuffer {
+	key: string;
+	buffer: ArrayBufferLike;
+}
+
+export type WorkerRequest = TileRequest | WorkerInitRequest | WorkerBufferRequest;
 
 /**
  * URLs of the package's runtime assets, resolved on the main thread against
@@ -220,7 +235,18 @@ interface BaseGridData {
 }
 
 // Union type for all grid types
-export type GridData = RegularGridData | AnyProjectionGridData | GaussianGridData | IconGridData;
+export type GridData =
+	RegularGridData | AnyProjectionGridData | GaussianGridData | IconGridData | LatBandGridData;
+
+// A point set located through the cell index the backend publishes as
+// data/<domain>/static/grid.bin (format LATBAND1, see grids/latband/latband.ts):
+// the native cells of a global or limited-area ICON mesh. nx is the cell count,
+// ny must be 1.
+export interface LatBandGridData extends BaseGridData {
+	type: 'latband';
+	/** URL of the LATBAND1 file, fetched once by GridFactory.preload */
+	geometry: string;
+}
 
 // Native ICON icosahedral R{n}B{k} grid (see grids/icon/icon.ts for the
 // canonical cell ordering). nx is the total cell count 20·n²·4^k, ny must be 1.

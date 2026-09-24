@@ -145,6 +145,14 @@ const requestTile = async (
 		}
 	}
 
+	// A grid whose geometry lives outside the bundle is fetched once here and
+	// handed to the workers before their first tile of it.
+	const grid = request.dataOptions.domain.grid;
+	await GridFactory.preload(grid);
+	for (const { key, buffer } of GridFactory.sharedBuffers(grid)) {
+		workerPool.share(key, buffer);
+	}
+
 	return workerPool.requestTile({
 		type: tileType,
 		key,

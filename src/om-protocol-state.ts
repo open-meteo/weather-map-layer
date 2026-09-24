@@ -71,10 +71,10 @@ export const clearBackends = (): void => {
 };
 
 export const getRanges = (gridData: GridData, bounds: Bounds | undefined): DimensionRange[] => {
-	// The native ICON cell order has no contiguous range for a lat/lon box, so
-	// the whole cell array is always read (see IconGrid.getCoveringRanges). This
-	// synchronous path cannot await the grid's warp table, so answer directly.
-	if (gridData.type === 'icon') {
+	// Native ICON cell orders have no contiguous range for a lat/lon box, so the
+	// whole cell array is always read (see getCoveringRanges of those grids). This
+	// synchronous path cannot await their warp table or geometry, so answer here.
+	if (gridData.type === 'icon' || gridData.type === 'latband') {
 		return [
 			{ start: 0, end: gridData.ny },
 			{ start: 0, end: gridData.nx }

@@ -238,6 +238,22 @@ export const domainOptions: Array<Domain> = [
 		time_interval: 'hourly',
 		model_interval: '3_hourly'
 	},
+	{
+		value: 'dwd_icon_d2_native',
+		label: 'DWD ICON D2 Native',
+		// The 2 km icosahedral grid the model runs on (DWD grid 47), located
+		// through the cell index the backend publishes next to the data. The
+		// data mirror does not serve that static path, hence the S3 URL.
+		grid: {
+			type: 'latband',
+			nx: 542040,
+			ny: 1,
+			geometry: 'https://openmeteo.s3.amazonaws.com/data/dwd_icon_d2_native/static/grid.bin',
+			zoom: 5.2
+		},
+		time_interval: 'hourly',
+		model_interval: '3_hourly'
+	},
 	// Not availabe yet
 	// {
 	// 	value: 'dwd_icon_d2_15min',
