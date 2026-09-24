@@ -191,6 +191,22 @@ export const domainOptions: Array<Domain> = [
 		model_interval: '6_hourly'
 	},
 	{
+		value: 'dwd_icon_global_native',
+		label: 'DWD ICON Native',
+		// The icosahedral R3B07 grid (13 km) the model runs on, in DWD's cell
+		// order (see grids/icon/icon.ts): the same run as dwd_icon before regridding.
+		grid: {
+			type: 'icon',
+			nx: 2949120,
+			ny: 1,
+			iconRoot: 3,
+			iconBisections: 7,
+			zoom: 1
+		},
+		time_interval: 'hourly',
+		model_interval: '6_hourly'
+	},
+	{
 		value: 'dwd_icon_eu',
 		label: 'DWD ICON EU',
 		grid: {

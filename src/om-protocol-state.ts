@@ -71,6 +71,15 @@ export const clearBackends = (): void => {
 };
 
 export const getRanges = (gridData: GridData, bounds: Bounds | undefined): DimensionRange[] => {
+	// The native ICON cell order has no contiguous range for a lat/lon box, so
+	// the whole cell array is always read (see IconGrid.getCoveringRanges). This
+	// synchronous path cannot await the grid's warp table, so answer directly.
+	if (gridData.type === 'icon') {
+		return [
+			{ start: 0, end: gridData.ny },
+			{ start: 0, end: gridData.nx }
+		];
+	}
 	if (bounds) {
 		const gridGetter = GridFactory.create(gridData, null);
 		// Clamp to grid extent so padded snap bounds don't produce out-of-range indices
@@ -235,6 +244,7 @@ export const getValueFromLatLong = async (
 		return { value: NaN };
 	}
 
+	await GridFactory.preload(state.dataOptions.domain.grid);
 	const grid = GridFactory.create(state.dataOptions.domain.grid, state.ranges);
 	const lonNormalized = normalizeLon(lon);
 	// Sample with the same interpolation the tiles are rendered with (encoded in
