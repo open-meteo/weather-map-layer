@@ -139,7 +139,22 @@ export interface TileRequest {
 	signal?: AbortSignal;
 }
 
-export type WorkerRequest = TileRequest;
+/** Sent once per worker at startup, before any tile request. */
+export interface WorkerInitRequest {
+	type: 'init';
+	assets: PackageAssets;
+}
+
+export type WorkerRequest = TileRequest | WorkerInitRequest;
+
+/**
+ * URLs of the package's runtime assets, resolved on the main thread against
+ * the module's own location (see worker-pool.ts).
+ */
+export interface PackageAssets {
+	/** ICON spring-dynamics warp table per icosahedron root division n */
+	iconWarpTables: Record<number, string>;
+}
 
 export type TileResponse = ImageBitmap | ArrayBuffer;
 export interface TileResult {
@@ -205,7 +220,17 @@ interface BaseGridData {
 }
 
 // Union type for all grid types
-export type GridData = RegularGridData | AnyProjectionGridData | GaussianGridData;
+export type GridData = RegularGridData | AnyProjectionGridData | GaussianGridData | IconGridData;
+
+// Native ICON icosahedral R{n}B{k} grid (see grids/icon/icon.ts for the
+// canonical cell ordering). nx is the total cell count 20·n²·4^k, ny must be 1.
+export interface IconGridData extends BaseGridData {
+	type: 'icon';
+	/** Root division n of each icosahedron edge (R3… → 3) */
+	iconRoot: number;
+	/** Bisection levels k after the root division (…B07 → 7) */
+	iconBisections: number;
+}
 
 export interface GaussianGridData extends BaseGridData {
 	type: 'gaussian';
