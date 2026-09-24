@@ -95,6 +95,9 @@ export interface OmProtocolSettings {
 	 */
 	resolveRequest: RequestResolver;
 	postReadCallback: PostReadCallback;
+
+	/** Called with every tile a worker finished and the time it took, for benchmarking. */
+	onTileRendered?: TileRenderedCallback;
 }
 
 export interface Data {
@@ -139,12 +142,57 @@ export interface TileRequest {
 	signal?: AbortSignal;
 }
 
-export type WorkerRequest = TileRequest;
+/** Sent once per worker at startup, before any tile request. */
+export interface WorkerInitRequest {
+	type: 'init';
+	assets: PackageAssets;
+}
+
+/**
+ * A buffer every worker needs (a grid's geometry), sent once per worker: a
+ * SharedArrayBuffer is passed by reference, anything else is cloned.
+ */
+export interface WorkerBufferRequest {
+	type: 'buffer';
+	key: string;
+	buffer: ArrayBufferLike;
+}
+
+export interface SharedBuffer {
+	key: string;
+	buffer: ArrayBufferLike;
+}
+
+export type WorkerRequest = TileRequest | WorkerInitRequest | WorkerBufferRequest;
+
+/**
+ * URLs of the package's runtime assets, resolved on the main thread against
+ * the module's own location (see worker-pool.ts).
+ */
+export interface PackageAssets {
+	/** ICON spring-dynamics warp table per icosahedron root division n */
+	iconWarpTables: Record<number, string>;
+}
 
 export type TileResponse = ImageBitmap | ArrayBuffer;
+/** A tile the worker finished, with the time it took (see OmProtocolSettings.onTileRendered). */
+export interface RenderedTile {
+	domain: string;
+	variable: string;
+	tileIndex: TileIndex;
+	tileSize: TileSize;
+	interpolation: InterpolationMethod;
+	type: 'image' | 'arrayBuffer';
+	renderMs: number;
+}
+
+export type TileRenderedCallback = (tile: RenderedTile) => void;
+
 export interface TileResult {
 	data?: TileResponse;
 	cancelled: boolean;
+	/** time the worker spent producing the tile */
+	renderMs?: number;
 }
 export type TilePromise = Promise<TileResult>;
 
@@ -152,6 +200,7 @@ export type WorkerResponse = {
 	type: 'returnImage' | 'returnArrayBuffer' | 'cancelled';
 	tile: TileResponse;
 	key: string;
+	renderMs?: number;
 };
 
 // Simple RGB color
@@ -205,7 +254,28 @@ interface BaseGridData {
 }
 
 // Union type for all grid types
-export type GridData = RegularGridData | AnyProjectionGridData | GaussianGridData;
+export type GridData =
+	RegularGridData | AnyProjectionGridData | GaussianGridData | IconGridData | LatBandGridData;
+
+// A point set located through the cell index the backend publishes as
+// data/<domain>/static/grid.bin (format LATBAND1, see grids/latband/latband.ts):
+// the native cells of a global or limited-area ICON mesh. nx is the cell count,
+// ny must be 1.
+export interface LatBandGridData extends BaseGridData {
+	type: 'latband';
+	/** URL of the LATBAND1 file, fetched once by GridFactory.preload */
+	geometry: string;
+}
+
+// Native ICON icosahedral R{n}B{k} grid (see grids/icon/icon.ts for the
+// canonical cell ordering). nx is the total cell count 20·n²·4^k, ny must be 1.
+export interface IconGridData extends BaseGridData {
+	type: 'icon';
+	/** Root division n of each icosahedron edge (R3… → 3) */
+	iconRoot: number;
+	/** Bisection levels k after the root division (…B07 → 7) */
+	iconBisections: number;
+}
 
 export interface GaussianGridData extends BaseGridData {
 	type: 'gaussian';
