@@ -53,6 +53,7 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 		const rgba = new Uint8ClampedArray(pixels * 4);
 
 		await GridFactory.preload(domain.grid);
+		const renderStart = performance.now();
 		const grid = GridFactory.create(domain.grid, ranges);
 
 		// Offset the colour threshold by half the data's quantization step so
@@ -129,13 +130,22 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 			imageBitmap = canvas.transferToImageBitmap();
 		}
 
-		postMessage({ type: 'returnImage', tile: imageBitmap, key: key }, { transfer: [imageBitmap] });
+		postMessage(
+			{
+				type: 'returnImage',
+				tile: imageBitmap,
+				key: key,
+				renderMs: performance.now() - renderStart
+			},
+			{ transfer: [imageBitmap] }
+		);
 	} else if (message.data.type == 'getArrayBuffer') {
 		const directions = message.data.data.directions;
 
 		const pbf = new PbfWriter();
 
 		await GridFactory.preload(domain.grid);
+		const renderStart = performance.now();
 		const grid = GridFactory.create(domain.grid, ranges);
 		if (message.data.renderOptions.drawGrid) {
 			generateGridPoints(pbf, grid, values, directions, x, y, z, clippingOptions);
@@ -164,7 +174,12 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 
 		const arrayBuffer = pbf.finish();
 		postMessage(
-			{ type: 'returnArrayBuffer', tile: arrayBuffer.buffer, key: key },
+			{
+				type: 'returnArrayBuffer',
+				tile: arrayBuffer.buffer,
+				key: key,
+				renderMs: performance.now() - renderStart
+			},
 			{ transfer: [arrayBuffer.buffer] }
 		);
 	}

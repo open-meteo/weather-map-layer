@@ -558,7 +558,9 @@ export class LatBandGrid implements GridInterface {
 	): void {
 		const worldPx = 2 ** z * tileSize;
 		const lonL = tile2lon(x, z);
-		const lonR = tile2lon(x + 1, z);
+		// tile2lon normalises to [-180, 180), so the east edge of the last column wraps
+		let lonR = tile2lon(x + 1, z);
+		if (lonR <= lonL) lonR += 360;
 		const latT = tile2lat(y, z);
 		const latB = tile2lat(y + 1, z);
 		// one gather radius of margin so triangles straddling the tile edge exist

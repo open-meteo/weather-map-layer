@@ -53,6 +53,8 @@ export { addOpenLayersProtocolSupport } from './adapters/openlayers';
 
 export type {
 	ArrowStyle,
+	RenderedTile,
+	TileRenderedCallback,
 	ClippingOptions,
 	Data,
 	Domain,
