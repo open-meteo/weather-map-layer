@@ -5,15 +5,6 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.css" />
-		<!-- x-release-please-start-version -->
-		<script src="https://unpkg.com/@openmeteo/weather-map-layer@0.1.1/dist/index.js"></script>
-		<!-- x-release-please-end -->
-		<!-- Local development -->
-		<script>
-			if (location.hostname === 'localhost' || location.href.startsWith('file://')) {
-				document.write('<script src="../dist/index.js"><\/script>');
-			}
-		</script>
 		<style>
 			html,
 			body,
@@ -29,6 +20,12 @@
 		<script type="module">
 			import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.mjs';
 
+			const OMWeatherMapLayer = await import(
+				location.hostname === 'localhost'
+					? '../dist/index.mjs' // local development
+					: 'https://unpkg.com/@openmeteo/weather-map-layer@0.2.0/dist/index.mjs' // x-release-please-version
+			);
+
 			maplibregl.addProtocol('om', OMWeatherMapLayer.omProtocol);
 
 			const map = new maplibregl.Map({
@@ -41,6 +38,19 @@
 
 			// note the '_seamless' postfix. not all domains support seamless composites, check the readme for details
 			const omUrl = `https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon_seamless/latest.json?time_step=current_time_1H&variable=temperature_2m`;
+
+			// Seamless domain borders: one per regional layer, drawn from the
+			// library's domain footprints (the global layer needs none)
+			const { domainOptions, getDomainBoundary, selectSeamlessLayers } = OMWeatherMapLayer;
+			const seamlessDomain = domainOptions.find((d) => d.value === 'dwd_icon_seamless');
+			const borders = selectSeamlessLayers(seamlessDomain, domainOptions)
+				.slice(0, -1)
+				.map(({ layer, domain }) => ({
+					id: domain.value,
+					geometry: getDomainBoundary(domain),
+					minZoom: layer.minZoom,
+					label: domain.label
+				}));
 
 			map.on('load', () => {
 				map.addSource('omFileSource', {
@@ -129,20 +139,6 @@
 						}
 					});
 				}
-			});
-
-			// Seamless domain borders: one per regional layer, drawn from the
-			// library's domain footprints (the global fallback needs none)
-			const { domainOptions, getDomainBoundary } = OMWeatherMapLayer;
-			const seamlessDomain = domainOptions.find((d) => d.value === 'dwd_icon_seamless');
-			const borders = seamlessDomain.layers.slice(0, -1).map((layer) => {
-				const domain = domainOptions.find((d) => d.value === layer.domainValue);
-				return {
-					id: layer.domainValue,
-					geometry: getDomainBoundary(domain),
-					minZoom: layer.minZoom,
-					label: domain.label
-				};
 			});
 		</script>
 	</body>

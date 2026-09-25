@@ -16,6 +16,9 @@ const tile2lonUnwrapped = (x: number, z: number): number => {
 	return (x / Math.pow(2, z)) * 360 - 180;
 };
 
+/** Feature ids stay unique across stacked sources: `source * stride + grid index`. */
+const SOURCE_ID_STRIDE = 100_000_000;
+
 /** One concrete domain's native grid + data for the grid-point layer. */
 export interface GridPointSource {
 	grid: GridInterface;
@@ -122,8 +125,7 @@ export const generateGridPoints = (
 			}
 
 			features.push({
-				// Offset by source so ids stay unique across stacked domains.
-				id: sourceIndex * 100_000_000 + index,
+				id: sourceIndex * SOURCE_ID_STRIDE + index,
 				type: 1, // Point
 				properties,
 				geom: [command(1, 1), zigzag(px), zigzag(py)]

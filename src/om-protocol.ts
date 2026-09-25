@@ -1,30 +1,17 @@
 import { type GetResourceResponse, type RequestParameters } from 'maplibre-gl';
 
-import { constrainBounds } from './utils/bounds';
-import { type ResolvedClippingOptions } from './utils/clipping';
 import { defaultResolveRequest, parseRequest } from './utils/parse-request';
 import { normalizeUrl } from './utils/parse-url';
 import { COLOR_SCALES_WITH_ALIASES as defaultColorScales } from './utils/styling';
 
+import { isSeamlessDomain } from './domain-helpers';
 import { domainOptions as defaultDomainOptions } from './domains';
-import { GridFactory } from './grids/index';
 import { defaultFileReaderConfig } from './om-file-reader';
-import { handleSeamlessRequest, isSeamlessDomain } from './om-protocol-seamless';
+import { handleSeamlessRequest } from './om-protocol-seamless';
 import { ensureData, getOrCreateState, getProtocolInstance } from './om-protocol-state';
-import { capitalize } from './utils';
-import { workerPool } from './worker-pool-instance';
+import { getTilejson, requestTile } from './om-protocol-tile';
 
-import type {
-	Data,
-	Domain,
-	OmProtocolSettings,
-	OmUrlState,
-	ParsedRequest,
-	TileJSON,
-	TilePromise,
-	TileResponse,
-	TileResult
-} from './types';
+import type { Domain, OmProtocolSettings, ParsedRequest, TileJSON, TileResponse } from './types';
 
 export const defaultOmProtocolSettings: OmProtocolSettings = {
 	// static
@@ -55,24 +42,22 @@ export const omProtocol = async (
 
 	const url = await normalizeUrl(params.url, settings.domainOptions);
 	const request = parseRequest(url, settings);
+	const domain = request.dataOptions.domain;
 
-	// Route seamless composite domains to the dedicated handler
-	if (isSeamlessDomain(request.dataOptions.domain)) {
-		return handleSeamlessRequest(
-			params,
-			url,
-			request,
-			request.dataOptions.domain,
-			instance,
-			settings,
-			signal
-		);
+	// A seamless composite is resolved into its concrete sub-domains by its own
+	// handler; everything below works on a single concrete domain.
+	if (isSeamlessDomain(domain)) {
+		return handleSeamlessRequest(params, url, request, domain, instance, settings, signal);
 	}
+	const concreteRequest: ParsedRequest<Domain> = {
+		...request,
+		dataOptions: { ...request.dataOptions, domain }
+	};
 
 	const state = getOrCreateState(
 		instance.stateByKey,
 		request.fileAndVariableKey,
-		request.dataOptions,
+		concreteRequest.dataOptions,
 		request.baseUrl,
 		settings.maxStatesWithData
 	);
@@ -88,11 +73,7 @@ export const omProtocol = async (
 	// are never requested (hidden layer, out of view).
 	if (params.type == 'json') {
 		return {
-			data: await getTilejson(
-				params.url,
-				request.dataOptions.domain as Domain,
-				request.clippingOptions
-			)
+			data: await getTilejson(params.url, domain, request.clippingOptions)
 		};
 	}
 
@@ -107,85 +88,18 @@ export const omProtocol = async (
 		throw new Error(`Tile coordinates required for ${params.type} request`);
 	}
 
-	const tileResult = await requestTile(url, request, data, state, params.type, signal);
+	const tileResult = await requestTile(
+		url,
+		concreteRequest,
+		data,
+		state.ranges,
+		params.type,
+		signal
+	);
 
 	if (tileResult.cancelled || !tileResult.data) {
 		return { data: null };
 	} else {
 		return { data: tileResult.data };
 	}
-};
-
-const makeTileAbortedResponse = (): TileResult => {
-	return { data: undefined, cancelled: true };
-};
-const makeEmptyVectorLayerResponse = (): TileResult => {
-	return { data: new ArrayBuffer(0), cancelled: false };
-};
-
-const requestTile = async (
-	url: string,
-	request: ParsedRequest,
-	data: Data,
-	state: OmUrlState,
-	type: 'image' | 'arrayBuffer',
-	signal?: AbortSignal
-): TilePromise => {
-	if (!request.tileIndex) {
-		throw new Error('Tile coordinates required for tile request');
-	}
-
-	if (signal?.aborted) {
-		return makeTileAbortedResponse();
-	}
-
-	const key = `${type}:${url}`;
-	const tileType = `get${capitalize(type)}` as 'getImage' | 'getArrayBuffer';
-
-	// early return if the worker will not return a tile
-	if (tileType === 'getArrayBuffer') {
-		if (
-			!(request.renderOptions.drawArrows && data.directions !== undefined) &&
-			!request.renderOptions.drawContours &&
-			!request.renderOptions.drawGrid
-		) {
-			return makeEmptyVectorLayerResponse();
-		}
-	}
-
-	return workerPool.requestTile({
-		type: tileType,
-		key,
-		tileIndex: request.tileIndex,
-		data,
-		ranges: state.ranges,
-		dataOptions: request.dataOptions,
-		renderOptions: request.renderOptions,
-		clippingOptions: request.clippingOptions,
-		signal
-	});
-};
-
-const getTilejson = async (
-	fullUrl: string,
-	domain: Domain,
-	clippingOptions?: ResolvedClippingOptions
-): Promise<TileJSON> => {
-	// We initialize the grid with the ranges set to null, because we want to find out the maximum bounds of this grid
-	const grid = GridFactory.create(domain.grid, null);
-	let bounds;
-	if (clippingOptions && clippingOptions.bounds) {
-		bounds = constrainBounds(grid.getBounds(), clippingOptions.bounds) ?? grid.getBounds();
-	} else {
-		bounds = grid.getBounds();
-	}
-
-	return {
-		tilejson: '3.0.0',
-		tiles: [fullUrl + '/{z}/{x}/{y}'],
-		attribution: '<a href="https://open-meteo.com/en/licence#maps">© Open-Meteo</a>',
-		minzoom: 0,
-		maxzoom: 12,
-		bounds: bounds
-	};
 };

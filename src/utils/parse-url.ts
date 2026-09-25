@@ -1,10 +1,11 @@
 import { pad } from '.';
-import { getFallbackDomainValue, isSeamlessDomain } from '../domain-helpers';
+import { getConcreteDomainValue, isSeamlessDomain } from '../domain-helpers';
 
 import {
 	DATA_RELEVANT_PARAMS,
 	DOMAIN_META_REGEX,
 	OM_PREFIX_REGEX,
+	RUN_AND_VALID_TIME_REGEX,
 	TILE_SUFFIX_REGEX,
 	TIME_STEP_REGEX
 } from './constants';
@@ -73,9 +74,32 @@ const getModifiedAmount = (amount: number, modifier = '+') => {
 const metaDataCache = new Map<string, Promise<DomainMetaDataJson>>();
 
 /**
- * For SeamlessDomain URLs, return the equivalent URL using the global (last-layer)
- * backing domain so the server request resolves correctly.  The server only serves
- * concrete domain paths; the seamless domain is a client-side concept.
+ * Swaps the `data_spatial/<domain>` segment of an om URL. Seamless composites
+ * only exist client-side: the server serves the concrete sub-domains, so every
+ * request for a composite is issued under a concrete domain's path.
+ */
+export const replaceUrlDomain = (
+	url: string,
+	fromDomainValue: string,
+	toDomainValue: string
+): string => url.replace(`/data_spatial/${fromDomainValue}/`, `/data_spatial/${toDomainValue}/`);
+
+/**
+ * Lead time in hours (model run to valid time) of a data-spatial file URL, or
+ * undefined for URLs without the run/valid-time path structure.
+ */
+export const parseLeadTimeHours = (url: string): number | undefined => {
+	const groups = url.match(RUN_AND_VALID_TIME_REGEX)?.groups;
+	if (!groups) return undefined;
+	const hhmm = (time: string) => `${time.slice(0, 2)}:${time.slice(2)}:00Z`;
+	const modelRun = Date.parse(`${groups.runDate.replace(/\//g, '-')}T${hhmm(groups.runTime)}`);
+	const validTime = Date.parse(`${groups.validDate}T${hhmm(groups.validTime)}`);
+	return (validTime - modelRun) / 3_600_000;
+};
+
+/**
+ * A seamless composite has no metadata of its own on the server; its global
+ * layer's `{meta}.json` describes the composite.
  */
 const resolveJsonFetchUrl = (jsonUrl: string, domainOptions?: AnyDomain[]): string => {
 	if (!domainOptions) return jsonUrl;
@@ -85,12 +109,7 @@ const resolveJsonFetchUrl = (jsonUrl: string, domainOptions?: AnyDomain[]): stri
 	if (!urlDomainValue) return jsonUrl;
 	const domain = domainOptions.find((d) => d.value === urlDomainValue);
 	if (!domain || !isSeamlessDomain(domain)) return jsonUrl;
-	// domain is a SeamlessDomain — use the last (global fallback) layer for the fetch
-	const backingDomainValue = getFallbackDomainValue(domain);
-	return jsonUrl.replace(
-		`/data_spatial/${urlDomainValue}/`,
-		`/data_spatial/${backingDomainValue}/`
-	);
+	return replaceUrlDomain(jsonUrl, urlDomainValue, getConcreteDomainValue(domain));
 };
 
 export const parseMetaJson = async (omUrl: string, domainOptions?: AnyDomain[]) => {
@@ -100,7 +119,7 @@ export const parseMetaJson = async (omUrl: string, domainOptions?: AnyDomain[]) 
 	// jsonUrl should be everything until ".json" of the current url (inclusive)
 	const jsonIndex = url.indexOf('.json');
 	const jsonUrl = url.slice(0, jsonIndex + '.json'.length);
-	// For seamless domains, fetch from the global backing domain; cache under the
+	// For seamless domains, fetch from the global layer's domain; cache under the
 	// original (seamless) key so duplicate requests are still deduplicated.
 	const fetchJsonUrl = resolveJsonFetchUrl(jsonUrl, domainOptions);
 

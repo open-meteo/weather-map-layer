@@ -4,9 +4,11 @@ export { omProtocol } from './om-protocol';
 
 export {
 	isSeamlessDomain,
-	getFallbackDomainValue,
+	getConcreteDomain,
+	getConcreteDomainValue,
+	getGlobalLayer,
 	resolveConcreteDomain,
-	getFallbackDomain
+	selectSeamlessLayers
 } from './domain-helpers';
 export {
 	getValueFromLatLong,
@@ -15,7 +17,8 @@ export {
 	getRanges,
 	getProtocolInstance
 } from './om-protocol-state';
-export { updateCurrentBounds } from './utils/bounds';
+export { updateCurrentBounds, boundsIntersect } from './utils/bounds';
+export { replaceUrlDomain } from './utils/parse-url';
 export { createClippingTester } from './utils/clipping';
 export { domainStep, closestModelRun } from './utils/model-runs';
 export { variableHasDirections, variableSupportsBarbs } from './om-file-reader';
@@ -57,9 +60,11 @@ export { addOpenLayersProtocolSupport } from './adapters/openlayers';
 
 // Types
 
+export type { ActiveSeamlessLayer, SeamlessLayerFilter } from './domain-helpers';
 export type {
 	AnyDomain,
 	ArrowStyle,
+	Bounds,
 	ClippingOptions,
 	Data,
 	Domain,

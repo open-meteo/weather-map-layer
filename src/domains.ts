@@ -30,7 +30,7 @@ export const domainOptions: Array<AnyDomain> = [
 	 * DWD ICON Seamless
 	 *
 	 * Automatically selects the best-available DWD model for the current zoom
-	 * level and blends values near domain boundaries:
+	 * level, falling back to the coarser one outside its data:
 	 *   zoom 0+  → dwd_icon   (global, 0.125°)
 	 *   zoom 2+  → dwd_icon_eu (Europe, 0.0625°)
 	 *   zoom 3+  → dwd_icon_d2 (Germany, 0.02°)
@@ -49,9 +49,9 @@ export const domainOptions: Array<AnyDomain> = [
 		time_interval: 'hourly',
 		model_interval: '3_hourly',
 		layers: [
-			{ domainValue: 'dwd_icon_d2', minZoom: 3, blendWidthDeg: 0, maxForecastHours: 48 },
-			{ domainValue: 'dwd_icon_eu', minZoom: 2, blendWidthDeg: 0, maxForecastHours: 120 },
-			{ domainValue: 'dwd_icon', minZoom: 0, blendWidthDeg: 0 }
+			{ domainValue: 'dwd_icon_d2', minZoom: 3, maxForecastHours: 48 },
+			{ domainValue: 'dwd_icon_eu', minZoom: 2, maxForecastHours: 120 },
+			{ domainValue: 'dwd_icon', minZoom: 0 }
 		]
 	},
 
@@ -69,8 +69,8 @@ export const domainOptions: Array<AnyDomain> = [
 		time_interval: 'hourly',
 		model_interval: 'hourly',
 		layers: [
-			{ domainValue: 'ncep_hrrr_conus', minZoom: 2, blendWidthDeg: 0, maxForecastHours: 48 },
-			{ domainValue: 'ncep_gfs025', minZoom: 0, blendWidthDeg: 0 }
+			{ domainValue: 'ncep_hrrr_conus', minZoom: 2, maxForecastHours: 48 },
+			{ domainValue: 'ncep_gfs025', minZoom: 0 }
 		]
 	},
 
@@ -80,7 +80,7 @@ export const domainOptions: Array<AnyDomain> = [
 	 * Automatically selects the best MF model for the current zoom level:
 	 *   zoom 0+  → meteofrance_arpege_world025   (global, 0.25°)
 	 *   zoom 2+  → meteofrance_arpege_europe      (Europe, 0.1°)
-	 *   zoom 4+  → meteofrance_arome_france0025   (France, 0.025°)
+	 *   zoom 3+  → meteofrance_arome_france0025   (France, 0.025°)
 	 */
 	{
 		type: 'seamless',
@@ -92,16 +92,14 @@ export const domainOptions: Array<AnyDomain> = [
 			{
 				domainValue: 'meteofrance_arome_france0025',
 				minZoom: 3,
-				blendWidthDeg: 0,
 				maxForecastHours: 51
 			},
 			{
 				domainValue: 'meteofrance_arpege_europe',
 				minZoom: 2,
-				blendWidthDeg: 0,
 				maxForecastHours: 102
 			},
-			{ domainValue: 'meteofrance_arpege_world025', minZoom: 0, blendWidthDeg: 0 }
+			{ domainValue: 'meteofrance_arpege_world025', minZoom: 0 }
 		]
 	},
 
@@ -121,10 +119,10 @@ export const domainOptions: Array<AnyDomain> = [
 		time_interval: 'hourly',
 		model_interval: '6_hourly',
 		layers: [
-			{ domainValue: 'cmc_gem_hrdps_west', minZoom: 4, blendWidthDeg: 0, maxForecastHours: 48 },
-			{ domainValue: 'cmc_gem_hrdps', minZoom: 3, blendWidthDeg: 0, maxForecastHours: 48 },
-			{ domainValue: 'cmc_gem_rdps_10km', minZoom: 2, blendWidthDeg: 0, maxForecastHours: 84 },
-			{ domainValue: 'cmc_gem_gdps_15km', minZoom: 0, blendWidthDeg: 0 }
+			{ domainValue: 'cmc_gem_hrdps_west', minZoom: 4, maxForecastHours: 48 },
+			{ domainValue: 'cmc_gem_hrdps', minZoom: 3, maxForecastHours: 48 },
+			{ domainValue: 'cmc_gem_rdps_10km', minZoom: 2, maxForecastHours: 84 },
+			{ domainValue: 'cmc_gem_gdps_15km', minZoom: 0 }
 		]
 	},
 
@@ -142,8 +140,8 @@ export const domainOptions: Array<AnyDomain> = [
 		time_interval: 'hourly',
 		model_interval: '3_hourly',
 		layers: [
-			{ domainValue: 'jma_msm', minZoom: 3, blendWidthDeg: 0, maxForecastHours: 78 },
-			{ domainValue: 'jma_gsm', minZoom: 0, blendWidthDeg: 0 }
+			{ domainValue: 'jma_msm', minZoom: 3, maxForecastHours: 78 },
+			{ domainValue: 'jma_gsm', minZoom: 0 }
 		]
 	},
 
@@ -164,10 +162,9 @@ export const domainOptions: Array<AnyDomain> = [
 			{
 				domainValue: 'ukmo_uk_deterministic_2km',
 				minZoom: 3,
-				blendWidthDeg: 0,
 				maxForecastHours: 126
 			},
-			{ domainValue: 'ukmo_global_deterministic_10km', minZoom: 0, blendWidthDeg: 0 }
+			{ domainValue: 'ukmo_global_deterministic_10km', minZoom: 0 }
 		]
 	},
 
@@ -188,10 +185,9 @@ export const domainOptions: Array<AnyDomain> = [
 			{
 				domainValue: 'knmi_harmonie_arome_netherlands',
 				minZoom: 3,
-				blendWidthDeg: 0,
 				maxForecastHours: 48
 			},
-			{ domainValue: 'knmi_harmonie_arome_europe', minZoom: 0, blendWidthDeg: 0 }
+			{ domainValue: 'knmi_harmonie_arome_europe', minZoom: 0 }
 		]
 	},
 
@@ -199,8 +195,8 @@ export const domainOptions: Array<AnyDomain> = [
 	 * CHMI Seamless
 	 *
 	 * Automatically selects the best CHMI model for the current zoom level:
-	 *   zoom 0+  → chmi_aladin_central_europe_2km       (Europe, ~2.5 km, Rotated LatLon)
-	 *   zoom 3+  → chmi_aladin_cz_1km  (Czech Republic, 0.029°/0.018°)
+	 *   zoom 0+  → chmi_aladin_central_europe_2km  (Central Europe, ~2.3 km, Lambert Conformal)
+	 *   zoom 3+  → chmi_aladin_cz_1km              (Czech Republic, ~1 km, Lambert Conformal)
 	 */
 	{
 		type: 'seamless',
@@ -212,10 +208,9 @@ export const domainOptions: Array<AnyDomain> = [
 			{
 				domainValue: 'chmi_aladin_cz_1km',
 				minZoom: 3,
-				blendWidthDeg: 0,
 				maxForecastHours: 48
 			},
-			{ domainValue: 'chmi_aladin_central_europe_2km', minZoom: 0, blendWidthDeg: 0 }
+			{ domainValue: 'chmi_aladin_central_europe_2km', minZoom: 0 }
 		]
 	},
 
@@ -1481,8 +1476,7 @@ export const domainOptions: Array<AnyDomain> = [
 			}
 		},
 		time_interval: 'hourly',
-		model_interval: '3_hourly',
-		windUVComponents: false
+		model_interval: '3_hourly'
 	},
 	{
 		value: 'ukmo_global_ensemble_20km',

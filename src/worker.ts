@@ -4,20 +4,13 @@ import { generateArrows } from './utils/arrows';
 import { checkAgainstBounds } from './utils/bounds';
 import { clipRasterToPolygons } from './utils/clipping';
 import { generateContours } from './utils/contours';
-import { type GridPointSource, generateGridPoints } from './utils/grid-points';
+import { generateGridPoints } from './utils/grid-points';
 import { halfQuantum as computeHalfQuantum, tile2lat, tile2lon } from './utils/math';
-import {
-	type ValueSampler,
-	type VectorSampler,
-	sampleBlendedValue,
-	sampleBlendedVector
-} from './utils/seamless-sampling';
+import { createSamplers } from './utils/samplers';
 import { makeColorSampler } from './utils/styling';
 import { generateWindBarbs } from './utils/wind-barbs';
 
-import { GridFactory } from './grids/index';
-
-import type { Domain, WorkerRequest } from './types';
+import type { LayerRenderData, WorkerRequest } from './types';
 
 self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => {
 	const key = message.data.key;
@@ -29,42 +22,27 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 	}
 
 	const { z, x, y } = message.data.tileIndex;
-	const values = message.data.data.values;
-	const ranges = message.data.ranges;
-	const domain = message.data.dataOptions.domain;
-	const tileSize = message.data.renderOptions.tileSize;
-	const interpolation = message.data.renderOptions.interpolation;
-	const colorBlend = message.data.renderOptions.colorBlend;
-	const colorScale = message.data.renderOptions.colorScale;
+	const { tileSize, interpolation, colorBlend, colorScale } = message.data.renderOptions;
 	const clippingOptions = message.data.clippingOptions;
-	const seamlessLayers = message.data.seamlessLayers;
-	const isSeamless = seamlessLayers !== undefined && seamlessLayers.length > 0;
 
-	// For non-seamless requests, values must be present
-	if (!values && !isSeamless) {
+	// A plain request renders its single domain; a seamless one its active
+	// sub-domains, finest-first. Both go through the same samplers.
+	const layers: LayerRenderData[] = message.data.seamlessLayers ?? [
+		{
+			domain: message.data.dataOptions.domain,
+			data: message.data.data,
+			ranges: message.data.ranges
+		}
+	];
+	if (!layers.some((layer) => layer.data.values)) {
 		throw new Error('No values provided');
 	}
+	const { sampleValue, sampleVector, gridSources } = createSamplers(layers, interpolation);
 
 	if (message.data.type == 'getImage') {
 		const pixels = tileSize * tileSize;
 		// Initialized with zeros
 		const rgba = new Uint8ClampedArray(pixels * 4);
-
-		// Build the per-pixel value sampler
-		let getPixelValue: ValueSampler;
-		if (seamlessLayers && seamlessLayers.length > 0) {
-			// Pre-create all layer grids once (outside the pixel loop for efficiency)
-			const layerGrids = seamlessLayers.map((layer) =>
-				GridFactory.create(layer.domain.grid, layer.ranges)
-			);
-			// Full-domain grids (uncropped) so the blend edge distance follows the real
-			// domain boundary instead of the viewport crop.
-			const fullGrids = seamlessLayers.map((layer) => GridFactory.create(layer.domain.grid, null));
-			getPixelValue = sampleBlendedValue(layerGrids, seamlessLayers, fullGrids, interpolation);
-		} else {
-			const grid = GridFactory.create((domain as Domain).grid, ranges);
-			getPixelValue = (lat, lon) => grid.getInterpolatedValue(values!, lat, lon, interpolation);
-		}
 
 		// Offset the colour threshold by half the data's quantization step so
 		// band edges fall inside grid cells (smooth) instead of snapping to the
@@ -103,7 +81,7 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 					if (checkAgainstBounds(lon, clippingOptions.bounds[0], clippingOptions.bounds[2]))
 						continue;
 
-				const px = getPixelValue(lat, lon);
+				const px = sampleValue(lat, lon);
 
 				if (isFinite(px)) {
 					const color = sampleColor(px + halfQuantum, colorOut);
@@ -139,41 +117,6 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 		const renderOptions = message.data.renderOptions;
 
 		const pbf = new PbfWriter();
-
-		// Build per-point samplers + grid-point sources.  For seamless domains these
-		// blend across all active layers (finest-first) so arrows, contours and grid
-		// points stay continuous instead of cutting off at the finest domain's edge.
-		let sampleValue: ValueSampler;
-		let sampleVector: VectorSampler;
-		let gridSources: GridPointSource[];
-
-		if (seamlessLayers && seamlessLayers.length > 0) {
-			const layerGrids = seamlessLayers.map((layer) =>
-				GridFactory.create(layer.domain.grid, layer.ranges)
-			);
-			// Full-domain grids (uncropped) so the blend edge distance follows the real
-			// domain boundary instead of the viewport crop.
-			const fullGrids = seamlessLayers.map((layer) => GridFactory.create(layer.domain.grid, null));
-			sampleValue = sampleBlendedValue(layerGrids, seamlessLayers, fullGrids, interpolation);
-			sampleVector = sampleBlendedVector(layerGrids, seamlessLayers, fullGrids, interpolation);
-			gridSources = seamlessLayers.map((layer, i) => ({
-				grid: layerGrids[i],
-				values: layer.data.values ?? new Float32Array(0),
-				directions: layer.data.directions
-			}));
-		} else {
-			const grid = GridFactory.create((domain as Domain).grid, ranges);
-			const vectorValues = values ?? new Float32Array(0);
-			sampleValue = (lat, lon) => grid.getInterpolatedValue(vectorValues, lat, lon, interpolation);
-			// Sample the magnitude with the selected method so arrow size/colour
-			// matches the raster; direction is blended circularly (scalar averaging
-			// flips arrows near the 0°/360° seam).
-			sampleVector = (lat, lon) => ({
-				value: grid.getInterpolatedValue(vectorValues, lat, lon, interpolation),
-				direction: directions ? grid.getLinearInterpolatedDirection(directions, lat, lon) : 0
-			});
-			gridSources = [{ grid, values: vectorValues, directions }];
-		}
 
 		if (renderOptions.drawGrid) {
 			generateGridPoints(pbf, gridSources, x, y, z, clippingOptions);

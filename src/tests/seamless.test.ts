@@ -1,21 +1,4 @@
-/**
- * Comprehensive tests for the SeamlessDomain / handleSeamlessRequest feature.
- *
- * Covers:
- *  - TileJSON returned immediately (no data load) with correct bounds
- *  - Clipping applied to seamless TileJSON bounds
- *  - Zoom-level layer filtering (minZoom gating)
- *  - Parallel data loading (reads start finest-first)
- *  - postReadCallback IS invoked once per real sub-layer load
- *  - Correct URL substitution for each concrete layer
- *  - Failed layers are skipped; surviving layers still render
- *  - All layers failing returns { data: null }
- *  - Abort signal stops layer loading mid-way
- *  - State cache: second request for same data is instant (no re-read)
- *  - Unsupported request type throws
- *  - Missing tile coordinates throws for image requests
- *  - SeamlessDomain exposes time_interval and model_interval
- */
+/** Tests for the SeamlessDomain request handling through `omProtocol`. */
 import { defaultOmProtocolSettings } from '../om-protocol';
 import { updateCurrentBounds } from '../utils/bounds';
 import { RequestParameters } from 'maplibre-gl';
@@ -168,9 +151,9 @@ const SEAMLESS: SeamlessDomain = {
 	time_interval: 'hourly',
 	model_interval: '3_hourly',
 	layers: [
-		{ domainValue: 'test_d2', minZoom: 5, blendWidthDeg: 0.5 },
-		{ domainValue: 'test_eu', minZoom: 3, blendWidthDeg: 1.5 },
-		{ domainValue: 'test_global', minZoom: 0, blendWidthDeg: 0 }
+		{ domainValue: 'test_d2', minZoom: 5 },
+		{ domainValue: 'test_eu', minZoom: 3 },
+		{ domainValue: 'test_global', minZoom: 0 }
 	]
 };
 
@@ -243,7 +226,7 @@ describe('SeamlessDomain – TileJSON', () => {
 		expect(latMax).toBeLessThanOrEqual(5);
 	});
 
-	it('returns { data: null } when the global backing domain is not in settings', async () => {
+	it('returns { data: null } when the global domain is not in settings', async () => {
 		const { omProtocol } = await import('../om-protocol');
 		// Remove the global concrete domain from the domain list
 		const settings = makeSettings({
@@ -330,7 +313,7 @@ describe('SeamlessDomain – viewport gating', () => {
 		// Off-screen regional layers are never fetched...
 		expect(domainValues).not.toContain('test_d2');
 		expect(domainValues).not.toContain('test_eu');
-		// ...but the global fallback is always loaded, even out of its (test) bounds.
+		// ...but the global layer is always loaded, even out of its (test) bounds.
 		expect(domainValues).toContain('test_global');
 	});
 
@@ -392,7 +375,7 @@ describe('SeamlessDomain – URL substitution', () => {
 		expect(urls[2]).toContain('/test_global/');
 	});
 
-	it('fetches a seamless {meta}.json from the global backing domain', async () => {
+	it('fetches a seamless {meta}.json from the global domain', async () => {
 		const { normalizeUrl } = await import('../utils/parse-url');
 		const fetched: string[] = [];
 		vi.stubGlobal('fetch', async (url: string) => {
@@ -584,13 +567,6 @@ describe('SeamlessDomain – type properties', () => {
 		for (let i = 0; i < zooms.length - 1; i++) {
 			expect(zooms[i]).toBeGreaterThanOrEqual(zooms[i + 1]);
 		}
-	});
-
-	it('global fallback layer has blendWidthDeg of 0', async () => {
-		const { domainOptions } = await import('../domains');
-		const seamless = domainOptions.find((d) => d.value === 'dwd_icon_seamless') as SeamlessDomain;
-		const last = seamless.layers[seamless.layers.length - 1];
-		expect(last.blendWidthDeg).toBe(0);
 	});
 });
 

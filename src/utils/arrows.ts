@@ -5,7 +5,7 @@ import { ARROW_LATTICE, VECTOR_TILE_EXTENT } from './constants';
 import { forEachLatticePoint } from './lattice';
 import { degreesToRadians, rotatePoint } from './math';
 import { type Feature, command, writeLayer, zigzag } from './pbf';
-import type { VectorSampler } from './seamless-sampling';
+import type { VectorSampler } from './samplers';
 
 export const generateArrows = (
 	pbf: PbfWriter,

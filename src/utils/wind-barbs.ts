@@ -18,7 +18,7 @@ import { BARB_LATTICE, VECTOR_TILE_EXTENT } from './constants';
 import { forEachLatticePoint } from './lattice';
 import { degreesToRadians, rotatePoint } from './math';
 import { type Feature, command, writeLayer, zigzag } from './pbf';
-import type { VectorSampler } from './seamless-sampling';
+import type { VectorSampler } from './samplers';
 
 const MS_TO_KNOTS = 1.9438445;
 

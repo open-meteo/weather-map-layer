@@ -47,6 +47,11 @@ export const RESOLVE_DOMAIN_REGEX =
 export const DOMAIN_META_REGEX =
 	/(http|https):\/\/(?<uri>[\s\S]+)\/(?<domain>[\s\S]+)\/(?<meta>[\s\S]+).json/;
 
+// Model run and valid time of a data-spatial file path:
+//   <domain>/YYYY/MM/DD/HHMMZ/YYYY-MM-DDTHHMM.om
+export const RUN_AND_VALID_TIME_REGEX =
+	/\/(?<runDate>\d{4}\/\d{2}\/\d{2})\/(?<runTime>\d{4})Z\/(?<validDate>\d{4}-\d{2}-\d{2})T(?<validTime>\d{4})\.om/;
+
 export const TIME_STEP_REGEX =
 	/(?<capture>(current_time|valid_times))(_)?(?<modifier>(\+|-))?(?<amountAndUnit>.*)?/;
 

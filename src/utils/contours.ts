@@ -4,11 +4,11 @@ import { type ResolvedClippingOptions, createClippingTester } from './clipping';
 import { VECTOR_TILE_EXTENT } from './constants';
 import { tile2lat, tile2lon } from './math';
 import { command, writeLayer, zigzag } from './pbf';
-import type { ValueSampler } from './seamless-sampling';
+import type { ValueSampler } from './samplers';
 
 // prettier-ignore
 export const CASES: [number, number][][][] = [
-	[],					       			// 0
+	[],					       // 0
 	[[[1, 2],[0, 1]]],			  // 1
 	[[[2, 1],[1, 2]]],			  // 2
 	[[[2, 1],[0, 1]]],			  // 3

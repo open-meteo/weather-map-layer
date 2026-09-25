@@ -68,7 +68,7 @@ export const parseRequest = (url: string, settings: OmProtocolSettings): ParsedR
 export const defaultResolveRequest = (
 	urlComponents: ParsedUrlComponents,
 	settings: OmProtocolSettings
-): { dataOptions: DataIdentityOptions; renderOptions: RenderOptions } => {
+): { dataOptions: DataIdentityOptions<AnyDomain>; renderOptions: RenderOptions } => {
 	const dataOptions = defaultResolveDataIdentity(urlComponents, settings.domainOptions);
 
 	const renderOptions = defaultResolveRenderOptions(
@@ -83,7 +83,7 @@ export const defaultResolveRequest = (
 const defaultResolveDataIdentity = (
 	urlComponents: ParsedUrlComponents,
 	domainOptions: AnyDomain[]
-): DataIdentityOptions => {
+): DataIdentityOptions<AnyDomain> => {
 	const { baseUrl, params } = urlComponents;
 
 	const domainValue = baseUrl.match(RESOLVE_DOMAIN_REGEX)?.groups?.domain;
@@ -108,7 +108,7 @@ const defaultResolveDataIdentity = (
 
 const defaultResolveRenderOptions = (
 	urlComponents: ParsedUrlComponents,
-	dataOptions: DataIdentityOptions,
+	dataOptions: DataIdentityOptions<AnyDomain>,
 	colorScales: ColorScales
 ): RenderOptions => {
 	const { params } = urlComponents;
