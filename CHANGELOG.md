@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/open-meteo/weather-map-layer/compare/v0.2.0...v0.2.1) (2026-09-26)
+
+
+### Bug Fixes
+
+* shift the wind colour scale ([#339](https://github.com/open-meteo/weather-map-layer/issues/339)) ([b1a8e45](https://github.com/open-meteo/weather-map-layer/commit/b1a8e45f888d46d2514c5b911ca1fb3adf6c86bf))
+
 ## [0.2.0](https://github.com/open-meteo/weather-map-layer/compare/v0.1.1...v0.2.0) (2026-09-21)
 
 
