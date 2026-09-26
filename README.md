@@ -296,6 +296,32 @@ The modifier suffix on `current_time_` controls the rounding granularity when sn
 | d        | Days       |
 | m        | Months     |
 
+## Seamless Composite Domains
+
+Several domains support a **seamless mode**: a composite of a global model and one or more regional ones. At every point the finest model that is active at the current zoom level and has data there is shown, so the map switches to a regional model over its area and falls back to the global one elsewhere.
+
+To use a seamless domain, append `_seamless` to the base model name in the URL:
+
+<pre><code>https://map-tiles.open-meteo.com/data_spatial/<b>dwd_icon_seamless</b>/latest.json?variable=temperature_2m
+</code></pre>
+
+The protocol handler resolves the seamless domain on the client side: the `latest.json` metadata is fetched from the global model, and tiles are composited per pixel from the active sub-domains. Regional models with a shorter forecast horizon drop out past it (`maxForecastHours`), so a composite stays valid for the full range of its global model.
+
+### Available seamless domains
+
+| Domain value           | Constituent models (finest → global)                                                                       |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `dwd_icon_seamless`    | dwd_icon_d2 (zoom 3+) → dwd_icon_eu (zoom 2+) → dwd_icon                                                   |
+| `ncep_gfs_seamless`    | ncep_hrrr_conus (zoom 2+) → ncep_gfs025                                                                    |
+| `meteofrance_seamless` | meteofrance_arome_france0025 (zoom 3+) → meteofrance_arpege_europe (zoom 2+) → meteofrance_arpege_world025 |
+| `cmc_gem_seamless`     | cmc_gem_hrdps_west (zoom 4+) → cmc_gem_hrdps (zoom 3+) → cmc_gem_rdps (zoom 2+) → cmc_gem_gdps             |
+| `jma_seamless`         | jma_msm (zoom 3+) → jma_gsm                                                                                |
+| `ukmo_seamless`        | ukmo_uk_deterministic_2km (zoom 3+) → ukmo_global_deterministic_10km                                       |
+| `knmi_seamless`        | knmi_harmonie_arome_netherlands (zoom 3+) → knmi_harmonie_arome_europe                                     |
+| `chmi_seamless`        | chmi_aladin_cz_1km (zoom 3+) → chmi_aladin_central_europe_2km                                              |
+
+A ready-to-run example is available at `examples/seamless.html`.
+
 ## License
 
 This project is licensed under the [GNU General Public License v2.0](LICENSE).

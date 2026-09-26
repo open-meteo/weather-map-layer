@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Weather Map Layer - Seamless Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.css" />
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<script type="module">
+			import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.mjs';
+
+			const OMWeatherMapLayer = await import(
+				location.hostname === 'localhost'
+					? '../dist/index.mjs' // local development
+					: 'https://unpkg.com/@openmeteo/weather-map-layer@0.2.0/dist/index.mjs' // x-release-please-version
+			);
+
+			maplibregl.addProtocol('om', OMWeatherMapLayer.omProtocol);
+
+			const map = new maplibregl.Map({
+				container: 'map',
+				style: 'https://static-assets.open-meteo.com/map-assets/styles/minimal-planet-maps.json', // replace with your own style sheet
+				hash: true,
+				center: [10, 41],
+				zoom: 1.9
+			});
+
+			// note the '_seamless' postfix. not all domains support seamless composites, check the readme for details
+			const omUrl = `https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon_seamless/latest.json?time_step=current_time_1H&variable=temperature_2m`;
+
+			// Seamless domain borders: one per regional layer, drawn from the
+			// library's domain footprints (the global layer needs none)
+			const { domainOptions, getDomainBoundary, selectSeamlessLayers } = OMWeatherMapLayer;
+			const seamlessDomain = domainOptions.find((d) => d.value === 'dwd_icon_seamless');
+			const borders = selectSeamlessLayers(seamlessDomain, domainOptions)
+				.slice(0, -1)
+				.map(({ layer, domain }) => ({
+					id: domain.value,
+					geometry: getDomainBoundary(domain),
+					minZoom: layer.minZoom,
+					label: domain.label
+				}));
+
+			map.on('load', () => {
+				map.addSource('omFileSource', {
+					url: 'om://' + omUrl,
+					type: 'raster',
+					maxzoom: 12
+				});
+				map.addLayer(
+					{
+						id: 'omFileLayer',
+						type: 'raster',
+						source: 'omFileSource',
+						paint: {
+							'raster-opacity': 0.75
+						}
+					},
+					'waterway-tunnel'
+				);
+
+				map.addSource('seamlessBorders', {
+					type: 'geojson',
+					data: {
+						type: 'FeatureCollection',
+						features: borders.map((b) => ({
+							type: 'Feature',
+							geometry: {
+								type: 'LineString',
+								coordinates: b.geometry
+							},
+							properties: b
+						}))
+					}
+				});
+
+				for (const b of borders) {
+					const opacity = [
+						'interpolate',
+						['linear'],
+						['zoom'],
+						Math.max(0, b.minZoom - 2),
+						0,
+						b.minZoom,
+						1
+					];
+					const lineColor = [
+						'step',
+						['zoom'],
+						'rgba(0,0,0,0.5)',
+						b.minZoom,
+						'rgba(30,120,255,0.8)'
+					];
+					const textColor = ['step', ['zoom'], 'rgba(0,0,0,0.75)', b.minZoom, 'rgba(30,120,255,1)'];
+					const filter = ['==', ['get', 'id'], b.id];
+					map.addLayer({
+						id: `sb-line-${b.id}`,
+						type: 'line',
+						source: 'seamlessBorders',
+						minzoom: Math.max(0, b.minZoom - 2),
+						filter,
+						paint: {
+							'line-color': lineColor,
+							'line-width': 1.5,
+							'line-dasharray': [4, 3],
+							'line-opacity': opacity
+						}
+					});
+					map.addLayer({
+						id: `sb-label-${b.id}`,
+						type: 'symbol',
+						source: 'seamlessBorders',
+						minzoom: Math.max(0, b.minZoom - 2),
+						filter,
+						layout: {
+							'text-field': ['get', 'label'],
+							'text-font': ['Noto Sans Regular'],
+							'text-size': 11,
+							'symbol-placement': 'line',
+							'symbol-spacing': 400,
+							'text-offset': [0, -0.8]
+						},
+						paint: {
+							'text-color': textColor,
+							'text-halo-color': 'rgba(255,255,255,0.5)',
+							'text-halo-width': 1.5,
+							'text-opacity': opacity
+						}
+					});
+				}
+			});
+		</script>
+	</body>
+</html>

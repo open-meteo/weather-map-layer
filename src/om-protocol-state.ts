@@ -2,10 +2,10 @@ import { boundsIncluded, constrainBounds } from './utils/bounds';
 import { DEFAULT_INTERPOLATION, VALID_INTERPOLATIONS } from './utils/constants';
 import { normalizeLon } from './utils/math';
 import { parseUrlComponents } from './utils/parse-url';
+import { normalizeUrl } from './utils/parse-url';
 
 import { GridFactory } from './grids';
 import { WeatherMapLayerFileReader } from './om-file-reader';
-import { normalizeUrl } from './om-protocol';
 
 import type {
 	Bounds,

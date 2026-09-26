@@ -6,12 +6,11 @@ import { clipRasterToPolygons } from './utils/clipping';
 import { generateContours } from './utils/contours';
 import { generateGridPoints } from './utils/grid-points';
 import { halfQuantum as computeHalfQuantum, tile2lat, tile2lon } from './utils/math';
+import { createSamplers } from './utils/samplers';
 import { makeColorSampler } from './utils/styling';
 import { generateWindBarbs } from './utils/wind-barbs';
 
-import { GridFactory } from './grids/index';
-
-import { WorkerRequest } from './types';
+import type { LayerRenderData, WorkerRequest } from './types';
 
 self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => {
 	const key = message.data.key;
@@ -23,25 +22,27 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 	}
 
 	const { z, x, y } = message.data.tileIndex;
-	const values = message.data.data.values;
-	const ranges = message.data.ranges;
-	const domain = message.data.dataOptions.domain;
-	const tileSize = message.data.renderOptions.tileSize;
-	const interpolation = message.data.renderOptions.interpolation;
-	const colorBlend = message.data.renderOptions.colorBlend;
-	const colorScale = message.data.renderOptions.colorScale;
+	const { tileSize, interpolation, colorBlend, colorScale } = message.data.renderOptions;
 	const clippingOptions = message.data.clippingOptions;
 
-	if (!values) {
+	// A plain request renders its single domain; a seamless one its active
+	// sub-domains, finest-first. Both go through the same samplers.
+	const layers: LayerRenderData[] = message.data.seamlessLayers ?? [
+		{
+			domain: message.data.dataOptions.domain,
+			data: message.data.data,
+			ranges: message.data.ranges
+		}
+	];
+	if (!layers.some((layer) => layer.data.values)) {
 		throw new Error('No values provided');
 	}
+	const { sampleValue, sampleVector, gridSources } = createSamplers(layers, interpolation);
 
 	if (message.data.type == 'getImage') {
 		const pixels = tileSize * tileSize;
 		// Initialized with zeros
 		const rgba = new Uint8ClampedArray(pixels * 4);
-
-		const grid = GridFactory.create(domain.grid, ranges);
 
 		// Offset the colour threshold by half the data's quantization step so
 		// band edges fall inside grid cells (smooth) instead of snapping to the
@@ -80,7 +81,7 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 					if (checkAgainstBounds(lon, clippingOptions.bounds[0], clippingOptions.bounds[2]))
 						continue;
 
-				const px = grid.getInterpolatedValue(values, lat, lon, interpolation);
+				const px = sampleValue(lat, lon);
 
 				if (isFinite(px)) {
 					const color = sampleColor(px + halfQuantum, colorOut);
@@ -113,31 +114,27 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 		postMessage({ type: 'returnImage', tile: imageBitmap, key: key }, { transfer: [imageBitmap] });
 	} else if (message.data.type == 'getArrayBuffer') {
 		const directions = message.data.data.directions;
+		const renderOptions = message.data.renderOptions;
 
 		const pbf = new PbfWriter();
 
-		const grid = GridFactory.create(domain.grid, ranges);
-		if (message.data.renderOptions.drawGrid) {
-			generateGridPoints(pbf, grid, values, directions, x, y, z, clippingOptions);
+		if (renderOptions.drawGrid) {
+			generateGridPoints(pbf, gridSources, x, y, z, clippingOptions);
 		}
-		if (message.data.renderOptions.drawArrows && directions) {
-			const arrowStyle = message.data.renderOptions.arrowStyle;
-			const draw = arrowStyle === 'barb' ? generateWindBarbs : generateArrows;
-			draw(pbf, values, directions, grid, x, y, z, clippingOptions, interpolation);
+		if (renderOptions.drawArrows && directions) {
+			const draw = renderOptions.arrowStyle === 'barb' ? generateWindBarbs : generateArrows;
+			draw(pbf, sampleVector, x, y, z, clippingOptions);
 		}
-		if (message.data.renderOptions.drawContours) {
-			const intervals = message.data.renderOptions.intervals;
+		if (renderOptions.drawContours) {
 			generateContours(
 				pbf,
-				values,
-				grid,
+				sampleValue,
 				x,
 				y,
 				z,
 				tileSize,
-				intervals,
+				renderOptions.intervals,
 				clippingOptions,
-				interpolation,
 				computeHalfQuantum(message.data.data.scaleFactor)
 			);
 		}

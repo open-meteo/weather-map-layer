@@ -9,8 +9,15 @@ export interface OmProtocolInstance {
 	stateByKey: Map<string, OmUrlState>;
 }
 
-export interface DataIdentityOptions {
-	domain: Domain;
+/**
+ * Identifies one data set: which domain, variable and (viewport) bounds it
+ * covers. States and worker requests always refer to a concrete grid `Domain`
+ * (the default). Only a freshly parsed request may still name a seamless
+ * composite, which the protocol resolves into concrete sub-domains before any
+ * data is read; those use `DataIdentityOptions<AnyDomain>`.
+ */
+export interface DataIdentityOptions<D extends AnyDomain = Domain> {
+	domain: D;
 	variable: string;
 	bounds: Bounds | undefined;
 }
@@ -42,12 +49,17 @@ export interface ParsedUrlComponents {
 	tileIndex: TileIndex | null;
 }
 
-export interface ParsedRequest {
+/**
+ * A parsed `om://` request. As parsed, the domain may be a seamless composite;
+ * `ParsedRequest<Domain>` is the form the tile pipeline works with once the
+ * protocol has resolved it to a concrete domain.
+ */
+export interface ParsedRequest<D extends AnyDomain = AnyDomain> {
 	baseUrl: string;
 	fileAndVariableKey: string;
 	tileIndex: TileIndex | null;
 	renderOptions: RenderOptions; // Only rendering-related params
-	dataOptions: DataIdentityOptions; // Only data-identity params,
+	dataOptions: DataIdentityOptions<D>; // Only data-identity params,
 	clippingOptions: ResolvedClippingOptions | undefined;
 }
 
@@ -67,7 +79,7 @@ export interface OmUrlState {
 export type RequestResolver = (
 	urlComponents: ParsedUrlComponents,
 	settings: OmProtocolSettings
-) => { dataOptions: DataIdentityOptions; renderOptions: RenderOptions };
+) => { dataOptions: DataIdentityOptions<AnyDomain>; renderOptions: RenderOptions };
 
 export type PostReadCallback =
 	((omFileReader: WeatherMapLayerFileReader, data: Data, state: OmUrlState) => void) | undefined;
@@ -78,7 +90,7 @@ export interface OmProtocolSettings {
 
 	// dynamic
 	colorScales: ColorScales;
-	domainOptions: Domain[];
+	domainOptions: AnyDomain[];
 	clippingOptions: ClippingOptions;
 
 	/**
@@ -127,6 +139,17 @@ export type TileIndex = {
 	y: number;
 };
 
+/**
+ * One concrete domain's data as the worker renders it. A plain request has a
+ * single layer; a seamless request carries one per active sub-domain, ordered
+ * finest-first.
+ */
+export interface LayerRenderData {
+	domain: Domain;
+	data: Data;
+	ranges: DimensionRange[];
+}
+
 export interface TileRequest {
 	type: 'getArrayBuffer' | 'getImage' | 'cancel';
 	key: string;
@@ -137,6 +160,11 @@ export interface TileRequest {
 	ranges: DimensionRange[];
 	clippingOptions: ResolvedClippingOptions | undefined;
 	signal?: AbortSignal;
+	/**
+	 * Present for a seamless composite: the active sub-domains, finest-first.
+	 * `data`, `ranges` and `dataOptions` then describe the finest layer.
+	 */
+	seamlessLayers?: LayerRenderData[];
 }
 
 export type WorkerRequest = TileRequest;
@@ -329,8 +357,48 @@ export type ModelDt =
 export type ModelUpdateInterval =
 	'hourly' | '3_hourly' | '6_hourly' | '12_hourly' | 'daily' | 'monthly';
 
+/** A single layer within a seamless domain, referencing a concrete grid-based domain. */
+export interface SeamlessLayer {
+	/** The `value` of a concrete `Domain` entry to use for this layer. */
+	domainValue: string;
+	/** This layer is only used when the map zoom level is >= minZoom. */
+	minZoom: number;
+	/**
+	 * Maximum lead time in hours that this layer's model produces forecast data for.
+	 * When the requested timestep exceeds this horizon the layer is skipped entirely,
+	 * falling through to the next coarser layer instead of issuing a request that
+	 * would return a 404 (which browsers surface as a CORS error).
+	 */
+	maxForecastHours?: number;
+}
+
+/**
+ * A virtual domain composed of several concrete domains. At any point the
+ * finest layer that is active at the current zoom and has data there is shown,
+ * so the map switches to a regional model where one exists and falls back to
+ * the global one elsewhere.
+ *
+ * `layers` are ordered finest-first; the last layer is the global one (it must
+ * cover the whole world and have `minZoom: 0`), which also stands in for the
+ * composite wherever a single concrete domain is needed (metadata, TileJSON
+ * bounds, initial map position).
+ */
+export interface SeamlessDomain {
+	value: string;
+	label?: string;
+	type: 'seamless';
+	layers: SeamlessLayer[];
+	/** Time resolution shared by all layers, so time navigation treats `AnyDomain` uniformly. */
+	time_interval: ModelDt;
+	/** Model-run cadence shared by all layers. */
+	model_interval: ModelUpdateInterval;
+}
+
+/** Union of a regular grid domain and a seamless composite domain. */
+export type AnyDomain = Domain | SeamlessDomain;
+
 export interface DomainGroups {
-	[key: string]: Domain[];
+	[key: string]: AnyDomain[];
 }
 
 export type Bounds = [

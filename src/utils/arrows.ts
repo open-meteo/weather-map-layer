@@ -1,4 +1,3 @@
-import { GridInterface } from '../grids';
 import { PbfWriter } from 'pbf';
 
 import type { ResolvedClippingOptions } from './clipping';
@@ -6,19 +5,15 @@ import { ARROW_LATTICE, VECTOR_TILE_EXTENT } from './constants';
 import { forEachLatticePoint } from './lattice';
 import { degreesToRadians, rotatePoint } from './math';
 import { type Feature, command, writeLayer, zigzag } from './pbf';
-
-import { InterpolationMethod } from '../types';
+import type { VectorSampler } from './samplers';
 
 export const generateArrows = (
 	pbf: PbfWriter,
-	values: Float32Array,
-	directions: Float32Array,
-	grid: GridInterface,
+	sampleVector: VectorSampler,
 	x: number,
 	y: number,
 	z: number,
 	clippingOptions: ResolvedClippingOptions | undefined,
-	interpolation: InterpolationMethod = 'linear',
 	extent: number = VECTOR_TILE_EXTENT,
 	arrows: number = ARROW_LATTICE
 ) => {
@@ -40,13 +35,8 @@ export const generateArrows = (
 		const center = [tileX, tileY];
 		const geom = [];
 
-		// Sample speed with the selected method so arrow size/colour matches
-		// the raster; direction is blended circularly (scalar averaging flips
-		// arrows near the 0°/360° seam).
-		const speed = grid.getInterpolatedValue(values, lat, lon, interpolation);
-		const direction = degreesToRadians(
-			grid.getLinearInterpolatedDirection(directions, lat, lon) + 180
-		);
+		const { value: speed, direction: directionDeg } = sampleVector(lat, lon);
+		const direction = degreesToRadians(directionDeg + 180);
 
 		const properties: { value?: number; direction?: number } = {
 			value: speed,

@@ -17,11 +17,11 @@ import { parseUrlComponents } from './parse-url';
 import { getColorScale, resolveColorScale } from './styling';
 
 import type {
+	AnyDomain,
 	ArrowStyle,
 	ClippingOptions,
 	ColorScales,
 	DataIdentityOptions,
-	Domain,
 	InterpolationMethod,
 	OmProtocolSettings,
 	ParsedRequest,
@@ -68,7 +68,7 @@ export const parseRequest = (url: string, settings: OmProtocolSettings): ParsedR
 export const defaultResolveRequest = (
 	urlComponents: ParsedUrlComponents,
 	settings: OmProtocolSettings
-): { dataOptions: DataIdentityOptions; renderOptions: RenderOptions } => {
+): { dataOptions: DataIdentityOptions<AnyDomain>; renderOptions: RenderOptions } => {
 	const dataOptions = defaultResolveDataIdentity(urlComponents, settings.domainOptions);
 
 	const renderOptions = defaultResolveRenderOptions(
@@ -82,8 +82,8 @@ export const defaultResolveRequest = (
 
 const defaultResolveDataIdentity = (
 	urlComponents: ParsedUrlComponents,
-	domainOptions: Domain[]
-): DataIdentityOptions => {
+	domainOptions: AnyDomain[]
+): DataIdentityOptions<AnyDomain> => {
 	const { baseUrl, params } = urlComponents;
 
 	const domainValue = baseUrl.match(RESOLVE_DOMAIN_REGEX)?.groups?.domain;
@@ -108,7 +108,7 @@ const defaultResolveDataIdentity = (
 
 const defaultResolveRenderOptions = (
 	urlComponents: ParsedUrlComponents,
-	dataOptions: DataIdentityOptions,
+	dataOptions: DataIdentityOptions<AnyDomain>,
 	colorScales: ColorScales
 ): RenderOptions => {
 	const { params } = urlComponents;

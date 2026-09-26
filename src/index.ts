@@ -3,13 +3,22 @@ export { omProtocol } from './om-protocol';
 // Functions
 
 export {
+	isSeamlessDomain,
+	getConcreteDomain,
+	getConcreteDomainValue,
+	getGlobalLayer,
+	resolveConcreteDomain,
+	selectSeamlessLayers
+} from './domain-helpers';
+export {
 	getValueFromLatLong,
 	clearBlockCache,
 	clearBackends,
 	getRanges,
 	getProtocolInstance
 } from './om-protocol-state';
-export { updateCurrentBounds } from './utils/bounds';
+export { updateCurrentBounds, boundsIntersect } from './utils/bounds';
+export { replaceUrlDomain } from './utils/parse-url';
 export { createClippingTester } from './utils/clipping';
 export { domainStep, closestModelRun } from './utils/model-runs';
 export { variableHasDirections, variableSupportsBarbs } from './om-file-reader';
@@ -51,8 +60,11 @@ export { addOpenLayersProtocolSupport } from './adapters/openlayers';
 
 // Types
 
+export type { ActiveSeamlessLayer, SeamlessLayerFilter } from './domain-helpers';
 export type {
+	AnyDomain,
 	ArrowStyle,
+	Bounds,
 	ClippingOptions,
 	Data,
 	Domain,
@@ -64,7 +76,9 @@ export type {
 	InterpolationMethod,
 	OmProtocolSettings,
 	OmUrlState,
-	RenderableColorScale
+	RenderableColorScale,
+	SeamlessDomain,
+	SeamlessLayer
 } from './types';
 
 export type { VariableDerivationRule, WeatherMapLayerFileReader } from './om-file-reader';
