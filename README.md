@@ -309,7 +309,7 @@ The protocol handler resolves the seamless domain on the client side: the `lates
 | `dwd_icon_seamless`    | dwd_icon_d2 (zoom 3+) → dwd_icon_eu (zoom 2+) → dwd_icon                                                   |
 | `ncep_gfs_seamless`    | ncep_hrrr_conus (zoom 2+) → ncep_gfs025                                                                    |
 | `meteofrance_seamless` | meteofrance_arome_france0025 (zoom 3+) → meteofrance_arpege_europe (zoom 2+) → meteofrance_arpege_world025 |
-| `cmc_gem_seamless`     | cmc_gem_hrdps_west (zoom 4+) → cmc_gem_hrdps (zoom 3+) → cmc_gem_rdps (zoom 2+) → cmc_gem_gdps             |
+| `cmc_gem_seamless`     | cmc_gem_hrdps_west (zoom 4+) → cmc_gem_hrdps (zoom 3+) → cmc_gem_rdps_10km (zoom 2+) → cmc_gem_gdps_15km   |
 | `jma_seamless`         | jma_msm (zoom 3+) → jma_gsm                                                                                |
 | `ukmo_seamless`        | ukmo_uk_deterministic_2km (zoom 3+) → ukmo_global_deterministic_10km                                       |
 | `knmi_seamless`        | knmi_harmonie_arome_netherlands (zoom 3+) → knmi_harmonie_arome_europe                                     |
