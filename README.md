@@ -305,7 +305,7 @@ To use a seamless domain, append `_seamless` to the base model name in the URL:
 <pre><code>https://map-tiles.open-meteo.com/data_spatial/<b>dwd_icon_seamless</b>/latest.json?variable=temperature_2m
 </code></pre>
 
-The protocol handler resolves the seamless domain on the client side: the `latest.json` metadata is fetched from the base model, and tiles are composited per pixel from the active sub-domains. Regional models with a shorter forecast horizon drop out past it (`maxForecastHours`), so a composite stays valid for the full range of its base model.
+The protocol handler resolves the seamless domain on the client side: the `latest.json` metadata is fetched from the base model, every layer is requested at the base model's run and time step, and tiles are composited per pixel from the active sub-domains. Regional models with a shorter forecast horizon drop out past it (`maxForecastHours`), so a composite stays valid for the full range of its base model.
 
 ### Available seamless domains
 

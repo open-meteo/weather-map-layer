@@ -565,12 +565,12 @@ describe('SeamlessDomain – getValueFromLatLong', () => {
 });
 
 describe('SeamlessDomain – type properties', () => {
-	it('dwd_icon_seamless exposes time_interval and model_interval', async () => {
+	it('dwd_icon_seamless carries the time_interval and model_interval of dwd_icon', async () => {
 		const { domainOptions } = await import('../domains');
 		const seamless = domainOptions.find((d) => d.value === 'dwd_icon_seamless') as SeamlessDomain;
 		expect(seamless).toBeDefined();
 		expect(seamless.time_interval).toBe('hourly');
-		expect(seamless.model_interval).toBe('3_hourly');
+		expect(seamless.model_interval).toBe('6_hourly');
 	});
 
 	it('SeamlessDomain is included in domainOptions', async () => {

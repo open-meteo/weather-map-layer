@@ -28,10 +28,12 @@ describe('domain helpers', () => {
 		expect(getConcreteDomainValue(d2)).toBe('dwd_icon_d2');
 	});
 
-	it('a composite shares the grid of its base layer', () => {
+	it('a composite shares the grid and cadence of its base layer', () => {
 		for (const composite of domainOptions.filter(isSeamlessDomain)) {
 			const base = resolveConcreteDomain(getConcreteDomainValue(composite), domainOptions);
 			expect(composite.grid).toBe(base?.grid);
+			expect(composite.time_interval).toBe(base?.time_interval);
+			expect(composite.model_interval).toBe(base?.model_interval);
 		}
 	});
 });

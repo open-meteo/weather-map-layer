@@ -125,6 +125,11 @@ const CHMI_ALADIN_CENTRAL_EUROPE_2KM_GRID: GridData = {
 // -------------------------------------------------------------------------
 // Seamless composite domains
 // -------------------------------------------------------------------------
+// A composite is served at its base layer's run: its `latest.json` resolves
+// through the base, and every layer is requested at that run and valid time.
+// So `time_interval` and `model_interval` are the base layer's, which is what
+// time stepping and run selection in consumers use. A finer layer with a
+// denser cadence never adds steps or runs the base does not have.
 
 const seamlessDomains: SeamlessDomain[] = [
 	/**
@@ -145,11 +150,8 @@ const seamlessDomains: SeamlessDomain[] = [
 		value: 'dwd_icon_seamless',
 		label: 'DWD ICON Seamless',
 		grid: DWD_ICON_GRID,
-		// All constituent DWD ICON domains share the same time resolution and
-		// model-run cadence, so we surface them here so consuming code can treat
-		// dwd_icon_seamless uniformly alongside regular domains.
 		time_interval: 'hourly',
-		model_interval: '3_hourly',
+		model_interval: '6_hourly',
 		layers: [
 			{ domainValue: 'dwd_icon_d2', minZoom: 3, maxForecastHours: 48 },
 			{ domainValue: 'dwd_icon_eu', minZoom: 2, maxForecastHours: 120 },
@@ -170,7 +172,7 @@ const seamlessDomains: SeamlessDomain[] = [
 		label: 'GFS Seamless',
 		grid: NCEP_GFS025_GRID,
 		time_interval: 'hourly',
-		model_interval: 'hourly',
+		model_interval: '6_hourly',
 		layers: [
 			{ domainValue: 'ncep_hrrr_conus', minZoom: 2, maxForecastHours: 48 },
 			{ domainValue: 'ncep_gfs025', minZoom: 0 }
@@ -221,8 +223,8 @@ const seamlessDomains: SeamlessDomain[] = [
 		value: 'cmc_gem_seamless',
 		label: 'GEM Seamless',
 		grid: CMC_GEM_GDPS_15KM_GRID,
-		time_interval: 'hourly',
-		model_interval: '6_hourly',
+		time_interval: '3_hourly',
+		model_interval: '12_hourly',
 		layers: [
 			{ domainValue: 'cmc_gem_hrdps_west', minZoom: 4, maxForecastHours: 48 },
 			{ domainValue: 'cmc_gem_hrdps', minZoom: 3, maxForecastHours: 48 },
@@ -243,8 +245,8 @@ const seamlessDomains: SeamlessDomain[] = [
 		value: 'jma_seamless',
 		label: 'JMA Seamless',
 		grid: JMA_GSM_GRID,
-		time_interval: 'hourly',
-		model_interval: '3_hourly',
+		time_interval: '6_hourly',
+		model_interval: '6_hourly',
 		layers: [
 			{ domainValue: 'jma_msm', minZoom: 3, maxForecastHours: 78 },
 			{ domainValue: 'jma_gsm', minZoom: 0 }
@@ -288,7 +290,7 @@ const seamlessDomains: SeamlessDomain[] = [
 		label: 'KNMI Seamless',
 		grid: KNMI_HARMONIE_AROME_EUROPE_GRID,
 		time_interval: 'hourly',
-		model_interval: '3_hourly',
+		model_interval: 'hourly',
 		layers: [
 			{
 				domainValue: 'knmi_harmonie_arome_netherlands',
@@ -312,7 +314,7 @@ const seamlessDomains: SeamlessDomain[] = [
 		label: 'Aladin Seamless',
 		grid: CHMI_ALADIN_CENTRAL_EUROPE_2KM_GRID,
 		time_interval: 'hourly',
-		model_interval: '3_hourly',
+		model_interval: '6_hourly',
 		layers: [
 			{
 				domainValue: 'chmi_aladin_cz_1km',

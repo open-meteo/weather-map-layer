@@ -363,8 +363,9 @@ export interface SeamlessLayer {
  * coarsest, with `minZoom: 0`, covering the composite's whole extent (global
  * or regional). It stands in for the composite wherever a single concrete
  * domain is needed (metadata, TileJSON bounds, initial map position): the
- * composite's `grid` is that layer's grid. `time_interval` and
- * `model_interval` are the cadence shared by all layers.
+ * composite's `grid` is that layer's grid, and it is requested at that layer's
+ * run and time steps, so `time_interval` and `model_interval` are that
+ * layer's too.
  */
 export interface SeamlessDomain extends Domain {
 	type: 'seamless';
