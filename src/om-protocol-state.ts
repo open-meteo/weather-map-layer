@@ -1,9 +1,15 @@
 import { boundsIncluded, constrainBounds } from './utils/bounds';
-import { DEFAULT_INTERPOLATION, VALID_INTERPOLATIONS } from './utils/constants';
+import {
+	DEFAULT_INTERPOLATION,
+	RESOLVE_DOMAIN_REGEX,
+	VALID_INTERPOLATIONS
+} from './utils/constants';
 import { normalizeLon } from './utils/math';
-import { parseUrlComponents } from './utils/parse-url';
-import { normalizeUrl } from './utils/parse-url';
+import { normalizeUrl, parseUrlComponents, replaceUrlDomain } from './utils/parse-url';
+import { createSamplers } from './utils/samplers';
 
+import { type SeamlessLayerFilter, isSeamlessDomain, selectSeamlessLayers } from './domain-helpers';
+import { domainOptions as defaultDomainOptions } from './domains';
 import { GridFactory } from './grids';
 import { WeatherMapLayerFileReader } from './om-file-reader';
 
@@ -12,8 +18,10 @@ import type {
 	Data,
 	DataIdentityOptions,
 	DimensionRange,
+	Domain,
 	GridData,
 	InterpolationMethod,
+	LayerRenderData,
 	OmProtocolInstance,
 	OmProtocolSettings,
 	OmUrlState,
@@ -88,6 +96,35 @@ export const getRanges = (gridData: GridData, bounds: Bounds | undefined): Dimen
 		];
 	}
 };
+
+/** One concrete domain a request reads: the file URL it lives at and the state it is cached under. */
+export interface RequestLayer {
+	domain: Domain;
+	omFileUrl: string;
+	stateKey: string;
+}
+
+/**
+ * The concrete domains a request is served from, finest-first, each under the
+ * server path its file actually lives at. A plain domain is its own single
+ * layer. A seamless composite only exists client-side: it resolves to the
+ * sub-domains active for `filter`, with the composite's path segment swapped
+ * for each one's, so a sub-domain's state is shared with plain requests for it.
+ */
+export const resolveLayers = (
+	domain: Domain,
+	omFileUrl: string,
+	stateKey: string,
+	domainOptions: Domain[],
+	filter?: SeamlessLayerFilter
+): RequestLayer[] =>
+	isSeamlessDomain(domain)
+		? selectSeamlessLayers(domain, domainOptions, filter).map((layer) => ({
+				domain: layer.domain,
+				omFileUrl: replaceUrlDomain(omFileUrl, domain.value, layer.domain.value),
+				stateKey: replaceUrlDomain(stateKey, domain.value, layer.domain.value)
+			}))
+		: [{ domain, omFileUrl, stateKey }];
 
 export const getOrCreateState = (
 	stateByKey: Map<string, OmUrlState>,
@@ -215,43 +252,55 @@ export const ensureData = async (
 export const getValueFromLatLong = async (
 	lat: number,
 	lon: number,
-	omUrl: string
+	omUrl: string,
+	domainOptions: Domain[] = defaultDomainOptions
 ): Promise<{ value: number; direction?: number }> => {
 	if (!omProtocolInstance) {
 		throw new Error('OmProtocolInstance is not initialized');
 	}
+	const { stateByKey } = omProtocolInstance;
 
-	const url = await normalizeUrl(omUrl);
+	const url = await normalizeUrl(omUrl, domainOptions);
+	const { baseUrl, fileAndVariableKey, params } = parseUrlComponents(url);
 
-	const { fileAndVariableKey, params } = parseUrlComponents(url);
-	const state = omProtocolInstance.stateByKey.get(fileAndVariableKey);
-	if (!state) {
+	// A composite has no state of its own: its value comes from its sub-domains'
+	// states, finest-first, like its pixels. Every layer with loaded data takes
+	// part; the zoom gating of tile requests is not known here.
+	const domainValue = baseUrl.match(RESOLVE_DOMAIN_REGEX)?.groups?.domain;
+	const domain = domainOptions.find((d) => d.value === domainValue);
+	const stateKeys = domain
+		? resolveLayers(domain, baseUrl, fileAndVariableKey, domainOptions).map((l) => l.stateKey)
+		: [fileAndVariableKey];
+	const states = stateKeys.flatMap((key) => stateByKey.get(key) ?? []);
+	if (states.length === 0) {
 		throw new Error(`State not found for key: ${fileAndVariableKey}`);
 	}
 
-	state.lastAccess = Date.now();
-
-	if (!state.data?.values) {
+	const layers: LayerRenderData[] = [];
+	for (const state of states) {
+		state.lastAccess = Date.now();
+		if (state.data?.values) {
+			layers.push({ domain: state.dataOptions.domain, data: state.data, ranges: state.ranges });
+		}
+	}
+	if (layers.length === 0) {
 		return { value: NaN };
 	}
 
-	const grid = GridFactory.create(state.dataOptions.domain.grid, state.ranges);
-	const lonNormalized = normalizeLon(lon);
 	// Sample with the same interpolation the tiles are rendered with (encoded in
 	// the URL) so the popup value matches the pixel under the cursor.
 	const interpolation = resolveInterpolation(params.get('interpolation'));
-	const value = grid.getInterpolatedValue(state.data.values, lat, lonNormalized, interpolation);
+	const { sampleValue, sampleVector } = createSamplers(layers, interpolation);
+	const lonNormalized = normalizeLon(lon);
 
 	// Derived variables (u/v components, speed+direction, wave height+direction)
 	// carry a direction field. Sampled the same way the arrows are (circular on
 	// the degrees), so a popup arrow points exactly like the arrow under it.
-	const directions = state.data.directions;
-	if (!directions) return { value };
-
-	return {
-		value,
-		direction: grid.getLinearInterpolatedDirection(directions, lat, lonNormalized)
-	};
+	if (!layers.some((layer) => layer.data.directions)) {
+		return { value: sampleValue(lat, lonNormalized) };
+	}
+	const { value, direction } = sampleVector(lat, lonNormalized);
+	return { value, direction };
 };
 
 /** Parse the `interpolation` URL param, falling back to the default on absent or invalid values. */

@@ -100,7 +100,7 @@ const lonRangesOverlap = (aMin: number, aMax: number, bMin: number, bMax: number
  * True when two lon/lat bounding boxes overlap (share any area). Latitude is a
  * plain interval test; longitude tolerates dateline-crossing boxes on either
  * side. Used to decide whether a domain is at least partially inside the map
- * viewport before loading/blending it.
+ * viewport before loading it.
  */
 export const boundsIntersect = (a: Bounds, b: Bounds): boolean => {
 	// Latitude never wraps.

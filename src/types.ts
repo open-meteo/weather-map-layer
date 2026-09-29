@@ -141,18 +141,12 @@ export interface LayerRenderData {
 export interface TileRequest {
 	type: 'getArrayBuffer' | 'getImage' | 'cancel';
 	key: string;
-	data: Data;
+	/** The domains the tile is rendered from, finest-first; a plain request has one. */
+	layers: LayerRenderData[];
 	tileIndex: TileIndex;
 	renderOptions: RenderOptions;
-	dataOptions: DataIdentityOptions;
-	ranges: DimensionRange[];
 	clippingOptions: ResolvedClippingOptions | undefined;
 	signal?: AbortSignal;
-	/**
-	 * Present for a seamless composite: the active sub-domains, finest-first.
-	 * `data`, `ranges` and `dataOptions` then describe the finest layer.
-	 */
-	seamlessLayers?: LayerRenderData[];
 }
 
 export type WorkerRequest = TileRequest;
@@ -363,14 +357,15 @@ export interface SeamlessLayer {
 /**
  * A virtual domain composed of several concrete domains. At any point the
  * finest layer that is active at the current zoom and has data there is shown,
- * so the map switches to a regional model where one exists and falls back to
- * the global one elsewhere.
+ * so the map switches to a finer model where one exists and falls back to the
+ * coarser one elsewhere.
  *
- * `layers` are ordered finest-first; the last layer is the global one (it must
- * cover the whole world and have `minZoom: 0`), which also stands in for the
- * composite wherever a single concrete domain is needed (metadata, TileJSON
- * bounds, initial map position): the composite's `grid` is that layer's grid.
- * `time_interval` and `model_interval` are the cadence shared by all layers.
+ * `layers` are ordered finest-first; the last one is the base layer: the
+ * coarsest, with `minZoom: 0`, covering the composite's whole extent (global
+ * or regional). It stands in for the composite wherever a single concrete
+ * domain is needed (metadata, TileJSON bounds, initial map position): the
+ * composite's `grid` is that layer's grid. `time_interval` and
+ * `model_interval` are the cadence shared by all layers.
  */
 export interface SeamlessDomain extends Domain {
 	type: 'seamless';

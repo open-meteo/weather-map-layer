@@ -21,8 +21,8 @@ export const domainGroups = [
 	{ value: 'ukmo', label: 'UKMO' }
 ];
 
-// Grids of the global (last) layer of each seamless composite, shared with
-// the concrete domain entry so the composite's `grid` cannot drift from it.
+// Grids of the base (last) layer of each seamless composite, shared with the
+// concrete domain entry so the composite's `grid` cannot drift from it.
 const DWD_ICON_GRID: GridData = {
 	type: 'regular',
 	nx: 2879,

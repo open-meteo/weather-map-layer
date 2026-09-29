@@ -10,7 +10,7 @@ import { createSamplers } from './utils/samplers';
 import { makeColorSampler } from './utils/styling';
 import { generateWindBarbs } from './utils/wind-barbs';
 
-import type { LayerRenderData, WorkerRequest } from './types';
+import type { WorkerRequest } from './types';
 
 self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => {
 	const key = message.data.key;
@@ -25,15 +25,9 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 	const { tileSize, interpolation, colorBlend, colorScale } = message.data.renderOptions;
 	const clippingOptions = message.data.clippingOptions;
 
-	// A plain request renders its single domain; a seamless one its active
-	// sub-domains, finest-first. Both go through the same samplers.
-	const layers: LayerRenderData[] = message.data.seamlessLayers ?? [
-		{
-			domain: message.data.dataOptions.domain,
-			data: message.data.data,
-			ranges: message.data.ranges
-		}
-	];
+	// The domains the tile is rendered from, finest-first: at any point the
+	// finest one with data there wins. A plain request has a single layer.
+	const layers = message.data.layers;
 	if (!layers.some((layer) => layer.data.values)) {
 		throw new Error('No values provided');
 	}
@@ -47,7 +41,7 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 		// Offset the colour threshold by half the data's quantization step so
 		// band edges fall inside grid cells (smooth) instead of snapping to the
 		// cell corners when a breakpoint coincides with a quantization level.
-		const halfQuantum = computeHalfQuantum(message.data.data.scaleFactor);
+		const halfQuantum = computeHalfQuantum(layers[0].data.scaleFactor);
 
 		// Reused per-pixel so colour blending doesn't allocate an array per pixel.
 		const colorOut: [number, number, number, number] = [0, 0, 0, 0];
@@ -113,7 +107,7 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 
 		postMessage({ type: 'returnImage', tile: imageBitmap, key: key }, { transfer: [imageBitmap] });
 	} else if (message.data.type == 'getArrayBuffer') {
-		const directions = message.data.data.directions;
+		const hasDirections = layers.some((layer) => layer.data.directions !== undefined);
 		const renderOptions = message.data.renderOptions;
 
 		const pbf = new PbfWriter();
@@ -121,7 +115,7 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 		if (renderOptions.drawGrid) {
 			generateGridPoints(pbf, gridSources, x, y, z, clippingOptions);
 		}
-		if (renderOptions.drawArrows && directions) {
+		if (renderOptions.drawArrows && hasDirections) {
 			const draw = renderOptions.arrowStyle === 'barb' ? generateWindBarbs : generateArrows;
 			draw(pbf, sampleVector, x, y, z, clippingOptions);
 		}
@@ -135,7 +129,7 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 				tileSize,
 				renderOptions.intervals,
 				clippingOptions,
-				computeHalfQuantum(message.data.data.scaleFactor)
+				computeHalfQuantum(layers[0].data.scaleFactor)
 			);
 		}
 

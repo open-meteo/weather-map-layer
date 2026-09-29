@@ -2,14 +2,7 @@ export { omProtocol } from './om-protocol';
 
 // Functions
 
-export {
-	isSeamlessDomain,
-	getConcreteDomain,
-	getConcreteDomainValue,
-	getGlobalLayer,
-	resolveConcreteDomain,
-	selectSeamlessLayers
-} from './domain-helpers';
+export { isSeamlessDomain, getConcreteDomainValue, selectSeamlessLayers } from './domain-helpers';
 export {
 	getValueFromLatLong,
 	clearBlockCache,
@@ -17,8 +10,7 @@ export {
 	getRanges,
 	getProtocolInstance
 } from './om-protocol-state';
-export { updateCurrentBounds, boundsIntersect } from './utils/bounds';
-export { replaceUrlDomain } from './utils/parse-url';
+export { updateCurrentBounds } from './utils/bounds';
 export { createClippingTester } from './utils/clipping';
 export { domainStep, closestModelRun } from './utils/model-runs';
 export { variableHasDirections, variableSupportsBarbs } from './om-file-reader';

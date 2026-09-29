@@ -98,7 +98,7 @@ export const parseLeadTimeHours = (url: string): number | undefined => {
 };
 
 /**
- * A seamless composite has no metadata of its own on the server; its global
+ * A seamless composite has no metadata of its own on the server; its base
  * layer's `{meta}.json` describes the composite.
  */
 const resolveJsonFetchUrl = (jsonUrl: string, domainOptions?: Domain[]): string => {
@@ -119,7 +119,7 @@ export const parseMetaJson = async (omUrl: string, domainOptions?: Domain[]) => 
 	// jsonUrl should be everything until ".json" of the current url (inclusive)
 	const jsonIndex = url.indexOf('.json');
 	const jsonUrl = url.slice(0, jsonIndex + '.json'.length);
-	// For seamless domains, fetch from the global layer's domain; cache under the
+	// For seamless domains, fetch from the base layer's domain; cache under the
 	// original (seamless) key so duplicate requests are still deduplicated.
 	const fetchJsonUrl = resolveJsonFetchUrl(jsonUrl, domainOptions);
 

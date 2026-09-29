@@ -1,7 +1,8 @@
 import {
-	getConcreteDomain,
+	getBaseLayer,
 	getConcreteDomainValue,
 	isSeamlessDomain,
+	resolveConcreteDomain,
 	selectSeamlessLayers
 } from '../domain-helpers';
 import { domainOptions } from '../domains';
@@ -20,17 +21,17 @@ describe('domain helpers', () => {
 		expect(isSeamlessDomain(domainOptions.find((d) => d.value === 'dwd_icon')!)).toBe(false);
 	});
 
-	it('a composite is represented by its global layer, a domain by itself', () => {
+	it('a composite is represented by its base layer, a domain by itself', () => {
+		expect(getBaseLayer(seamless).domainValue).toBe('dwd_icon');
 		expect(getConcreteDomainValue(seamless)).toBe('dwd_icon');
-		expect(getConcreteDomain(seamless, domainOptions)?.value).toBe('dwd_icon');
 		const d2 = domainOptions.find((d) => d.value === 'dwd_icon_d2')!;
 		expect(getConcreteDomainValue(d2)).toBe('dwd_icon_d2');
-		expect(getConcreteDomain(d2, domainOptions)).toBe(d2);
 	});
 
-	it('a composite shares the grid of its global layer', () => {
+	it('a composite shares the grid of its base layer', () => {
 		for (const composite of domainOptions.filter(isSeamlessDomain)) {
-			expect(composite.grid).toBe(getConcreteDomain(composite, domainOptions)?.grid);
+			const base = resolveConcreteDomain(getConcreteDomainValue(composite), domainOptions);
+			expect(composite.grid).toBe(base?.grid);
 		}
 	});
 });
@@ -45,7 +46,7 @@ describe('selectSeamlessLayers', () => {
 		expect(layerValues({ zoom: 0 })).toEqual(['dwd_icon']);
 	});
 
-	it('leaves out regional layers outside the viewport, never the global one', () => {
+	it('leaves out finer layers outside the viewport, never the base one', () => {
 		expect(layerValues({ viewportBounds: [-120, 30, -100, 45] })).toEqual(['dwd_icon']);
 		expect(layerValues({ viewportBounds: [5, 47, 15, 55] })).toEqual([
 			'dwd_icon_d2',

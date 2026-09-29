@@ -203,7 +203,7 @@ describe('SeamlessDomain – TileJSON', () => {
 		expect(tj.tiles[0]).toBe(`${params.url}/{z}/{x}/{y}`);
 	});
 
-	it('TileJSON bounds come from the global (last) layer domain', async () => {
+	it('TileJSON bounds come from the base (last) layer grid', async () => {
 		const { omProtocol } = await import('../om-protocol');
 		const result = await omProtocol(jsonParams(), new AbortController(), makeSettings());
 
@@ -227,18 +227,23 @@ describe('SeamlessDomain – TileJSON', () => {
 		expect(latMax).toBeLessThanOrEqual(5);
 	});
 
-	it('returns { data: null } when the global domain is not in settings', async () => {
+	it('needs no concrete domain in settings: the composite carries its grid', async () => {
 		const { omProtocol } = await import('../om-protocol');
-		// Remove the global concrete domain from the domain list
-		const settings = makeSettings({
-			domainOptions: [EU_DOMAIN, D2_DOMAIN, SEAMLESS]
-		});
+		const settings = makeSettings({ domainOptions: [SEAMLESS] });
 		const result = await omProtocol(jsonParams(), new AbortController(), settings);
-		expect(result.data).toBeNull();
+		expect((result.data as TileJSON).bounds).toEqual([-20, -20, 20, 20]);
 	});
 });
 
 describe('SeamlessDomain – zoom-level layer filtering', () => {
+	it('returns { data: null } for a tile when no layer domain is in settings', async () => {
+		const { omProtocol } = await import('../om-protocol');
+		const settings = makeSettings({ domainOptions: [SEAMLESS] });
+		const result = await omProtocol(tileParams(5), new AbortController(), settings);
+		expect(result.data).toBeNull();
+		expect(mockReadVariableSpy.calls).toHaveLength(0);
+	});
+
 	it('at zoom 0 only global layer is active', async () => {
 		const { omProtocol } = await import('../om-protocol');
 		await omProtocol(tileParams(0), new AbortController(), makeSettings());
@@ -420,14 +425,15 @@ describe('SeamlessDomain – error handling', () => {
 		expect(domainValues).toContain('test_global');
 	});
 
-	it('all layers failing returns { data: null }', async () => {
+	it('all layers failing rejects, like a failed plain read', async () => {
 		mockShouldFail.substrings.add('/test_d2/');
 		mockShouldFail.substrings.add('/test_eu/');
 		mockShouldFail.substrings.add('/test_global/');
 		const { omProtocol } = await import('../om-protocol');
-		const result = await omProtocol(tileParams(5), new AbortController(), makeSettings());
 
-		expect(result.data).toBeNull();
+		await expect(
+			omProtocol(tileParams(5), new AbortController(), makeSettings())
+		).rejects.toThrow();
 	});
 
 	it('unsupported request type throws', async () => {
@@ -436,9 +442,7 @@ describe('SeamlessDomain – error handling', () => {
 			url: `om://${BASE}?variable=temperature/0/0/0`,
 			type: 'image'
 		};
-		// 'image' tiles carry z/x/y, so this path IS reachable in handleSeamlessRequest
-		// (it should succeed, not throw, since 'image' is handled by requestTileSeamless)
-		// — only truly unknown types throw
+		// Only truly unknown types throw; 'image' and 'arrayBuffer' are handled.
 		const unknownParams = { ...params, type: 'vector' as RequestParameters['type'] };
 		await expect(omProtocol(unknownParams, new AbortController(), makeSettings())).rejects.toThrow(
 			"Unsupported request type 'vector'"
@@ -531,6 +535,32 @@ describe('SeamlessDomain – postReadCallback', () => {
 		// Second request hits state.data — ensureData short-circuits, no callback
 		await omProtocol(tileParams(5), new AbortController(), settings);
 		expect(postReadCallback).not.toHaveBeenCalled();
+	});
+});
+
+describe('SeamlessDomain – getValueFromLatLong', () => {
+	it('samples the composite through its loaded sub-domain states', async () => {
+		const { omProtocol } = await import('../om-protocol');
+		const { getValueFromLatLong } = await import('../om-protocol-state');
+		const settings = makeSettings();
+		const params = tileParams(5);
+		await omProtocol(params, new AbortController(), settings);
+
+		// (0, 0) lies inside all three layers; the mock data is all zeros.
+		const result = await getValueFromLatLong(0, 0, params.url, settings.domainOptions);
+		expect(result.value).toBe(0);
+	});
+
+	it('throws when no sub-domain state exists for the composite', async () => {
+		const { omProtocol } = await import('../om-protocol');
+		const { getValueFromLatLong } = await import('../om-protocol-state');
+		const settings = makeSettings();
+		// TileJSON initializes the protocol instance without creating any state.
+		await omProtocol(jsonParams(), new AbortController(), settings);
+
+		await expect(
+			getValueFromLatLong(0, 0, tileParams(5).url, settings.domainOptions)
+		).rejects.toThrow('State not found');
 	});
 });
 

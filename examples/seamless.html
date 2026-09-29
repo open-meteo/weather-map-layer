@@ -39,8 +39,8 @@
 			// note the '_seamless' postfix. not all domains support seamless composites, check the readme for details
 			const omUrl = `https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon_seamless/latest.json?time_step=current_time_1H&variable=temperature_2m`;
 
-			// Seamless domain borders: one per regional layer, drawn from the
-			// library's domain footprints (the global layer needs none)
+			// Seamless domain borders: one per finer layer, drawn from the
+			// library's domain footprints (the base layer, dwd_icon, is global)
 			const { domainOptions, getDomainBoundary, selectSeamlessLayers } = OMWeatherMapLayer;
 			const seamlessDomain = domainOptions.find((d) => d.value === 'dwd_icon_seamless');
 			const borders = selectSeamlessLayers(seamlessDomain, domainOptions)
