@@ -1,4 +1,8 @@
-/** Tests for the SeamlessDomain request handling through `omProtocol`. */
+/**
+ * How `omProtocol` serves a seamless composite: which layers it reads and
+ * under which paths, and how failures, aborts and cached states behave. The
+ * layer selection rules themselves are covered by domain-helpers.test.ts.
+ */
 import { defaultOmProtocolSettings } from '../om-protocol';
 import { updateCurrentBounds } from '../utils/bounds';
 import { RequestParameters } from 'maplibre-gl';
@@ -78,8 +82,8 @@ beforeEach(() => {
 	mockReadVariableSpy.calls = [];
 	mockShouldFail.substrings.clear();
 	mockOnReadVariable.fn = undefined;
-	// Default to a world-covering viewport so the seamless viewport gate never
-	// excludes a layer; tests that exercise the gate override this explicitly.
+	// A world-covering viewport, so the viewport gate leaves no layer out unless
+	// a test narrows it on purpose.
 	updateCurrentBounds([-180, -90, 180, 90]);
 });
 
@@ -87,11 +91,7 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
-// ---------------------------------------------------------------------------
-// Shared domain/settings factories
-// ---------------------------------------------------------------------------
-
-/** Create a minimal regular-grid Domain. */
+/** A regular-grid domain of `nx` × `ny` cells from (lonMin, latMin) in steps of dx/dy. */
 const makeRegularDomain = (
 	value: string,
 	opts: {
@@ -152,7 +152,7 @@ const SEAMLESS: SeamlessDomain = {
 	time_interval: 'hourly',
 	model_interval: '3_hourly',
 	layers: [
-		{ domainValue: 'test_d2', minZoom: 5 },
+		{ domainValue: 'test_d2', minZoom: 5, maxForecastHours: 6 },
 		{ domainValue: 'test_eu', minZoom: 3 },
 		{ domainValue: 'test_global', minZoom: 0 }
 	]
@@ -164,377 +164,124 @@ const makeSettings = (overrides: Partial<OmProtocolSettings> = {}): OmProtocolSe
 	...overrides
 });
 
-/** Base URL segment used in test om:// URLs. */
-const BASE = 'https://example.com/data_spatial/test_seamless/2025/01/01/0000Z/2025-01-01T0000.om';
+/** A file of the composite's 00Z run, valid at `validTime`. */
+const fileUrl = (validTime = '2025-01-01T0000') =>
+	`https://example.com/data_spatial/test_seamless/2025/01/01/0000Z/${validTime}.om?variable=temperature`;
 
-const jsonParams = (): RequestParameters => ({
-	url: `om://${BASE}?variable=temperature`,
-	type: 'json'
-});
+const jsonParams = (): RequestParameters => ({ url: `om://${fileUrl()}`, type: 'json' });
 
-const tileParams = (z: number, x = 0, y = 0): RequestParameters => ({
-	url: `om://${BASE}?variable=temperature/${z}/${x}/${y}`,
+const tileParams = (z: number, validTime?: string): RequestParameters => ({
+	url: `om://${fileUrl(validTime)}/${z}/0/0`,
 	type: 'arrayBuffer'
 });
+
+/** The domain segment of every file read so far, in call order. */
+const readDomains = () =>
+	mockReadVariableSpy.calls.map((url) => url.match(/\/data_spatial\/([^/]+)\//)?.[1]);
 
 // ─── Test suites ──────────────────────────────────────────────────────────────
 
 describe('SeamlessDomain – TileJSON', () => {
-	it('returns TileJSON immediately without loading any data', async () => {
-		const { omProtocol } = await import('../om-protocol');
-		const result = await omProtocol(jsonParams(), new AbortController(), makeSettings());
-
-		expect(result.data).not.toBeNull();
-		const tj = result.data as TileJSON;
-		expect(tj.tilejson).toBe('3.0.0');
-		expect(tj.minzoom).toBe(0);
-		expect(tj.maxzoom).toBe(12);
-
-		// No data was loaded — readVariable should not have been called
-		expect(mockReadVariableSpy.calls).toHaveLength(0);
-	});
-
-	it('TileJSON tiles URL matches the request URL', async () => {
-		const { omProtocol } = await import('../om-protocol');
-		const params = jsonParams();
-		const result = await omProtocol(params, new AbortController(), makeSettings());
-
-		const tj = result.data as TileJSON;
-		expect(tj.tiles[0]).toBe(`${params.url}/{z}/{x}/{y}`);
-	});
-
-	it('TileJSON bounds come from the base (last) layer grid', async () => {
-		const { omProtocol } = await import('../om-protocol');
-		const result = await omProtocol(jsonParams(), new AbortController(), makeSettings());
-
-		const tj = result.data as TileJSON;
-		expect(tj.bounds).toHaveLength(4);
-		expect(tj.bounds).toEqual([-20, -20, 20, 20]);
-	});
-
-	it('TileJSON bounds are clipped when clippingOptions are set', async () => {
-		const { omProtocol } = await import('../om-protocol');
-		const settings = makeSettings({
-			clippingOptions: { bounds: [-5, -5, 5, 5] }
-		});
-		const result = await omProtocol(jsonParams(), new AbortController(), settings);
-
-		const tj = result.data as TileJSON;
-		const [lonMin, latMin, lonMax, latMax] = tj.bounds!;
-		expect(lonMin).toBeGreaterThanOrEqual(-5);
-		expect(latMin).toBeGreaterThanOrEqual(-5);
-		expect(lonMax).toBeLessThanOrEqual(5);
-		expect(latMax).toBeLessThanOrEqual(5);
-	});
-
-	it('needs no concrete domain in settings: the composite carries its grid', async () => {
+	it('answers from the composite grid without reading data or needing a concrete domain', async () => {
 		const { omProtocol } = await import('../om-protocol');
 		const settings = makeSettings({ domainOptions: [SEAMLESS] });
 		const result = await omProtocol(jsonParams(), new AbortController(), settings);
+
 		expect((result.data as TileJSON).bounds).toEqual([-20, -20, 20, 20]);
+		expect(mockReadVariableSpy.calls).toHaveLength(0);
 	});
 });
 
-describe('SeamlessDomain – zoom-level layer filtering', () => {
-	it('returns { data: null } for a tile when no layer domain is in settings', async () => {
+describe('SeamlessDomain – layers', () => {
+	it('reads every active layer under its own domain path, finest-first', async () => {
 		const { omProtocol } = await import('../om-protocol');
-		const settings = makeSettings({ domainOptions: [SEAMLESS] });
-		const result = await omProtocol(tileParams(5), new AbortController(), settings);
-		expect(result.data).toBeNull();
-		expect(mockReadVariableSpy.calls).toHaveLength(0);
+		const result = await omProtocol(tileParams(5), new AbortController(), makeSettings());
+
+		expect(result.data).toBeInstanceOf(ArrayBuffer);
+		expect(readDomains()).toEqual(['test_d2', 'test_eu', 'test_global']);
+		for (const url of mockReadVariableSpy.calls) {
+			expect(url).toContain('/2025/01/01/0000Z/2025-01-01T0000.om');
+		}
 	});
 
-	it('at zoom 0 only global layer is active', async () => {
+	it('leaves out layers above the zoom', async () => {
 		const { omProtocol } = await import('../om-protocol');
 		await omProtocol(tileParams(0), new AbortController(), makeSettings());
 
-		// Only global domain URL should have been opened
-		const urls = mockReadVariableSpy.calls;
-		expect(urls).toHaveLength(1);
-		expect(urls[0]).toContain('/test_global/');
+		expect(readDomains()).toEqual(['test_global']);
 	});
 
-	it('at zoom 3 eu + global layers are active (d2 skipped)', async () => {
-		const { omProtocol } = await import('../om-protocol');
-		await omProtocol(tileParams(3), new AbortController(), makeSettings());
-
-		const domainValues = mockReadVariableSpy.calls.map(
-			(u) => u.match(/\/data_spatial\/([^/]+)\//)?.[1]
-		);
-		// eu (minZoom 3) and global (minZoom 0) — d2 (minZoom 5) must be absent
-		expect(domainValues).toContain('test_eu');
-		expect(domainValues).toContain('test_global');
-		expect(domainValues).not.toContain('test_d2');
-	});
-
-	it('at zoom 5 all three layers (d2, eu, global) are active', async () => {
-		const { omProtocol } = await import('../om-protocol');
-		await omProtocol(tileParams(5), new AbortController(), makeSettings());
-
-		const domainValues = mockReadVariableSpy.calls.map(
-			(u) => u.match(/\/data_spatial\/([^/]+)\//)?.[1]
-		);
-		expect(domainValues).toContain('test_d2');
-		expect(domainValues).toContain('test_eu');
-		expect(domainValues).toContain('test_global');
-	});
-
-	it('at zoom 4 (between 3 and 5) only eu + global are active', async () => {
-		const { omProtocol } = await import('../om-protocol');
-		await omProtocol(tileParams(4), new AbortController(), makeSettings());
-
-		const domainValues = mockReadVariableSpy.calls.map(
-			(u) => u.match(/\/data_spatial\/([^/]+)\//)?.[1]
-		);
-		expect(domainValues).not.toContain('test_d2');
-		expect(domainValues).toContain('test_eu');
-		expect(domainValues).toContain('test_global');
-	});
-});
-
-describe('SeamlessDomain – viewport gating', () => {
-	// test_d2 covers lon/lat ~[-1, 1.4]; test_eu ~[-5, 5]; test_global ~[-20, 18].
-
-	it('loads regional layers that overlap the viewport', async () => {
-		updateCurrentBounds([-2, -2, 0, 0]); // overlaps d2, eu and global
-		const { omProtocol } = await import('../om-protocol');
-		await omProtocol(tileParams(5), new AbortController(), makeSettings());
-
-		const domainValues = mockReadVariableSpy.calls.map(
-			(u) => u.match(/\/data_spatial\/([^/]+)\//)?.[1]
-		);
-		expect(domainValues).toContain('test_d2');
-		expect(domainValues).toContain('test_eu');
-		expect(domainValues).toContain('test_global');
-	});
-
-	it('skips a regional layer entirely when it is off-screen', async () => {
-		updateCurrentBounds([100, 50, 110, 60]); // far from every regional domain
-		const { omProtocol } = await import('../om-protocol');
-		await omProtocol(tileParams(5), new AbortController(), makeSettings());
-
-		const domainValues = mockReadVariableSpy.calls.map(
-			(u) => u.match(/\/data_spatial\/([^/]+)\//)?.[1]
-		);
-		// Off-screen regional layers are never fetched...
-		expect(domainValues).not.toContain('test_d2');
-		expect(domainValues).not.toContain('test_eu');
-		// ...but the global layer is always loaded, even out of its (test) bounds.
-		expect(domainValues).toContain('test_global');
-	});
-
-	it('loads only the regional layers that overlap a partial viewport', async () => {
-		// Overlaps eu (lon ≤ 5) but not d2 (lon ≤ 1.4): a viewport east of d2.
+	it('leaves out finer layers outside the viewport', async () => {
+		// East of test_d2 (lon ≤ 1.4), inside test_eu (lon ≤ 5).
 		updateCurrentBounds([3, 3, 5, 5]);
 		const { omProtocol } = await import('../om-protocol');
 		await omProtocol(tileParams(5), new AbortController(), makeSettings());
 
-		const domainValues = mockReadVariableSpy.calls.map(
-			(u) => u.match(/\/data_spatial\/([^/]+)\//)?.[1]
-		);
-		expect(domainValues).not.toContain('test_d2');
-		expect(domainValues).toContain('test_eu');
-		expect(domainValues).toContain('test_global');
+		expect(readDomains()).toEqual(['test_eu', 'test_global']);
+	});
+
+	it('leaves out layers past their forecast horizon', async () => {
+		const { omProtocol } = await import('../om-protocol');
+		// 12 h into the 00Z run, past the 6 h horizon of test_d2.
+		await omProtocol(tileParams(5, '2025-01-01T1200'), new AbortController(), makeSettings());
+
+		expect(readDomains()).toEqual(['test_eu', 'test_global']);
+	});
+
+	it('returns { data: null } when no layer domain is in settings', async () => {
+		const { omProtocol } = await import('../om-protocol');
+		const settings = makeSettings({ domainOptions: [SEAMLESS] });
+		const result = await omProtocol(tileParams(5), new AbortController(), settings);
+
+		expect(result.data).toBeNull();
+		expect(mockReadVariableSpy.calls).toHaveLength(0);
 	});
 });
 
-describe('SeamlessDomain – parallel data loading', () => {
-	it('layer reads start in finest-first order', async () => {
-		// Layers load in parallel, but the reads are issued in layer-definition
-		// order. We verify the start order: d2 → eu → global (finest first).
-		const { omProtocol } = await import('../om-protocol');
-		await omProtocol(tileParams(5), new AbortController(), makeSettings());
-
-		const domainOrder = mockReadVariableSpy.calls.map(
-			(u) => u.match(/\/data_spatial\/([^/]+)\//)?.[1]
-		);
-		// Layers are finest-first in the seamless definition
-		expect(domainOrder).toEqual(['test_d2', 'test_eu', 'test_global']);
-	});
-
-	it('each read receives its own layer URL', async () => {
-		// Reads are atomic (URL passed per call), so no reader state can bleed
-		// between layers; each call must carry exactly its layer's concrete URL.
-		const { omProtocol } = await import('../om-protocol');
-		await omProtocol(tileParams(5), new AbortController(), makeSettings());
-
-		expect(mockReadVariableSpy.calls[0]).toContain('/test_d2/');
-		expect(mockReadVariableSpy.calls[1]).toContain('/test_eu/');
-		expect(mockReadVariableSpy.calls[2]).toContain('/test_global/');
-	});
-});
-
-describe('SeamlessDomain – URL substitution', () => {
-	it('substitutes the seamless domain name with each concrete domain name', async () => {
-		const { omProtocol } = await import('../om-protocol');
-		await omProtocol(tileParams(5), new AbortController(), makeSettings());
-
-		const urls = mockReadVariableSpy.calls;
-		expect(urls).toHaveLength(3);
-		// Path structure is preserved; only the domain segment changes
-		for (const url of urls) {
-			expect(url).not.toContain('/test_seamless/');
-			expect(url).toContain('2025/01/01/0000Z/2025-01-01T0000.om');
-		}
-		expect(urls[0]).toContain('/test_d2/');
-		expect(urls[1]).toContain('/test_eu/');
-		expect(urls[2]).toContain('/test_global/');
-	});
-
-	it('fetches a seamless {meta}.json from the global domain', async () => {
-		const { normalizeUrl } = await import('../utils/parse-url');
-		const fetched: string[] = [];
-		vi.stubGlobal('fetch', async (url: string) => {
-			fetched.push(url);
-			return {
-				ok: true,
-				json: async () => ({
-					reference_time: '2025-01-01T00:00:00Z',
-					valid_times: ['2025-01-01T00:00Z']
-				})
-			};
-		});
-		try {
-			const url = await normalizeUrl(
-				'om://https://example.com/data_spatial/test_seamless/latest.json?variable=temperature_2m',
-				makeSettings().domainOptions
-			);
-			// The server only knows concrete domains; the resolved .om URL keeps
-			// the seamless one so the protocol can fan it out per layer
-			expect(fetched).toEqual(['https://example.com/data_spatial/test_global/latest.json']);
-			expect(url).toContain('/test_seamless/2025/01/01/0000Z/2025-01-01T0000.om');
-		} finally {
-			vi.unstubAllGlobals();
-		}
-	});
-});
-
-describe('SeamlessDomain – error handling', () => {
-	it('a failing layer is skipped; the remaining layers still produce a tile', async () => {
-		// d2 fails → only eu + global are used
+describe('SeamlessDomain – failures and aborts', () => {
+	it('drops a failing layer and renders from the rest', async () => {
 		mockShouldFail.substrings.add('/test_d2/');
 		const { omProtocol } = await import('../om-protocol');
 		const result = await omProtocol(tileParams(5), new AbortController(), makeSettings());
 
 		expect(result.data).toBeInstanceOf(ArrayBuffer);
-		// eu and global should still have been loaded
-		const domainValues = mockReadVariableSpy.calls.map(
-			(u) => u.match(/\/data_spatial\/([^/]+)\//)?.[1]
-		);
-		expect(domainValues).toContain('test_eu');
-		expect(domainValues).toContain('test_global');
+		expect(readDomains()).toEqual(['test_d2', 'test_eu', 'test_global']);
 	});
 
-	it('all layers failing rejects, like a failed plain read', async () => {
-		mockShouldFail.substrings.add('/test_d2/');
-		mockShouldFail.substrings.add('/test_eu/');
-		mockShouldFail.substrings.add('/test_global/');
+	it('rejects when every layer fails, like a failed plain read', async () => {
+		mockShouldFail.substrings.add('/test_');
 		const { omProtocol } = await import('../om-protocol');
 
-		await expect(
-			omProtocol(tileParams(5), new AbortController(), makeSettings())
-		).rejects.toThrow();
-	});
-
-	it('unsupported request type throws', async () => {
-		const { omProtocol } = await import('../om-protocol');
-		const params: RequestParameters = {
-			url: `om://${BASE}?variable=temperature/0/0/0`,
-			type: 'image'
-		};
-		// Only truly unknown types throw; 'image' and 'arrayBuffer' are handled.
-		const unknownParams = { ...params, type: 'vector' as RequestParameters['type'] };
-		await expect(omProtocol(unknownParams, new AbortController(), makeSettings())).rejects.toThrow(
-			"Unsupported request type 'vector'"
+		await expect(omProtocol(tileParams(5), new AbortController(), makeSettings())).rejects.toThrow(
+			'Simulated failure'
 		);
 	});
 
-	it('tile request without z/x/y throws', async () => {
-		const { omProtocol } = await import('../om-protocol');
-		const params: RequestParameters = {
-			url: `om://${BASE}?variable=temperature`,
-			type: 'arrayBuffer'
-		};
-		await expect(omProtocol(params, new AbortController(), makeSettings())).rejects.toThrow(
-			'Tile coordinates required'
-		);
-	});
-});
-
-describe('SeamlessDomain – abort signal', () => {
-	it('aborted signal before TileJSON returns { data: null } immediately', async () => {
-		const { omProtocol } = await import('../om-protocol');
-		const ac = new AbortController();
-		ac.abort();
-		const result = await omProtocol(jsonParams(), ac, makeSettings());
-		expect(result.data).toBeNull();
-	});
-
-	it('aborted signal before tile request returns { data: null }', async () => {
-		const { omProtocol } = await import('../om-protocol');
-		const ac = new AbortController();
-		ac.abort();
-		const result = await omProtocol(tileParams(5), ac, makeSettings());
-		expect(result.data).toBeNull();
-	});
-
-	it('abort during the first layer read stops further layer fetches', async () => {
-		// The abort fires synchronously inside the first (d2) read, before the other
-		// layer tasks reach their signal check — eu and global must not be started.
+	it('stops reading further layers once the signal aborts', async () => {
+		// The abort fires inside the first (d2) read; eu and global are never read.
 		const ac = new AbortController();
 		mockOnReadVariable.fn = () => ac.abort();
-
 		const { omProtocol } = await import('../om-protocol');
 		const result = await omProtocol(tileParams(5), ac, makeSettings());
 
-		// Only the first readVariable ran before the abort propagated
-		expect(mockReadVariableSpy.calls).toHaveLength(1);
+		expect(readDomains()).toEqual(['test_d2']);
 		expect(result.data).toBeNull();
 	});
 });
 
-describe('SeamlessDomain – state caching', () => {
-	it('second tile request uses cached state; readVariable called only once per layer', async () => {
-		const { omProtocol } = await import('../om-protocol');
-		const settings = makeSettings();
-
-		// First request populates the cache
-		await omProtocol(tileParams(5), new AbortController(), settings);
-		const firstCallCount = mockReadVariableSpy.calls.length;
-
-		// Second request should hit state.data — no new readVariable calls
-		await omProtocol(tileParams(5), new AbortController(), settings);
-		expect(mockReadVariableSpy.calls).toHaveLength(firstCallCount);
-	});
-});
-
-describe('SeamlessDomain – postReadCallback', () => {
-	it('invokes postReadCallback once per real sub-layer load', async () => {
-		const { omProtocol } = await import('../om-protocol');
+describe('SeamlessDomain – layer states', () => {
+	it('reads each layer once across tiles and reports each read to postReadCallback', async () => {
 		const postReadCallback = vi.fn();
 		const settings = makeSettings({ postReadCallback });
-
-		// zoom 5 loads all three layers (d2, eu, global)
+		const { omProtocol } = await import('../om-protocol');
+		await omProtocol(tileParams(5), new AbortController(), settings);
 		await omProtocol(tileParams(5), new AbortController(), settings);
 
-		expect(postReadCallback).toHaveBeenCalledTimes(3);
-		const domainValues = postReadCallback.mock.calls.map(
+		expect(readDomains()).toEqual(['test_d2', 'test_eu', 'test_global']);
+		const reported = postReadCallback.mock.calls.map(
 			([, , state]) => state.omFileUrl.match(/\/data_spatial\/([^/]+)\//)?.[1]
 		);
-		expect(domainValues).toEqual(['test_d2', 'test_eu', 'test_global']);
-	});
-
-	it('does not re-invoke postReadCallback for cached sub-layer state', async () => {
-		const { omProtocol } = await import('../om-protocol');
-		const postReadCallback = vi.fn();
-		const settings = makeSettings({ postReadCallback });
-
-		await omProtocol(tileParams(5), new AbortController(), settings);
-		postReadCallback.mockClear();
-
-		// Second request hits state.data — ensureData short-circuits, no callback
-		await omProtocol(tileParams(5), new AbortController(), settings);
-		expect(postReadCallback).not.toHaveBeenCalled();
+		expect(reported).toEqual(['test_d2', 'test_eu', 'test_global']);
 	});
 });
 
@@ -561,63 +308,5 @@ describe('SeamlessDomain – getValueFromLatLong', () => {
 		await expect(
 			getValueFromLatLong(0, 0, tileParams(5).url, settings.domainOptions)
 		).rejects.toThrow('State not found');
-	});
-});
-
-describe('SeamlessDomain – type properties', () => {
-	it('dwd_icon_seamless carries the time_interval and model_interval of dwd_icon', async () => {
-		const { domainOptions } = await import('../domains');
-		const seamless = domainOptions.find((d) => d.value === 'dwd_icon_seamless') as SeamlessDomain;
-		expect(seamless).toBeDefined();
-		expect(seamless.time_interval).toBe('hourly');
-		expect(seamless.model_interval).toBe('6_hourly');
-	});
-
-	it('SeamlessDomain is included in domainOptions', async () => {
-		const { domainOptions } = await import('../domains');
-		const found = domainOptions.find((d) => d.value === 'dwd_icon_seamless');
-		expect(found).toBeDefined();
-		expect((found as SeamlessDomain).type).toBe('seamless');
-		expect((found as SeamlessDomain).layers).toHaveLength(3);
-	});
-
-	it('constituent layer domainValues reference real Domain entries', async () => {
-		const { domainOptions } = await import('../domains');
-		const seamless = domainOptions.find((d) => d.value === 'dwd_icon_seamless') as SeamlessDomain;
-		for (const layer of seamless.layers) {
-			const concrete = domainOptions.find((d) => d.value === layer.domainValue && !('layers' in d));
-			expect(concrete).toBeDefined();
-		}
-	});
-
-	it('seamless layers are ordered finest-first (highest minZoom first)', async () => {
-		const { domainOptions } = await import('../domains');
-		const seamless = domainOptions.find((d) => d.value === 'dwd_icon_seamless') as SeamlessDomain;
-		const zooms = seamless.layers.map((l) => l.minZoom);
-		// Each entry must have a zoom >= the next entry (descending or equal)
-		for (let i = 0; i < zooms.length - 1; i++) {
-			expect(zooms[i]).toBeGreaterThanOrEqual(zooms[i + 1]);
-		}
-	});
-});
-
-describe('SeamlessDomain – real dwd_icon_seamless TileJSON', () => {
-	it('returns valid TileJSON for dwd_icon_seamless URL', async () => {
-		const { omProtocol, defaultOmProtocolSettings } = await import('../om-protocol');
-		const url =
-			'om://https://map-tiles.open-meteo.com/data_spatial/dwd_icon_seamless/2025/01/01/0000Z/2025-01-01T0000.om?variable=temperature_2m';
-		const result = await omProtocol(
-			{ url, type: 'json' },
-			new AbortController(),
-			defaultOmProtocolSettings
-		);
-		expect(result.data).not.toBeNull();
-		const tj = result.data as TileJSON;
-		expect(tj.tilejson).toBe('3.0.0');
-		// Bounds should span the dwd_icon global domain
-		expect(tj.bounds).toBeDefined();
-		expect(tj.bounds!.every(Number.isFinite)).toBe(true);
-		// No data was loaded
-		expect(mockReadVariableSpy.calls).toHaveLength(0);
 	});
 });

@@ -6,8 +6,8 @@ import {
 	selectSeamlessLayers
 } from '../domain-helpers';
 import { domainOptions } from '../domains';
-import { parseLeadTimeHours, replaceUrlDomain } from '../utils/parse-url';
-import { describe, expect, it } from 'vitest';
+import { normalizeUrl, parseLeadTimeHours, replaceUrlDomain } from '../utils/parse-url';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { SeamlessDomain } from '../types';
 
@@ -34,6 +34,16 @@ describe('domain helpers', () => {
 			expect(composite.grid).toBe(base?.grid);
 			expect(composite.time_interval).toBe(base?.time_interval);
 			expect(composite.model_interval).toBe(base?.model_interval);
+		}
+	});
+
+	it('every layer of every composite names a concrete domain, finest-first, ending at zoom 0', () => {
+		for (const composite of domainOptions.filter(isSeamlessDomain)) {
+			const resolved = selectSeamlessLayers(composite, domainOptions).map(({ layer }) => layer);
+			expect(resolved).toEqual(composite.layers);
+			const zooms = composite.layers.map((layer) => layer.minZoom);
+			expect(zooms).toEqual([...zooms].sort((a, b) => b - a));
+			expect(zooms[zooms.length - 1]).toBe(0);
 		}
 	});
 });
@@ -79,5 +89,31 @@ describe('url helpers', () => {
 		expect(
 			parseLeadTimeHours('https://example.com/data_spatial/dwd_icon/latest.json')
 		).toBeUndefined();
+	});
+
+	it('normalizeUrl resolves a composite {meta}.json through its base layer', async () => {
+		const fetched: string[] = [];
+		vi.stubGlobal('fetch', async (url: string) => {
+			fetched.push(url);
+			return {
+				ok: true,
+				json: async () => ({
+					reference_time: '2025-01-01T00:00:00Z',
+					valid_times: ['2025-01-01T00:00Z']
+				})
+			};
+		});
+		try {
+			const resolved = await normalizeUrl(
+				'om://https://example.com/data_spatial/dwd_icon_seamless/latest.json?variable=temperature_2m',
+				domainOptions
+			);
+			// The server only knows concrete domains, but the resolved URL keeps the
+			// composite so the protocol can fan it out per layer.
+			expect(fetched).toEqual(['https://example.com/data_spatial/dwd_icon/latest.json']);
+			expect(resolved).toContain('/dwd_icon_seamless/2025/01/01/0000Z/2025-01-01T0000.om');
+		} finally {
+			vi.unstubAllGlobals();
+		}
 	});
 });

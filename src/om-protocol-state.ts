@@ -264,8 +264,8 @@ export const getValueFromLatLong = async (
 	const { baseUrl, fileAndVariableKey, params } = parseUrlComponents(url);
 
 	// A composite has no state of its own: its value comes from its sub-domains'
-	// states, finest-first, like its pixels. Every layer with loaded data takes
-	// part; the zoom gating of tile requests is not known here.
+	// states, finest-first, like its pixels. The zoom is not part of the URL, so
+	// every layer with loaded data takes part.
 	const domainValue = baseUrl.match(RESOLVE_DOMAIN_REGEX)?.groups?.domain;
 	const domain = domainOptions.find((d) => d.value === domainValue);
 	const stateKeys = domain

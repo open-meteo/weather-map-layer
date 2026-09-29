@@ -81,9 +81,8 @@ export const omProtocol = async (
 		throw new Error(`Tile coordinates required for ${params.type} request`);
 	}
 
-	// The concrete domains the tile is rendered from, finest-first. Layers past
-	// their forecast horizon are left out up front: the server has no file for
-	// them and would answer 404 (which browsers surface as a CORS error).
+	// The concrete domains the tile is rendered from, finest-first: for a
+	// composite, the layers active at this zoom, viewport and lead time.
 	const layers = resolveLayers(
 		request.dataOptions.domain,
 		request.baseUrl,
@@ -204,7 +203,6 @@ const getTilejson = async (
 	clippingOptions?: ResolvedClippingOptions
 ): Promise<TileJSON> => {
 	// We initialize the grid with the ranges set to null, because we want to find out the maximum bounds of this grid
-	// (a seamless composite's grid is its base layer's, so it needs no special case)
 	const grid = GridFactory.create(dataOptions.domain.grid, null);
 	let bounds;
 	if (clippingOptions && clippingOptions.bounds) {
