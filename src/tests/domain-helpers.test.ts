@@ -78,10 +78,36 @@ describe('url helpers', () => {
 	const url =
 		'https://example.com/data_spatial/dwd_icon_seamless/2025/01/01/0600Z/2025-01-03T0600.om?variable=temperature_2m';
 
-	it('replaceUrlDomain swaps only the domain segment', () => {
+	it('replaceUrlDomain swaps the domain segment wherever the path puts it', () => {
 		expect(replaceUrlDomain(url, 'dwd_icon_seamless', 'dwd_icon_d2')).toBe(
 			'https://example.com/data_spatial/dwd_icon_d2/2025/01/01/0600Z/2025-01-03T0600.om?variable=temperature_2m'
 		);
+		// Without a data_spatial prefix, for a bare file and for metadata.
+		expect(
+			replaceUrlDomain(
+				'https://example.com/dwd_icon_seamless/2025/01/01/0600Z/2025-01-03T0600.om',
+				'dwd_icon_seamless',
+				'dwd_icon'
+			)
+		).toBe('https://example.com/dwd_icon/2025/01/01/0600Z/2025-01-03T0600.om');
+		expect(
+			replaceUrlDomain(
+				'https://example.com/dwd_icon_seamless/file.om',
+				'dwd_icon_seamless',
+				'dwd_icon'
+			)
+		).toBe('https://example.com/dwd_icon/file.om');
+		expect(
+			replaceUrlDomain(
+				'https://example.com/dwd_icon_seamless/latest.json',
+				'dwd_icon_seamless',
+				'dwd_icon'
+			)
+		).toBe('https://example.com/dwd_icon/latest.json');
+		// Another domain's URL is left alone.
+		expect(
+			replaceUrlDomain('https://example.com/dwd_icon/file.om', 'dwd_icon_seamless', 'dwd_icon_d2')
+		).toBe('https://example.com/dwd_icon/file.om');
 	});
 
 	it('parseLeadTimeHours reads run and valid time from the path', () => {

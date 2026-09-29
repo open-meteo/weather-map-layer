@@ -175,9 +175,11 @@ const tileParams = (z: number, validTime?: string): RequestParameters => ({
 	type: 'arrayBuffer'
 });
 
-/** The domain segment of every file read so far, in call order. */
-const readDomains = () =>
-	mockReadVariableSpy.calls.map((url) => url.match(/\/data_spatial\/([^/]+)\//)?.[1]);
+/** The domain segment of a file URL: the one before the model-run path. */
+const domainOf = (url: string) => url.match(/\/([^/]+)\/\d{4}\/\d{2}\/\d{2}\/\d{4}Z\//)?.[1];
+
+/** The domain of every file read so far, in call order. */
+const readDomains = () => mockReadVariableSpy.calls.map(domainOf);
 
 // ─── Test suites ──────────────────────────────────────────────────────────────
 
@@ -202,6 +204,20 @@ describe('SeamlessDomain – layers', () => {
 		for (const url of mockReadVariableSpy.calls) {
 			expect(url).toContain('/2025/01/01/0000Z/2025-01-01T0000.om');
 		}
+	});
+
+	it('reads layers under their own path for URLs without a data_spatial prefix', async () => {
+		const { omProtocol } = await import('../om-protocol');
+		const params: RequestParameters = {
+			url: 'om://https://example.com/test_seamless/2025/01/01/0000Z/2025-01-01T0000.om?variable=temperature/5/0/0',
+			type: 'arrayBuffer'
+		};
+		await omProtocol(params, new AbortController(), makeSettings());
+
+		expect(readDomains()).toEqual(['test_d2', 'test_eu', 'test_global']);
+		expect(mockReadVariableSpy.calls[0]).toBe(
+			'https://example.com/test_d2/2025/01/01/0000Z/2025-01-01T0000.om'
+		);
 	});
 
 	it('leaves out layers above the zoom', async () => {
@@ -278,9 +294,7 @@ describe('SeamlessDomain – layer states', () => {
 		await omProtocol(tileParams(5), new AbortController(), settings);
 
 		expect(readDomains()).toEqual(['test_d2', 'test_eu', 'test_global']);
-		const reported = postReadCallback.mock.calls.map(
-			([, , state]) => state.omFileUrl.match(/\/data_spatial\/([^/]+)\//)?.[1]
-		);
+		const reported = postReadCallback.mock.calls.map(([, , state]) => domainOf(state.omFileUrl));
 		expect(reported).toEqual(['test_d2', 'test_eu', 'test_global']);
 	});
 });

@@ -5,6 +5,7 @@ import {
 	DATA_RELEVANT_PARAMS,
 	DOMAIN_META_REGEX,
 	OM_PREFIX_REGEX,
+	RESOLVE_DOMAIN_REGEX,
 	RUN_AND_VALID_TIME_REGEX,
 	TILE_SUFFIX_REGEX,
 	TIME_STEP_REGEX
@@ -74,15 +75,19 @@ const getModifiedAmount = (amount: number, modifier = '+') => {
 const metaDataCache = new Map<string, Promise<DomainMetaDataJson>>();
 
 /**
- * Swaps the `data_spatial/<domain>` segment of an om URL. Seamless composites
- * only exist client-side: the server serves the concrete sub-domains, so every
- * request for a composite is issued under a concrete domain's path.
+ * Swaps the domain segment of an om file or metadata URL, wherever the path
+ * puts it. Seamless composites only exist client-side: the server serves the
+ * concrete sub-domains, so every request for a composite is issued under a
+ * concrete domain's path.
  */
 export const replaceUrlDomain = (
 	url: string,
 	fromDomainValue: string,
 	toDomainValue: string
-): string => url.replace(`/data_spatial/${fromDomainValue}/`, `/data_spatial/${toDomainValue}/`);
+): string =>
+	url.replace(RESOLVE_DOMAIN_REGEX, (segment: string, domain: string) =>
+		domain === fromDomainValue ? toDomainValue + segment.slice(domain.length) : segment
+	);
 
 /**
  * Lead time in hours (model run to valid time) of a data-spatial file URL, or
