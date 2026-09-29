@@ -72,7 +72,7 @@ export const handleSeamlessRequest = async (
 	// The finest layer is the tile's primary data; the worker samples through all
 	// layers in order.
 	const primary = layers[0];
-	const primaryRequest: ParsedRequest<Domain> = {
+	const primaryRequest: ParsedRequest = {
 		...request,
 		dataOptions: { ...request.dataOptions, domain: primary.domain }
 	};

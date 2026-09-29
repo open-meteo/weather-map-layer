@@ -1,4 +1,4 @@
-import type { AnyDomain } from './types';
+import type { Domain, GridData, SeamlessDomain } from './types';
 
 export const domainGroups = [
 	// { value: 'bom', label: 'BOM Australia' },
@@ -21,11 +21,112 @@ export const domainGroups = [
 	{ value: 'ukmo', label: 'UKMO' }
 ];
 
-export const domainOptions: Array<AnyDomain> = [
-	// -------------------------------------------------------------------------
-	// Seamless composite domains
-	// -------------------------------------------------------------------------
+// Grids of the global (last) layer of each seamless composite, shared with
+// the concrete domain entry so the composite's `grid` cannot drift from it.
+const DWD_ICON_GRID: GridData = {
+	type: 'regular',
+	nx: 2879,
+	ny: 1441,
+	latMin: -90,
+	lonMin: -180,
+	dx: 0.125,
+	dy: 0.125,
+	zoom: 1
+};
 
+const NCEP_GFS025_GRID: GridData = {
+	type: 'regular',
+	nx: 1440,
+	ny: 721,
+	latMin: -90,
+	lonMin: -180,
+	dx: 0.25,
+	dy: 0.25,
+	zoom: 1
+};
+
+const METEOFRANCE_ARPEGE_WORLD025_GRID: GridData = {
+	type: 'regular',
+	nx: 1440,
+	ny: 721,
+	latMin: -90,
+	lonMin: -180,
+	dx: 0.25,
+	dy: 0.25,
+	zoom: 1
+};
+
+const CMC_GEM_GDPS_15KM_GRID: GridData = {
+	type: 'regular',
+	nx: 2400,
+	ny: 1201,
+	latMin: -90,
+	lonMin: -180,
+	dx: 0.15,
+	dy: 0.15,
+	zoom: 1
+};
+
+const JMA_GSM_GRID: GridData = {
+	type: 'regular',
+	nx: 720,
+	ny: 361,
+	latMin: -90,
+	lonMin: -180,
+	dx: 0.5,
+	dy: 0.5,
+	zoom: 1
+};
+
+const UKMO_GLOBAL_DETERMINISTIC_10KM_GRID: GridData = {
+	type: 'regular',
+	nx: 2560,
+	ny: 1920,
+	latMin: -90,
+	lonMin: -180,
+	dx: 360 / 2560,
+	dy: 180 / 1920,
+	zoom: 1
+};
+
+const KNMI_HARMONIE_AROME_EUROPE_GRID: GridData = {
+	type: 'projectedFromBounds',
+	nx: 676,
+	ny: 564,
+	latitude: [39.740627, 62.619324],
+	longitude: [-25.162262, 38.75702],
+	zoom: 3.5,
+	projection: {
+		rotatedLat: -35,
+		rotatedLon: -8,
+		name: 'RotatedLatLonProjection'
+	}
+};
+
+const CHMI_ALADIN_CENTRAL_EUROPE_2KM_GRID: GridData = {
+	type: 'projectedFromGeographicOrigin',
+	nx: 1053,
+	ny: 837,
+	latitude: 38.599,
+	longitude: 1.334,
+	dx: 2325,
+	dy: 2325,
+	zoom: 4,
+	projection: {
+		λ0: 17,
+		ϕ0: 46.244,
+		ϕ1: 46.244,
+		ϕ2: 46.244,
+		radius: 6371229,
+		name: 'LambertConformalConicProjection'
+	}
+};
+
+// -------------------------------------------------------------------------
+// Seamless composite domains
+// -------------------------------------------------------------------------
+
+const seamlessDomains: SeamlessDomain[] = [
 	/**
 	 * DWD ICON Seamless
 	 *
@@ -43,6 +144,7 @@ export const domainOptions: Array<AnyDomain> = [
 		type: 'seamless',
 		value: 'dwd_icon_seamless',
 		label: 'DWD ICON Seamless',
+		grid: DWD_ICON_GRID,
 		// All constituent DWD ICON domains share the same time resolution and
 		// model-run cadence, so we surface them here so consuming code can treat
 		// dwd_icon_seamless uniformly alongside regular domains.
@@ -66,6 +168,7 @@ export const domainOptions: Array<AnyDomain> = [
 		type: 'seamless',
 		value: 'ncep_gfs_seamless',
 		label: 'GFS Seamless',
+		grid: NCEP_GFS025_GRID,
 		time_interval: 'hourly',
 		model_interval: 'hourly',
 		layers: [
@@ -86,6 +189,7 @@ export const domainOptions: Array<AnyDomain> = [
 		type: 'seamless',
 		value: 'meteofrance_seamless',
 		label: 'MF Seamless',
+		grid: METEOFRANCE_ARPEGE_WORLD025_GRID,
 		time_interval: 'hourly',
 		model_interval: '3_hourly',
 		layers: [
@@ -116,6 +220,7 @@ export const domainOptions: Array<AnyDomain> = [
 		type: 'seamless',
 		value: 'cmc_gem_seamless',
 		label: 'GEM Seamless',
+		grid: CMC_GEM_GDPS_15KM_GRID,
 		time_interval: 'hourly',
 		model_interval: '6_hourly',
 		layers: [
@@ -137,6 +242,7 @@ export const domainOptions: Array<AnyDomain> = [
 		type: 'seamless',
 		value: 'jma_seamless',
 		label: 'JMA Seamless',
+		grid: JMA_GSM_GRID,
 		time_interval: 'hourly',
 		model_interval: '3_hourly',
 		layers: [
@@ -156,6 +262,7 @@ export const domainOptions: Array<AnyDomain> = [
 		type: 'seamless',
 		value: 'ukmo_seamless',
 		label: 'UKMO Seamless',
+		grid: UKMO_GLOBAL_DETERMINISTIC_10KM_GRID,
 		time_interval: 'hourly',
 		model_interval: '3_hourly',
 		layers: [
@@ -179,6 +286,7 @@ export const domainOptions: Array<AnyDomain> = [
 		type: 'seamless',
 		value: 'knmi_seamless',
 		label: 'KNMI Seamless',
+		grid: KNMI_HARMONIE_AROME_EUROPE_GRID,
 		time_interval: 'hourly',
 		model_interval: '3_hourly',
 		layers: [
@@ -202,6 +310,7 @@ export const domainOptions: Array<AnyDomain> = [
 		type: 'seamless',
 		value: 'chmi_seamless',
 		label: 'Aladin Seamless',
+		grid: CHMI_ALADIN_CENTRAL_EUROPE_2KM_GRID,
 		time_interval: 'hourly',
 		model_interval: '3_hourly',
 		layers: [
@@ -212,7 +321,11 @@ export const domainOptions: Array<AnyDomain> = [
 			},
 			{ domainValue: 'chmi_aladin_central_europe_2km', minZoom: 0 }
 		]
-	},
+	}
+];
+
+export const domainOptions: Array<Domain> = [
+	...seamlessDomains,
 
 	// BOM
 	// {
@@ -285,24 +398,7 @@ export const domainOptions: Array<AnyDomain> = [
 	{
 		value: 'chmi_aladin_central_europe_2km',
 		label: 'Aladin Central Europe 2km',
-		grid: {
-			type: 'projectedFromGeographicOrigin',
-			nx: 1053,
-			ny: 837,
-			latitude: 38.599,
-			longitude: 1.334,
-			dx: 2325,
-			dy: 2325,
-			zoom: 4,
-			projection: {
-				λ0: 17,
-				ϕ0: 46.244,
-				ϕ1: 46.244,
-				ϕ2: 46.244,
-				radius: 6371229,
-				name: 'LambertConformalConicProjection'
-			}
-		},
+		grid: CHMI_ALADIN_CENTRAL_EUROPE_2KM_GRID,
 		time_interval: 'hourly',
 		model_interval: '6_hourly'
 	},
@@ -369,16 +465,7 @@ export const domainOptions: Array<AnyDomain> = [
 	{
 		value: 'dwd_icon',
 		label: 'DWD ICON',
-		grid: {
-			type: 'regular',
-			nx: 2879,
-			ny: 1441,
-			latMin: -90,
-			lonMin: -180,
-			dx: 0.125,
-			dy: 0.125,
-			zoom: 1
-		},
+		grid: DWD_ICON_GRID,
 		time_interval: 'hourly',
 		model_interval: '6_hourly'
 	},
@@ -516,16 +603,7 @@ export const domainOptions: Array<AnyDomain> = [
 	{
 		value: 'ncep_gfs025',
 		label: 'GFS Global 0.25°',
-		grid: {
-			type: 'regular',
-			nx: 1440,
-			ny: 721,
-			latMin: -90,
-			lonMin: -180,
-			dx: 0.25,
-			dy: 0.25,
-			zoom: 1
-		},
+		grid: NCEP_GFS025_GRID,
 		time_interval: 'hourly',
 		model_interval: '6_hourly'
 	},
@@ -910,16 +988,7 @@ export const domainOptions: Array<AnyDomain> = [
 	{
 		value: 'cmc_gem_gdps_15km',
 		label: 'GEM Global',
-		grid: {
-			type: 'regular',
-			nx: 2400,
-			ny: 1201,
-			latMin: -90,
-			lonMin: -180,
-			dx: 0.15,
-			dy: 0.15,
-			zoom: 1
-		},
+		grid: CMC_GEM_GDPS_15KM_GRID,
 		time_interval: '3_hourly',
 		model_interval: '12_hourly'
 	},
@@ -1057,16 +1126,7 @@ export const domainOptions: Array<AnyDomain> = [
 	{
 		value: 'jma_gsm',
 		label: 'JMA GSM',
-		grid: {
-			type: 'regular',
-			nx: 720,
-			ny: 361,
-			latMin: -90,
-			lonMin: -180,
-			dx: 0.5,
-			dy: 0.5,
-			zoom: 1
-		},
+		grid: JMA_GSM_GRID,
 		time_interval: '6_hourly',
 		model_interval: '6_hourly'
 	},
@@ -1107,16 +1167,7 @@ export const domainOptions: Array<AnyDomain> = [
 	{
 		value: 'meteofrance_arpege_world025',
 		label: 'MF ARPEGE World',
-		grid: {
-			type: 'regular',
-			nx: 1440,
-			ny: 721,
-			latMin: -90,
-			lonMin: -180,
-			dx: 0.25,
-			dy: 0.25,
-			zoom: 1
-		},
+		grid: METEOFRANCE_ARPEGE_WORLD025_GRID,
 		time_interval: 'hourly',
 		model_interval: '3_hourly'
 	},
@@ -1320,19 +1371,7 @@ export const domainOptions: Array<AnyDomain> = [
 	{
 		value: 'knmi_harmonie_arome_europe',
 		label: 'KNMI Harmonie Arome Europe',
-		grid: {
-			type: 'projectedFromBounds',
-			nx: 676,
-			ny: 564,
-			latitude: [39.740627, 62.619324],
-			longitude: [-25.162262, 38.75702],
-			zoom: 3.5,
-			projection: {
-				rotatedLat: -35,
-				rotatedLon: -8,
-				name: 'RotatedLatLonProjection'
-			}
-		},
+		grid: KNMI_HARMONIE_AROME_EUROPE_GRID,
 		time_interval: 'hourly',
 		model_interval: 'hourly'
 	},
@@ -1443,16 +1482,7 @@ export const domainOptions: Array<AnyDomain> = [
 	{
 		value: 'ukmo_global_deterministic_10km',
 		label: 'UK Met Office 10km',
-		grid: {
-			type: 'regular',
-			nx: 2560,
-			ny: 1920,
-			latMin: -90,
-			lonMin: -180,
-			dx: 360 / 2560,
-			dy: 180 / 1920,
-			zoom: 1
-		},
+		grid: UKMO_GLOBAL_DETERMINISTIC_10KM_GRID,
 		time_interval: 'hourly',
 		model_interval: '3_hourly'
 	},

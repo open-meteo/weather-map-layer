@@ -1,5 +1,5 @@
 /**
- * Helpers for `AnyDomain` values: telling seamless composites apart from
+ * Helpers for `Domain` values: telling seamless composites apart from
  * concrete grid domains, resolving a composite to the concrete domains behind
  * it, and deciding which of its layers take part in a request.
  */
@@ -7,9 +7,9 @@ import { boundsIntersect } from './utils/bounds';
 
 import { GridFactory } from './grids/index';
 
-import type { AnyDomain, Bounds, Domain, SeamlessDomain, SeamlessLayer } from './types';
+import type { Bounds, Domain, SeamlessDomain, SeamlessLayer } from './types';
 
-export const isSeamlessDomain = (domain: AnyDomain): domain is SeamlessDomain =>
+export const isSeamlessDomain = (domain: Domain): domain is SeamlessDomain =>
 	'type' in domain && domain.type === 'seamless';
 
 /**
@@ -18,9 +18,8 @@ export const isSeamlessDomain = (domain: AnyDomain): domain is SeamlessDomain =>
  */
 export const resolveConcreteDomain = (
 	domainValue: string,
-	domainOptions: AnyDomain[]
-): Domain | undefined =>
-	domainOptions.find((d): d is Domain => d.value === domainValue && !isSeamlessDomain(d));
+	domainOptions: Domain[]
+): Domain | undefined => domainOptions.find((d) => d.value === domainValue && !isSeamlessDomain(d));
 
 /** The global layer of a composite: the last one, which covers the whole world. */
 export const getGlobalLayer = (domain: SeamlessDomain): SeamlessLayer =>
@@ -31,17 +30,14 @@ export const getGlobalLayer = (domain: SeamlessDomain): SeamlessLayer =>
  * single server path or grid is needed (metadata, TileJSON bounds, initial map
  * position): a composite's global layer, or the domain itself.
  */
-export const getConcreteDomainValue = (domain: AnyDomain): string =>
+export const getConcreteDomainValue = (domain: Domain): string =>
 	isSeamlessDomain(domain) ? getGlobalLayer(domain).domainValue : domain.value;
 
 /**
  * `getConcreteDomainValue` resolved to the `Domain` itself; undefined when a
  * composite's global domain is not in `domainOptions`.
  */
-export const getConcreteDomain = (
-	domain: AnyDomain,
-	domainOptions: AnyDomain[]
-): Domain | undefined =>
+export const getConcreteDomain = (domain: Domain, domainOptions: Domain[]): Domain | undefined =>
 	isSeamlessDomain(domain)
 		? resolveConcreteDomain(getGlobalLayer(domain).domainValue, domainOptions)
 		: domain;
@@ -69,7 +65,7 @@ export interface ActiveSeamlessLayer {
  */
 export const selectSeamlessLayers = (
 	seamless: SeamlessDomain,
-	domainOptions: AnyDomain[],
+	domainOptions: Domain[],
 	{ zoom, viewportBounds, leadTimeHours }: SeamlessLayerFilter = {}
 ): ActiveSeamlessLayer[] => {
 	const globalLayer = getGlobalLayer(seamless);

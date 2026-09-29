@@ -148,6 +148,7 @@ const SEAMLESS: SeamlessDomain = {
 	type: 'seamless',
 	value: 'test_seamless',
 	label: 'Test Seamless',
+	grid: GLOBAL_DOMAIN.grid,
 	time_interval: 'hourly',
 	model_interval: '3_hourly',
 	layers: [

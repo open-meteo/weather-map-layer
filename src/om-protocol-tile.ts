@@ -34,7 +34,7 @@ const makeEmptyVectorLayerResponse = (): TileResult => {
  */
 export const requestTile = async (
 	url: string,
-	request: ParsedRequest<Domain>,
+	request: ParsedRequest,
 	data: Data,
 	ranges: DimensionRange[],
 	type: 'image' | 'arrayBuffer',

@@ -62,7 +62,6 @@ export { addOpenLayersProtocolSupport } from './adapters/openlayers';
 
 export type { ActiveSeamlessLayer, SeamlessLayerFilter } from './domain-helpers';
 export type {
-	AnyDomain,
 	ArrowStyle,
 	Bounds,
 	ClippingOptions,

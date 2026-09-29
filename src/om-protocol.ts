@@ -11,7 +11,7 @@ import { handleSeamlessRequest } from './om-protocol-seamless';
 import { ensureData, getOrCreateState, getProtocolInstance } from './om-protocol-state';
 import { getTilejson, requestTile } from './om-protocol-tile';
 
-import type { Domain, OmProtocolSettings, ParsedRequest, TileJSON, TileResponse } from './types';
+import type { OmProtocolSettings, TileJSON, TileResponse } from './types';
 
 export const defaultOmProtocolSettings: OmProtocolSettings = {
 	// static
@@ -49,15 +49,10 @@ export const omProtocol = async (
 	if (isSeamlessDomain(domain)) {
 		return handleSeamlessRequest(params, url, request, domain, instance, settings, signal);
 	}
-	const concreteRequest: ParsedRequest<Domain> = {
-		...request,
-		dataOptions: { ...request.dataOptions, domain }
-	};
-
 	const state = getOrCreateState(
 		instance.stateByKey,
 		request.fileAndVariableKey,
-		concreteRequest.dataOptions,
+		request.dataOptions,
 		request.baseUrl,
 		settings.maxStatesWithData
 	);
@@ -88,14 +83,7 @@ export const omProtocol = async (
 		throw new Error(`Tile coordinates required for ${params.type} request`);
 	}
 
-	const tileResult = await requestTile(
-		url,
-		concreteRequest,
-		data,
-		state.ranges,
-		params.type,
-		signal
-	);
+	const tileResult = await requestTile(url, request, data, state.ranges, params.type, signal);
 
 	if (tileResult.cancelled || !tileResult.data) {
 		return { data: null };

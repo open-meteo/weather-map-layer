@@ -27,6 +27,12 @@ describe('domain helpers', () => {
 		expect(getConcreteDomainValue(d2)).toBe('dwd_icon_d2');
 		expect(getConcreteDomain(d2, domainOptions)).toBe(d2);
 	});
+
+	it('a composite shares the grid of its global layer', () => {
+		for (const composite of domainOptions.filter(isSeamlessDomain)) {
+			expect(composite.grid).toBe(getConcreteDomain(composite, domainOptions)?.grid);
+		}
+	});
 });
 
 describe('selectSeamlessLayers', () => {

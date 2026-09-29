@@ -10,7 +10,7 @@ import {
 	TIME_STEP_REGEX
 } from './constants';
 
-import { AnyDomain, DomainMetaDataJson, ParsedUrlComponents, TileIndex } from '../types';
+import { Domain, DomainMetaDataJson, ParsedUrlComponents, TileIndex } from '../types';
 
 const parseTileIndex = (url: string): { tileIndex: TileIndex | null; remainingUrl: string } => {
 	const match = url.match(TILE_SUFFIX_REGEX);
@@ -101,7 +101,7 @@ export const parseLeadTimeHours = (url: string): number | undefined => {
  * A seamless composite has no metadata of its own on the server; its global
  * layer's `{meta}.json` describes the composite.
  */
-const resolveJsonFetchUrl = (jsonUrl: string, domainOptions?: AnyDomain[]): string => {
+const resolveJsonFetchUrl = (jsonUrl: string, domainOptions?: Domain[]): string => {
 	if (!domainOptions) return jsonUrl;
 	// The meta regex, not RESOLVE_DOMAIN_REGEX: that one only matches `.om`
 	// paths, so a `{meta}.json` URL would never be rewritten
@@ -112,7 +112,7 @@ const resolveJsonFetchUrl = (jsonUrl: string, domainOptions?: AnyDomain[]): stri
 	return replaceUrlDomain(jsonUrl, urlDomainValue, getConcreteDomainValue(domain));
 };
 
-export const parseMetaJson = async (omUrl: string, domainOptions?: AnyDomain[]) => {
+export const parseMetaJson = async (omUrl: string, domainOptions?: Domain[]) => {
 	let date = new Date();
 	const url = omUrl.replace('om://', '');
 
@@ -203,7 +203,7 @@ export const parseMetaJson = async (omUrl: string, domainOptions?: AnyDomain[]) 
 	);
 };
 
-export const normalizeUrl = async (url: string, domainOptions?: AnyDomain[]): Promise<string> => {
+export const normalizeUrl = async (url: string, domainOptions?: Domain[]): Promise<string> => {
 	if (url.includes('.json')) {
 		return parseMetaJson(url, domainOptions);
 	}
