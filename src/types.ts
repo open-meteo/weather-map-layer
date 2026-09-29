@@ -348,8 +348,7 @@ export interface SeamlessLayer {
 	/**
 	 * Maximum lead time in hours that this layer's model produces forecast data for.
 	 * When the requested timestep exceeds this horizon the layer is skipped entirely,
-	 * falling through to the next coarser layer instead of issuing a request that
-	 * would return a 404 (which browsers surface as a CORS error).
+	 * falling through to the next coarser layer.
 	 */
 	maxForecastHours?: number;
 }
