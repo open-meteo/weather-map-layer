@@ -1,4 +1,4 @@
-import type { Domain } from './types';
+import type { Domain, GridData, SeamlessDomain } from './types';
 
 export const domainGroups = [
 	// { value: 'bom', label: 'BOM Australia' },
@@ -21,7 +21,314 @@ export const domainGroups = [
 	{ value: 'ukmo', label: 'UKMO' }
 ];
 
+// Grids of the base (last) layer of each seamless composite, shared with the
+// concrete domain entry so the composite's `grid` cannot drift from it.
+const DWD_ICON_GRID: GridData = {
+	type: 'regular',
+	nx: 2879,
+	ny: 1441,
+	latMin: -90,
+	lonMin: -180,
+	dx: 0.125,
+	dy: 0.125,
+	zoom: 1
+};
+
+const NCEP_GFS025_GRID: GridData = {
+	type: 'regular',
+	nx: 1440,
+	ny: 721,
+	latMin: -90,
+	lonMin: -180,
+	dx: 0.25,
+	dy: 0.25,
+	zoom: 1
+};
+
+const METEOFRANCE_ARPEGE_WORLD025_GRID: GridData = {
+	type: 'regular',
+	nx: 1440,
+	ny: 721,
+	latMin: -90,
+	lonMin: -180,
+	dx: 0.25,
+	dy: 0.25,
+	zoom: 1
+};
+
+const CMC_GEM_GDPS_15KM_GRID: GridData = {
+	type: 'regular',
+	nx: 2400,
+	ny: 1201,
+	latMin: -90,
+	lonMin: -180,
+	dx: 0.15,
+	dy: 0.15,
+	zoom: 1
+};
+
+const JMA_GSM_GRID: GridData = {
+	type: 'regular',
+	nx: 720,
+	ny: 361,
+	latMin: -90,
+	lonMin: -180,
+	dx: 0.5,
+	dy: 0.5,
+	zoom: 1
+};
+
+const UKMO_GLOBAL_DETERMINISTIC_10KM_GRID: GridData = {
+	type: 'regular',
+	nx: 2560,
+	ny: 1920,
+	latMin: -90,
+	lonMin: -180,
+	dx: 360 / 2560,
+	dy: 180 / 1920,
+	zoom: 1
+};
+
+const KNMI_HARMONIE_AROME_EUROPE_GRID: GridData = {
+	type: 'projectedFromBounds',
+	nx: 676,
+	ny: 564,
+	latitude: [39.740627, 62.619324],
+	longitude: [-25.162262, 38.75702],
+	zoom: 3.5,
+	projection: {
+		rotatedLat: -35,
+		rotatedLon: -8,
+		name: 'RotatedLatLonProjection'
+	}
+};
+
+const CHMI_ALADIN_CENTRAL_EUROPE_2KM_GRID: GridData = {
+	type: 'projectedFromGeographicOrigin',
+	nx: 1053,
+	ny: 837,
+	latitude: 38.599,
+	longitude: 1.334,
+	dx: 2325,
+	dy: 2325,
+	zoom: 4,
+	projection: {
+		λ0: 17,
+		ϕ0: 46.244,
+		ϕ1: 46.244,
+		ϕ2: 46.244,
+		radius: 6371229,
+		name: 'LambertConformalConicProjection'
+	}
+};
+
+// -------------------------------------------------------------------------
+// Seamless composite domains
+// -------------------------------------------------------------------------
+// A composite is served at its base layer's run: its `latest.json` resolves
+// through the base, and every layer is requested at that run and valid time.
+// So `time_interval` and `model_interval` are the base layer's, which is what
+// time stepping and run selection in consumers use. A finer layer with a
+// denser cadence never adds steps or runs the base does not have.
+
+const seamlessDomains: SeamlessDomain[] = [
+	/**
+	 * DWD ICON Seamless
+	 *
+	 * Automatically selects the best-available DWD model for the current zoom
+	 * level, falling back to the coarser one outside its data:
+	 *   zoom 0+  → dwd_icon   (global, 0.125°)
+	 *   zoom 2+  → dwd_icon_eu (Europe, 0.0625°)
+	 *   zoom 3+  → dwd_icon_d2 (Germany, 0.02°)
+	 *
+	 * The URL format is identical to a regular domain – just replace the domain
+	 * name segment with 'dwd_icon_seamless':
+	 *   om://…/data_spatial/dwd_icon_seamless/…/…om?variable=…
+	 */
+	{
+		type: 'seamless',
+		value: 'dwd_icon_seamless',
+		label: 'DWD ICON Seamless',
+		grid: DWD_ICON_GRID,
+		time_interval: 'hourly',
+		model_interval: '6_hourly',
+		layers: [
+			{ domainValue: 'dwd_icon_d2', minZoom: 3, maxForecastHours: 48 },
+			{ domainValue: 'dwd_icon_eu', minZoom: 2, maxForecastHours: 120 },
+			{ domainValue: 'dwd_icon', minZoom: 0 }
+		]
+	},
+
+	/**
+	 * NCEP GFS + HRRR Seamless
+	 *
+	 * Automatically selects the best NCEP model for the current zoom level:
+	 *   zoom 0+  → ncep_gfs025     (global, 0.25°)
+	 *   zoom 2+  → ncep_hrrr_conus (CONUS, ~3 km, Lambert Conformal)
+	 */
+	{
+		type: 'seamless',
+		value: 'ncep_gfs_seamless',
+		label: 'GFS Seamless',
+		grid: NCEP_GFS025_GRID,
+		time_interval: 'hourly',
+		model_interval: '6_hourly',
+		layers: [
+			{ domainValue: 'ncep_hrrr_conus', minZoom: 2, maxForecastHours: 48 },
+			{ domainValue: 'ncep_gfs025', minZoom: 0 }
+		]
+	},
+
+	/**
+	 * Météo-France Seamless
+	 *
+	 * Automatically selects the best MF model for the current zoom level:
+	 *   zoom 0+  → meteofrance_arpege_world025   (global, 0.25°)
+	 *   zoom 2+  → meteofrance_arpege_europe      (Europe, 0.1°)
+	 *   zoom 3+  → meteofrance_arome_france0025   (France, 0.025°)
+	 */
+	{
+		type: 'seamless',
+		value: 'meteofrance_seamless',
+		label: 'MF Seamless',
+		grid: METEOFRANCE_ARPEGE_WORLD025_GRID,
+		time_interval: 'hourly',
+		model_interval: '3_hourly',
+		layers: [
+			{
+				domainValue: 'meteofrance_arome_france0025',
+				minZoom: 3,
+				maxForecastHours: 51
+			},
+			{
+				domainValue: 'meteofrance_arpege_europe',
+				minZoom: 2,
+				maxForecastHours: 102
+			},
+			{ domainValue: 'meteofrance_arpege_world025', minZoom: 0 }
+		]
+	},
+
+	/**
+	 * GEM Canada Seamless
+	 *
+	 * Automatically selects the best GEM model for the current zoom level:
+	 *   zoom 0+  → cmc_gem_gdps_15km  (global, 0.15°)
+	 *   zoom 2+  → cmc_gem_rdps_10km  (North America, ~10 km, Rotated LatLon)
+	 *   zoom 3+  → cmc_gem_hrdps (Canada, ~2.5 km, Rotated LatLon)
+	 *   zoom 4+  → cmc_gem_hrdps_west (Canada, ~1 km, Rotated LatLon)
+	 */
+	{
+		type: 'seamless',
+		value: 'cmc_gem_seamless',
+		label: 'GEM Seamless',
+		grid: CMC_GEM_GDPS_15KM_GRID,
+		time_interval: '3_hourly',
+		model_interval: '12_hourly',
+		layers: [
+			{ domainValue: 'cmc_gem_hrdps_west', minZoom: 4, maxForecastHours: 48 },
+			{ domainValue: 'cmc_gem_hrdps', minZoom: 3, maxForecastHours: 48 },
+			{ domainValue: 'cmc_gem_rdps_10km', minZoom: 2, maxForecastHours: 84 },
+			{ domainValue: 'cmc_gem_gdps_15km', minZoom: 0 }
+		]
+	},
+
+	/**
+	 * JMA Seamless
+	 *
+	 * Automatically selects the best JMA model for the current zoom level:
+	 *   zoom 0+  → jma_gsm  (global, 0.5°)
+	 *   zoom 3+  → jma_msm  (Japan, 0.0625°/0.05°)
+	 */
+	{
+		type: 'seamless',
+		value: 'jma_seamless',
+		label: 'JMA Seamless',
+		grid: JMA_GSM_GRID,
+		time_interval: '6_hourly',
+		model_interval: '6_hourly',
+		layers: [
+			{ domainValue: 'jma_msm', minZoom: 3, maxForecastHours: 78 },
+			{ domainValue: 'jma_gsm', minZoom: 0 }
+		]
+	},
+
+	/**
+	 * UK Met Office Seamless
+	 *
+	 * Automatically selects the best UKMO model for the current zoom level:
+	 *   zoom 0+  → ukmo_global_deterministic_10km  (global, ~10 km)
+	 *   zoom 3+  → ukmo_uk_deterministic_2km        (UK, 2 km, LAEA)
+	 */
+	{
+		type: 'seamless',
+		value: 'ukmo_seamless',
+		label: 'UKMO Seamless',
+		grid: UKMO_GLOBAL_DETERMINISTIC_10KM_GRID,
+		time_interval: 'hourly',
+		model_interval: '3_hourly',
+		layers: [
+			{
+				domainValue: 'ukmo_uk_deterministic_2km',
+				minZoom: 3,
+				maxForecastHours: 126
+			},
+			{ domainValue: 'ukmo_global_deterministic_10km', minZoom: 0 }
+		]
+	},
+
+	/**
+	 * KNMI Seamless
+	 *
+	 * Automatically selects the best KNMI model for the current zoom level:
+	 *   zoom 0+  → knmi_harmonie_arome_europe       (Europe, ~2.5 km, Rotated LatLon)
+	 *   zoom 3+  → knmi_harmonie_arome_netherlands  (Netherlands, 0.029°/0.018°)
+	 */
+	{
+		type: 'seamless',
+		value: 'knmi_seamless',
+		label: 'KNMI Seamless',
+		grid: KNMI_HARMONIE_AROME_EUROPE_GRID,
+		time_interval: 'hourly',
+		model_interval: 'hourly',
+		layers: [
+			{
+				domainValue: 'knmi_harmonie_arome_netherlands',
+				minZoom: 3,
+				maxForecastHours: 48
+			},
+			{ domainValue: 'knmi_harmonie_arome_europe', minZoom: 0 }
+		]
+	},
+
+	/**
+	 * CHMI Seamless
+	 *
+	 * Automatically selects the best CHMI model for the current zoom level:
+	 *   zoom 0+  → chmi_aladin_central_europe_2km  (Central Europe, ~2.3 km, Lambert Conformal)
+	 *   zoom 3+  → chmi_aladin_cz_1km              (Czech Republic, ~1 km, Lambert Conformal)
+	 */
+	{
+		type: 'seamless',
+		value: 'chmi_seamless',
+		label: 'Aladin Seamless',
+		grid: CHMI_ALADIN_CENTRAL_EUROPE_2KM_GRID,
+		time_interval: 'hourly',
+		model_interval: '6_hourly',
+		layers: [
+			{
+				domainValue: 'chmi_aladin_cz_1km',
+				minZoom: 3,
+				maxForecastHours: 48
+			},
+			{ domainValue: 'chmi_aladin_central_europe_2km', minZoom: 0 }
+		]
+	}
+];
+
 export const domainOptions: Array<Domain> = [
+	...seamlessDomains,
+
 	// BOM
 	// {
 	// 	value: 'bom_access_global',
@@ -93,24 +400,7 @@ export const domainOptions: Array<Domain> = [
 	{
 		value: 'chmi_aladin_central_europe_2km',
 		label: 'Aladin Central Europe 2km',
-		grid: {
-			type: 'projectedFromGeographicOrigin',
-			nx: 1053,
-			ny: 837,
-			latitude: 38.599,
-			longitude: 1.334,
-			dx: 2325,
-			dy: 2325,
-			zoom: 4,
-			projection: {
-				λ0: 17,
-				ϕ0: 46.244,
-				ϕ1: 46.244,
-				ϕ2: 46.244,
-				radius: 6371229,
-				name: 'LambertConformalConicProjection'
-			}
-		},
+		grid: CHMI_ALADIN_CENTRAL_EUROPE_2KM_GRID,
 		time_interval: 'hourly',
 		model_interval: '6_hourly'
 	},
@@ -177,16 +467,7 @@ export const domainOptions: Array<Domain> = [
 	{
 		value: 'dwd_icon',
 		label: 'DWD ICON',
-		grid: {
-			type: 'regular',
-			nx: 2879,
-			ny: 1441,
-			latMin: -90,
-			lonMin: -180,
-			dx: 0.125,
-			dy: 0.125,
-			zoom: 1
-		},
+		grid: DWD_ICON_GRID,
 		time_interval: 'hourly',
 		model_interval: '6_hourly'
 	},
@@ -324,16 +605,7 @@ export const domainOptions: Array<Domain> = [
 	{
 		value: 'ncep_gfs025',
 		label: 'GFS Global 0.25°',
-		grid: {
-			type: 'regular',
-			nx: 1440,
-			ny: 721,
-			latMin: -90,
-			lonMin: -180,
-			dx: 0.25,
-			dy: 0.25,
-			zoom: 1
-		},
+		grid: NCEP_GFS025_GRID,
 		time_interval: 'hourly',
 		model_interval: '6_hourly'
 	},
@@ -718,16 +990,7 @@ export const domainOptions: Array<Domain> = [
 	{
 		value: 'cmc_gem_gdps_15km',
 		label: 'GEM Global',
-		grid: {
-			type: 'regular',
-			nx: 2400,
-			ny: 1201,
-			latMin: -90,
-			lonMin: -180,
-			dx: 0.15,
-			dy: 0.15,
-			zoom: 1
-		},
+		grid: CMC_GEM_GDPS_15KM_GRID,
 		time_interval: '3_hourly',
 		model_interval: '12_hourly'
 	},
@@ -865,16 +1128,7 @@ export const domainOptions: Array<Domain> = [
 	{
 		value: 'jma_gsm',
 		label: 'JMA GSM',
-		grid: {
-			type: 'regular',
-			nx: 720,
-			ny: 361,
-			latMin: -90,
-			lonMin: -180,
-			dx: 0.5,
-			dy: 0.5,
-			zoom: 1
-		},
+		grid: JMA_GSM_GRID,
 		time_interval: '6_hourly',
 		model_interval: '6_hourly'
 	},
@@ -915,16 +1169,7 @@ export const domainOptions: Array<Domain> = [
 	{
 		value: 'meteofrance_arpege_world025',
 		label: 'MF ARPEGE World',
-		grid: {
-			type: 'regular',
-			nx: 1440,
-			ny: 721,
-			latMin: -90,
-			lonMin: -180,
-			dx: 0.25,
-			dy: 0.25,
-			zoom: 1
-		},
+		grid: METEOFRANCE_ARPEGE_WORLD025_GRID,
 		time_interval: 'hourly',
 		model_interval: '3_hourly'
 	},
@@ -1128,19 +1373,7 @@ export const domainOptions: Array<Domain> = [
 	{
 		value: 'knmi_harmonie_arome_europe',
 		label: 'KNMI Harmonie Arome Europe',
-		grid: {
-			type: 'projectedFromBounds',
-			nx: 676,
-			ny: 564,
-			latitude: [39.740627, 62.619324],
-			longitude: [-25.162262, 38.75702],
-			zoom: 3.5,
-			projection: {
-				rotatedLat: -35,
-				rotatedLon: -8,
-				name: 'RotatedLatLonProjection'
-			}
-		},
+		grid: KNMI_HARMONIE_AROME_EUROPE_GRID,
 		time_interval: 'hourly',
 		model_interval: 'hourly'
 	},
@@ -1251,16 +1484,7 @@ export const domainOptions: Array<Domain> = [
 	{
 		value: 'ukmo_global_deterministic_10km',
 		label: 'UK Met Office 10km',
-		grid: {
-			type: 'regular',
-			nx: 2560,
-			ny: 1920,
-			latMin: -90,
-			lonMin: -180,
-			dx: 360 / 2560,
-			dy: 180 / 1920,
-			zoom: 1
-		},
+		grid: UKMO_GLOBAL_DETERMINISTIC_10KM_GRID,
 		time_interval: 'hourly',
 		model_interval: '3_hourly'
 	},

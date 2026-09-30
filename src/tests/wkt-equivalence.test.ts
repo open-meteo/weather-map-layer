@@ -1,3 +1,4 @@
+import { isSeamlessDomain } from '../domain-helpers';
 import { domainOptions } from '../domains';
 import { GridFactory } from '../grids/index';
 import { wktToGridData } from '../utils/wkt';
@@ -21,7 +22,8 @@ const fixtures: Record<string, string> = crsWkt;
 /** Catalogue entries without data_spatial output as of 2026-09-09. */
 const UNSERVED = new Set(['ncep_gfs_graphcast025', 'kma_gdps', 'ecmwf_ec46_ensemble_mean']);
 
-const concreteDomains = domainOptions.filter((d): d is Domain => 'grid' in d && !!d.grid);
+// Seamless composites are client-side only: the server has no `crs_wkt` for them.
+const concreteDomains: Domain[] = domainOptions.filter((d) => !isSeamlessDomain(d));
 
 // Grid values equal to their own index, so a nearest-neighbour lookup returns
 // the cell index and two grids agree exactly when they place a point in the

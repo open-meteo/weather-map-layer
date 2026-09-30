@@ -4,6 +4,12 @@ import { FileReaderConfig, WeatherMapLayerFileReader } from './om-file-reader';
 
 export interface OmProtocolInstance {
 	omFileReader: WeatherMapLayerFileReader;
+	/**
+	 * The domain list of the settings the protocol was last called with, so
+	 * lookups outside the tile pipeline (`getValueFromLatLong`) resolve the same
+	 * domains as the tiles without the caller passing the settings again.
+	 */
+	domainOptions: Domain[];
 
 	// per-URL state:
 	stateByKey: Map<string, OmUrlState>;
@@ -127,14 +133,24 @@ export type TileIndex = {
 	y: number;
 };
 
+/**
+ * One concrete domain's data as the worker renders it. A plain request has a
+ * single layer; a seamless request carries one per active sub-domain, ordered
+ * finest-first.
+ */
+export interface LayerRenderData {
+	domain: Domain;
+	data: Data;
+	ranges: DimensionRange[];
+}
+
 export interface TileRequest {
 	type: 'getArrayBuffer' | 'getImage' | 'cancel';
 	key: string;
-	data: Data;
+	/** The domains the tile is rendered from, finest-first; a plain request has one. */
+	layers: LayerRenderData[];
 	tileIndex: TileIndex;
 	renderOptions: RenderOptions;
-	dataOptions: DataIdentityOptions;
-	ranges: DimensionRange[];
 	clippingOptions: ResolvedClippingOptions | undefined;
 	signal?: AbortSignal;
 }
@@ -328,6 +344,39 @@ export type ModelDt =
 
 export type ModelUpdateInterval =
 	'hourly' | '3_hourly' | '6_hourly' | '12_hourly' | 'daily' | 'monthly';
+
+/** A single layer within a seamless domain, referencing a concrete grid-based domain. */
+export interface SeamlessLayer {
+	/** The `value` of a concrete `Domain` entry to use for this layer. */
+	domainValue: string;
+	/** This layer is only used when the map zoom level is >= minZoom. */
+	minZoom: number;
+	/**
+	 * Maximum lead time in hours that this layer's model produces forecast data for.
+	 * When the requested timestep exceeds this horizon the layer is skipped entirely,
+	 * falling through to the next coarser layer.
+	 */
+	maxForecastHours?: number;
+}
+
+/**
+ * A virtual domain composed of several concrete domains. At any point the
+ * finest layer that is active at the current zoom and has data there is shown,
+ * so the map switches to a finer model where one exists and falls back to the
+ * coarser one elsewhere.
+ *
+ * `layers` are ordered finest-first; the last one is the base layer: the
+ * coarsest, with `minZoom: 0`, covering the composite's whole extent (global
+ * or regional). It stands in for the composite wherever a single concrete
+ * domain is needed (metadata, TileJSON bounds, initial map position): the
+ * composite's `grid` is that layer's grid, and it is requested at that layer's
+ * run and time steps, so `time_interval` and `model_interval` are that
+ * layer's too.
+ */
+export interface SeamlessDomain extends Domain {
+	type: 'seamless';
+	layers: SeamlessLayer[];
+}
 
 export interface DomainGroups {
 	[key: string]: Domain[];
