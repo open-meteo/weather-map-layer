@@ -80,6 +80,7 @@
 		"@mapbox/tilebelt": "^2.0.3",
 		"@mapbox/vector-tile": "^3.0.0",
 		"@openmeteo/file-reader": "^0.0.20",
+		"delaunator": "^5.1.0",
 		"maplibre-gl": "^6.5.0",
 		"pbf": "^5.1.0",
 		"point-in-polygon-hao": "^1.2.4"
