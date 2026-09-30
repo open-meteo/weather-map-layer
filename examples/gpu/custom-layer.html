@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Weather Map Layer - GPU Custom Layer</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.css" />
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+			#controls {
+				position: absolute;
+				top: 10px;
+				left: 10px;
+				z-index: 10;
+				background: rgba(255, 255, 255, 0.92);
+				border-radius: 6px;
+				padding: 10px 12px;
+				font: 13px/1.6 sans-serif;
+				box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+				max-width: 270px;
+			}
+			#controls label {
+				display: block;
+			}
+			#controls select,
+			#controls input[type='range'] {
+				width: 130px;
+			}
+			#status {
+				color: #555;
+				font-size: 12px;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<div id="controls">
+			<strong>GPU custom layer (tile-free)</strong>
+			<div>ecmwf_ifs025 · temperature_2m</div>
+			<label>
+				Interpolation
+				<select id="interpolation">
+					<option value="nearest">nearest</option>
+					<option value="linear" selected>linear</option>
+					<option value="cubic">cubic</option>
+					<option value="monotone">monotone</option>
+				</select>
+			</label>
+			<label><input type="checkbox" id="blend" /> Colour blending</label>
+			<label>
+				Opacity
+				<input type="range" id="opacity" min="0" max="100" value="75" />
+			</label>
+			<label>
+				Renderer
+				<select id="renderer">
+					<option value="gpu" selected>GPU custom layer</option>
+					<option value="cpu">CPU om:// raster tiles</option>
+				</select>
+			</label>
+			<div id="status">Loading…</div>
+		</div>
+		<script type="module">
+			import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.mjs';
+
+			const OMWeatherMapLayer = await import(
+				location.hostname === 'localhost'
+					? '../../dist/index.mjs' // local development
+					: 'https://unpkg.com/@openmeteo/weather-map-layer@0.2.0/dist/index.mjs' // x-release-please-version
+			);
+
+			// The tile protocol stays registered: the CPU raster below renders the
+			// very same URL for comparison, and both paths share one data cache.
+			maplibregl.addProtocol('om', OMWeatherMapLayer.omProtocol);
+
+			const layer = new OMWeatherMapLayer.WeatherGpuLayer({ opacity: 0.75 });
+
+			const map = new maplibregl.Map({
+				container: 'map',
+				style: 'https://static-assets.open-meteo.com/map-assets/styles/minimal-planet-maps.json', // replace with your own style sheet
+				hash: true
+			});
+
+			const status = document.getElementById('status');
+			const controls = Object.fromEntries(
+				['interpolation', 'blend', 'opacity', 'renderer'].map((id) => [
+					id,
+					document.getElementById(id)
+				])
+			);
+
+			// The GPU layer takes the same om:// URLs as the tile protocol; latest.json
+			// resolves to the nearest timestep to "current local time" like in the
+			// other examples. Interpolation and colour blending are URL parameters
+			// on both paths.
+			const buildUrl = () =>
+				'om://https://openmeteo.s3.amazonaws.com/data_spatial/ecmwf_ifs025/latest.json' +
+				'?time_step=current_time&variable=temperature_2m' +
+				`&interpolation=${controls.interpolation.value}&color_blend=${controls.blend.checked}`;
+
+			const update = async () => {
+				const url = buildUrl();
+				// Keep the CPU raster on the identical URL so switching the renderer
+				// compares like for like.
+				map.getSource('cpu')?.setUrl(url);
+				status.textContent = 'Loading…';
+				const started = performance.now();
+				try {
+					await layer.setUrl(url);
+					status.textContent = `Loaded in ${Math.round(performance.now() - started)} ms`;
+				} catch (error) {
+					status.textContent = String(error);
+				}
+			};
+
+			// Compare against the CPU path: the raster tiles are rendered by the tile
+			// worker from the same data, so both renderers should look alike.
+			const applyRenderer = () => {
+				const opacity = Number(controls.opacity.value) / 100;
+				const gpu = controls.renderer.value === 'gpu';
+				layer.setOpacity(gpu ? opacity : 0);
+				map.setLayoutProperty('cpu', 'visibility', gpu ? 'none' : 'visible');
+				map.setPaintProperty('cpu', 'raster-opacity', opacity);
+			};
+
+			controls.interpolation.addEventListener('change', update);
+			controls.blend.addEventListener('change', update);
+			controls.opacity.addEventListener('input', applyRenderer);
+			controls.renderer.addEventListener('change', applyRenderer);
+
+			map.on('load', () => {
+				map.addSource('cpu', { type: 'raster', url: buildUrl(), maxzoom: 12 });
+				map.addLayer(
+					{
+						id: 'cpu',
+						type: 'raster',
+						source: 'cpu',
+						layout: { visibility: 'none' },
+						paint: { 'raster-opacity': 0.75 }
+					},
+					'waterway-tunnel'
+				);
+				if (!OMWeatherMapLayer.isGpuSupported()) {
+					status.textContent = 'WebGL2 is unavailable; showing the CPU raster instead.';
+					controls.renderer.value = 'cpu';
+					applyRenderer();
+					return;
+				}
+				map.addLayer(layer, 'waterway-tunnel');
+				update();
+			});
+		</script>
+	</body>
+</html>

@@ -44,6 +44,11 @@ export {
 	BARB_LATTICE
 } from './utils/constants';
 
+// GPU custom layer (experimental, see src/gpu/README.md)
+
+export { WeatherGpuLayer, isGpuSupported } from './gpu/index';
+export type { WeatherGpuLayerOptions } from './gpu/index';
+
 // Adapters
 
 export { addLeafletProtocolSupport } from './adapters/leaflet';
