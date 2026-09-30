@@ -3,21 +3,26 @@ import { type GetResourceResponse, type RequestParameters } from 'maplibre-gl';
 import { constrainBounds } from './utils/bounds';
 import { type ResolvedClippingOptions } from './utils/clipping';
 import { defaultResolveRequest, parseRequest } from './utils/parse-request';
-import { parseMetaJson } from './utils/parse-url';
+import { normalizeUrl, parseLeadTimeHours } from './utils/parse-url';
 import { COLOR_SCALES_WITH_ALIASES as defaultColorScales } from './utils/styling';
 
 import { domainOptions as defaultDomainOptions } from './domains';
 import { GridFactory } from './grids/index';
 import { defaultFileReaderConfig } from './om-file-reader';
-import { ensureData, getOrCreateState, getProtocolInstance } from './om-protocol-state';
+import {
+	DEFAULT_MAX_STATES_WITH_DATA,
+	ensureData,
+	getOrCreateState,
+	getProtocolInstance,
+	resolveLayers
+} from './om-protocol-state';
 import { capitalize } from './utils';
 import { WorkerPool } from './worker-pool';
 
 import type {
-	Data,
 	DataIdentityOptions,
+	LayerRenderData,
 	OmProtocolSettings,
-	OmUrlState,
 	ParsedRequest,
 	TileJSON,
 	TilePromise,
@@ -54,21 +59,8 @@ export const omProtocol = async (
 
 	const instance = getProtocolInstance(settings);
 
-	const url = await normalizeUrl(params.url);
+	const url = await normalizeUrl(params.url, settings.domainOptions);
 	const request = parseRequest(url, settings);
-
-	const state = getOrCreateState(
-		instance.stateByKey,
-		request.fileAndVariableKey,
-		request.dataOptions,
-		request.baseUrl,
-		settings.maxStatesWithData
-	);
-
-	// Check abort status before proceeding
-	if (signal.aborted) {
-		return { data: null };
-	}
 
 	// Handle TileJSON request. The bounds only depend on the grid definition, so
 	// respond without touching the data: the read starts with the first tile
@@ -80,8 +72,6 @@ export const omProtocol = async (
 		};
 	}
 
-	const data = await ensureData(state, instance.omFileReader, settings.postReadCallback, signal);
-
 	// Handle tile request
 	if (params.type !== 'image' && params.type !== 'arrayBuffer') {
 		throw new Error(`Unsupported request type '${params.type}'`);
@@ -91,21 +81,73 @@ export const omProtocol = async (
 		throw new Error(`Tile coordinates required for ${params.type} request`);
 	}
 
-	const tileResult = await requestTile(url, request, data, state, params.type, signal);
+	// The concrete domains the tile is rendered from, finest-first: for a
+	// composite, the layers active at this zoom, viewport and lead time.
+	const layers = resolveLayers(
+		request.dataOptions.domain,
+		request.baseUrl,
+		request.fileAndVariableKey,
+		settings.domainOptions,
+		{
+			zoom: request.tileIndex.z,
+			viewportBounds: request.dataOptions.bounds,
+			leadTimeHours: parseLeadTimeHours(request.baseUrl)
+		}
+	);
+	if (layers.length === 0) {
+		return { data: null };
+	}
+
+	// `maxStatesWithData` counts states, but callers size it in variables (one
+	// state per variable for a plain domain). A composite needs one state per
+	// layer for a single variable, so the cap is scaled by the layer count;
+	// otherwise a composite's tile requests would evict the sub-domain states
+	// the next tile still needs.
+	const maxStatesWithData =
+		(settings.maxStatesWithData ?? DEFAULT_MAX_STATES_WITH_DATA) * layers.length;
+	const states = layers.map((layer) =>
+		getOrCreateState(
+			instance.stateByKey,
+			layer.stateKey,
+			{ ...request.dataOptions, domain: layer.domain },
+			layer.omFileUrl,
+			maxStatesWithData
+		)
+	);
+
+	// Check abort status before proceeding
+	if (signal.aborted) {
+		return { data: null };
+	}
+
+	// All layers load in parallel. A layer that fails is dropped so the others
+	// still render; when none loads, the failure propagates like any read error.
+	const settled = await Promise.allSettled(
+		states.map((state) =>
+			ensureData(state, instance.omFileReader, settings.postReadCallback, signal)
+		)
+	);
+	const loaded: LayerRenderData[] = [];
+	settled.forEach((result, i) => {
+		if (result.status === 'fulfilled') {
+			loaded.push({
+				domain: states[i].dataOptions.domain,
+				data: result.value,
+				ranges: states[i].ranges
+			});
+		}
+	});
+	if (loaded.length === 0) {
+		throw (settled[0] as PromiseRejectedResult).reason;
+	}
+
+	const tileResult = await requestTile(url, request, loaded, params.type, signal);
 
 	if (tileResult.cancelled || !tileResult.data) {
 		return { data: null };
 	} else {
 		return { data: tileResult.data };
 	}
-};
-
-export const normalizeUrl = async (url: string): Promise<string> => {
-	let normalized = url;
-	if (url.includes('.json')) {
-		normalized = await parseMetaJson(normalized);
-	}
-	return normalized;
 };
 
 const makeTileAbortedResponse = (): TileResult => {
@@ -115,11 +157,11 @@ const makeEmptyVectorLayerResponse = (): TileResult => {
 	return { data: new ArrayBuffer(0), cancelled: false };
 };
 
+/** Renders one tile in the worker pool from `layers`, finest-first. */
 const requestTile = async (
 	url: string,
 	request: ParsedRequest,
-	data: Data,
-	state: OmUrlState,
+	layers: LayerRenderData[],
 	type: 'image' | 'arrayBuffer',
 	signal?: AbortSignal
 ): TilePromise => {
@@ -136,8 +178,9 @@ const requestTile = async (
 
 	// early return if the worker will not return a tile
 	if (tileType === 'getArrayBuffer') {
+		const hasDirections = layers.some((layer) => layer.data.directions !== undefined);
 		if (
-			!(request.renderOptions.drawArrows && data.directions !== undefined) &&
+			!(request.renderOptions.drawArrows && hasDirections) &&
 			!request.renderOptions.drawContours &&
 			!request.renderOptions.drawGrid
 		) {
@@ -148,10 +191,8 @@ const requestTile = async (
 	return workerPool.requestTile({
 		type: tileType,
 		key,
+		layers,
 		tileIndex: request.tileIndex,
-		data,
-		ranges: state.ranges,
-		dataOptions: request.dataOptions,
 		renderOptions: request.renderOptions,
 		clippingOptions: request.clippingOptions,
 		signal
