@@ -8,7 +8,7 @@
 import type { TileRequest, WorkerRequest } from '../types';
 
 export type GpuWorkerRequest = WorkerRequest & {
-	/** Identity of `data.values` in the worker's texture cache; values are attached on first sight. */
+	/** Identity of the layer's `data.values` in the worker's texture cache; values are attached on first sight. */
 	dataKey?: string;
 };
 
@@ -26,9 +26,9 @@ export class GpuTileRouting {
 	private uploaded = new Set<string>();
 	private available = true;
 
-	/** True when the request goes to the GPU worker. */
+	/** True when the request goes to the GPU worker; it renders a single layer. */
 	accepts(request: PlainRequest): boolean {
-		return request.gpu === true && this.available;
+		return request.gpu === true && this.available && request.layers.length === 1;
 	}
 
 	/** The message to post for a request; GPU requests carry the values only the first time. */
@@ -36,7 +36,8 @@ export class GpuTileRouting {
 		if (!this.accepts(request)) {
 			return request.gpu ? { ...request, gpu: false } : request;
 		}
-		const values = request.data.values;
+		const layer = request.layers[0];
+		const values = layer.data.values;
 		if (!values) return request;
 		const dataKey = this.dataKeyFor(values);
 		const attachValues = !this.uploaded.has(dataKey);
@@ -45,11 +46,16 @@ export class GpuTileRouting {
 		return {
 			...request,
 			dataKey,
-			data: {
-				values: attachValues ? values : undefined,
-				directions: undefined,
-				scaleFactor: request.data.scaleFactor
-			}
+			layers: [
+				{
+					...layer,
+					data: {
+						values: attachValues ? values : undefined,
+						directions: undefined,
+						scaleFactor: layer.data.scaleFactor
+					}
+				}
+			]
 		};
 	}
 

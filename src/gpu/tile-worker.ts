@@ -61,11 +61,19 @@ const getQueue = (): GpuTileQueue | null => {
 
 /**
  * Take over a GPU-flagged raster request. Returns false when the CPU loop
- * should render it after all (no WebGL2, values attached).
+ * should render it after all (no WebGL2, values attached). The GPU renders
+ * a single layer; a seamless composite belongs to the CPU sampler path.
  */
 export const acceptGpuTile = (request: GpuWorkerRequest): boolean => {
-	if (request.type !== 'getImage' || !request.gpu || request.dataKey === undefined) return false;
-	const values = request.data.values;
+	if (
+		request.type !== 'getImage' ||
+		!request.gpu ||
+		request.dataKey === undefined ||
+		request.layers.length !== 1
+	)
+		return false;
+	const layer = request.layers[0];
+	const values = layer.data.values;
 	const activeQueue = getQueue();
 	if (!activeQueue || !renderer) {
 		if (values) return false;
@@ -77,9 +85,9 @@ export const acceptGpuTile = (request: GpuWorkerRequest): boolean => {
 	const gpuRequest: GpuTileRequest = {
 		tileIndex: request.tileIndex,
 		dataKey: request.dataKey,
-		scaleFactor: request.data.scaleFactor,
-		ranges: request.ranges,
-		domain: request.dataOptions.domain,
+		scaleFactor: layer.data.scaleFactor,
+		ranges: layer.ranges,
+		domain: layer.domain,
 		renderOptions: request.renderOptions,
 		clipBounds: request.clippingOptions?.bounds
 	};

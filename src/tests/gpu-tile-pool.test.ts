@@ -8,7 +8,7 @@ const tileRequest = (values: Float32Array, gpu = true): Omit<TileRequest, 'signa
 		type: 'getImage',
 		key: 'k',
 		gpu,
-		data: { values, directions: new Float32Array(2), scaleFactor: 20 }
+		layers: [{ data: { values, directions: new Float32Array(2), scaleFactor: 20 } }]
 	}) as Omit<TileRequest, 'signal'>;
 
 describe('GpuTileRouting', () => {
@@ -18,17 +18,17 @@ describe('GpuTileRouting', () => {
 
 		const first = routing.message(tileRequest(values));
 		expect(first.dataKey).toBe('0');
-		expect(first.data.values).toBe(values);
-		expect(first.data.directions).toBeUndefined();
-		expect(first.data.scaleFactor).toBe(20);
+		expect(first.layers[0].data.values).toBe(values);
+		expect(first.layers[0].data.directions).toBeUndefined();
+		expect(first.layers[0].data.scaleFactor).toBe(20);
 
 		const second = routing.message(tileRequest(values));
 		expect(second.dataKey).toBe('0');
-		expect(second.data.values).toBeUndefined();
+		expect(second.layers[0].data.values).toBeUndefined();
 
 		const other = routing.message(tileRequest(new Float32Array([3])));
 		expect(other.dataKey).toBe('1');
-		expect(other.data.values).toHaveLength(1);
+		expect(other.layers[0].data.values).toHaveLength(1);
 	});
 
 	it('re-sends the values after the worker reports them missing', () => {
@@ -39,7 +39,7 @@ describe('GpuTileRouting', () => {
 		const repost = vi.fn();
 		routing.handleResponse({ type: 'needData', key: 'k', dataKey: '0' }, repost);
 		expect(repost).toHaveBeenCalledWith('k');
-		expect(routing.message(tileRequest(values)).data.values).toBe(values);
+		expect(routing.message(tileRequest(values)).layers[0].data.values).toBe(values);
 	});
 
 	it('turns GPU requests into plain requests once the worker has no WebGL2', () => {
@@ -52,7 +52,7 @@ describe('GpuTileRouting', () => {
 		const message = routing.message(request);
 		expect(message.gpu).toBe(false);
 		expect(message.dataKey).toBeUndefined();
-		expect(message.data).toBe(request.data);
+		expect(message.layers).toBe(request.layers);
 	});
 
 	it('leaves CPU requests untouched', () => {
