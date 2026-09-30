@@ -1,14 +1,17 @@
 import { pad } from '.';
+import { getConcreteDomainValue, isSeamlessDomain } from '../domain-helpers';
 
 import {
 	DATA_RELEVANT_PARAMS,
 	DOMAIN_META_REGEX,
 	OM_PREFIX_REGEX,
+	RESOLVE_DOMAIN_REGEX,
+	RUN_AND_VALID_TIME_REGEX,
 	TILE_SUFFIX_REGEX,
 	TIME_STEP_REGEX
 } from './constants';
 
-import { DomainMetaDataJson, ParsedUrlComponents, TileIndex } from '../types';
+import { Domain, DomainMetaDataJson, ParsedUrlComponents, TileIndex } from '../types';
 
 const parseTileIndex = (url: string): { tileIndex: TileIndex | null; remainingUrl: string } => {
 	const match = url.match(TILE_SUFFIX_REGEX);
@@ -71,18 +74,64 @@ const getModifiedAmount = (amount: number, modifier = '+') => {
 // {meta}.json files are cached for 60 seconds
 const metaDataCache = new Map<string, Promise<DomainMetaDataJson>>();
 
-export const parseMetaJson = async (omUrl: string) => {
+/**
+ * Swaps the domain segment of an om file or metadata URL, wherever the path
+ * puts it. Seamless composites only exist client-side: the server serves the
+ * concrete sub-domains, so every request for a composite is issued under a
+ * concrete domain's path.
+ */
+export const replaceUrlDomain = (
+	url: string,
+	fromDomainValue: string,
+	toDomainValue: string
+): string =>
+	url.replace(RESOLVE_DOMAIN_REGEX, (segment: string, domain: string) =>
+		domain === fromDomainValue ? toDomainValue + segment.slice(domain.length) : segment
+	);
+
+/**
+ * Lead time in hours (model run to valid time) of a data-spatial file URL, or
+ * undefined for URLs without the run/valid-time path structure.
+ */
+export const parseLeadTimeHours = (url: string): number | undefined => {
+	const groups = url.match(RUN_AND_VALID_TIME_REGEX)?.groups;
+	if (!groups) return undefined;
+	const hhmm = (time: string) => `${time.slice(0, 2)}:${time.slice(2)}:00Z`;
+	const modelRun = Date.parse(`${groups.runDate.replace(/\//g, '-')}T${hhmm(groups.runTime)}`);
+	const validTime = Date.parse(`${groups.validDate}T${hhmm(groups.validTime)}`);
+	return (validTime - modelRun) / 3_600_000;
+};
+
+/**
+ * A seamless composite has no metadata of its own on the server; its base
+ * layer's `{meta}.json` describes the composite.
+ */
+const resolveJsonFetchUrl = (jsonUrl: string, domainOptions?: Domain[]): string => {
+	if (!domainOptions) return jsonUrl;
+	// The meta regex, not RESOLVE_DOMAIN_REGEX: that one only matches `.om`
+	// paths, so a `{meta}.json` URL would never be rewritten
+	const urlDomainValue = jsonUrl.match(DOMAIN_META_REGEX)?.groups?.domain;
+	if (!urlDomainValue) return jsonUrl;
+	const domain = domainOptions.find((d) => d.value === urlDomainValue);
+	if (!domain || !isSeamlessDomain(domain)) return jsonUrl;
+	return replaceUrlDomain(jsonUrl, urlDomainValue, getConcreteDomainValue(domain));
+};
+
+export const parseMetaJson = async (omUrl: string, domainOptions?: Domain[]) => {
 	let date = new Date();
 	const url = omUrl.replace('om://', '');
 
 	// jsonUrl should be everything until ".json" of the current url (inclusive)
 	const jsonIndex = url.indexOf('.json');
 	const jsonUrl = url.slice(0, jsonIndex + '.json'.length);
+	// For seamless domains, fetch from the base layer's domain; cache under the
+	// original (seamless) key so duplicate requests are still deduplicated.
+	const fetchJsonUrl = resolveJsonFetchUrl(jsonUrl, domainOptions);
 
 	if (!metaDataCache.has(jsonUrl)) {
-		const metaRequest = fetch(jsonUrl).then((response) => {
+		const metaRequest = fetch(fetchJsonUrl).then((response) => {
 			if (!response.ok) {
-				throw new Error(`Failed to fetch ${jsonUrl}: ${response.status}`);
+				throw new Error(`Failed to fetch ${fetchJsonUrl}: ${response.status}`);
 			}
 			return response.json() as Promise<DomainMetaDataJson>;
 		});
@@ -157,4 +206,11 @@ export const parseMetaJson = async (omUrl: string) => {
 				`${modelRun.getUTCFullYear()}/${pad(modelRun.getUTCMonth() + 1)}/${pad(modelRun.getUTCDate())}/${pad(modelRun.getUTCHours())}00Z/${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}T${pad(date.getUTCHours())}00.om`
 			)
 	);
+};
+
+export const normalizeUrl = async (url: string, domainOptions?: Domain[]): Promise<string> => {
+	if (url.includes('.json')) {
+		return parseMetaJson(url, domainOptions);
+	}
+	return url;
 };
