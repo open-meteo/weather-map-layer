@@ -8,6 +8,7 @@ export {
 
 // Functions
 
+export { isSeamlessDomain, getConcreteDomainValue, selectSeamlessLayers } from './domain-helpers';
 export {
 	getValueFromLatLong,
 	clearBlockCache,
@@ -58,8 +59,10 @@ export { addOpenLayersProtocolSupport } from './adapters/openlayers';
 
 // Types
 
+export type { ActiveSeamlessLayer, SeamlessLayerFilter } from './domain-helpers';
 export type {
 	ArrowStyle,
+	Bounds,
 	ClippingOptions,
 	Data,
 	Domain,
@@ -72,6 +75,8 @@ export type {
 	OmProtocolSettings,
 	OmUrlState,
 	RenderableColorScale,
+	SeamlessDomain,
+	SeamlessLayer,
 	SunShadowOptions
 } from './types';
 
