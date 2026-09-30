@@ -76,6 +76,32 @@ describe('createSamplers – values', () => {
 	});
 });
 
+describe('createSamplers – threshold values', () => {
+	// Each layer's file has its own scale factor: the fine one stores 1/20ths,
+	// the coarse one halves, so their half-quantum offsets differ (0.025 vs 0.25).
+	const withScale = (layer: LayerRenderData, scaleFactor: number): LayerRenderData => ({
+		...layer,
+		data: { ...layer.data, scaleFactor }
+	});
+	const { sampleThresholdValue } = createSamplers(
+		[withScale(fineLayer(fillCentre), 20), withScale(globalLayer(0), 2)],
+		'linear'
+	);
+
+	it('offsets by the fine layer’s half quantum where the fine layer supplies the value', () => {
+		expect(sampleThresholdValue(0, 0)).toBeCloseTo(10.025, 5);
+	});
+
+	it('offsets by the coarse layer’s half quantum where the value falls through', () => {
+		expect(sampleThresholdValue(0, 30)).toBeCloseTo(0.25, 5);
+	});
+
+	it('stays NaN where no layer has data', () => {
+		const { sampleThresholdValue } = createSamplers([fineLayer(fillCentre)], 'linear');
+		expect(sampleThresholdValue(0, 30)).toBeNaN();
+	});
+});
+
 describe('createSamplers – vectors', () => {
 	const { sampleVector } = createSamplers(
 		[fineLayer(fillCentre, 0), globalLayer(10, 90)],

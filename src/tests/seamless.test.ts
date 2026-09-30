@@ -18,17 +18,18 @@ import type {
 
 // ─── Hoisted mutable state shared between mock factories ──────────────────────
 
-const { mockReturnBuffer, mockReadVariableSpy, mockShouldFail, mockOnReadVariable } = vi.hoisted(
-	() => ({
+const { mockReturnBuffer, mockReadVariableSpy, mockShouldFail, mockOnReadVariable, mockValueFor } =
+	vi.hoisted(() => ({
 		mockReturnBuffer: { value: new ArrayBuffer(16) },
 		/** All URLs passed to readVariable() in call order. */
 		mockReadVariableSpy: { calls: [] as string[] },
 		/** Set of URL path substrings whose readVariable should throw. */
 		mockShouldFail: { substrings: new Set<string>() },
 		/** Optional hook called synchronously at the start of readVariable. */
-		mockOnReadVariable: { fn: undefined as ((url: string) => void) | undefined }
-	})
-);
+		mockOnReadVariable: { fn: undefined as ((url: string) => void) | undefined },
+		/** Optional per-URL fill value for the returned data (default 0). */
+		mockValueFor: { fn: undefined as ((url: string) => number) | undefined }
+	}));
 
 // ─── Module mocks ─────────────────────────────────────────────────────────────
 
@@ -59,7 +60,8 @@ vi.mock('../om-file-reader', async () => {
 					}
 				}
 				const totalValues = ranges?.reduce((acc, r) => acc * (r.end - r.start + 1), 1) ?? 0;
-				return { values: new Float32Array(totalValues), directions: undefined };
+				const fill = mockValueFor.fn?.(omUrl) ?? 0;
+				return { values: new Float32Array(totalValues).fill(fill), directions: undefined };
 			}
 
 			async warmFile(_omUrl: string): Promise<void> {}
@@ -82,6 +84,7 @@ beforeEach(() => {
 	mockReadVariableSpy.calls = [];
 	mockShouldFail.substrings.clear();
 	mockOnReadVariable.fn = undefined;
+	mockValueFor.fn = undefined;
 	// A world-covering viewport, so the viewport gate leaves no layer out unless
 	// a test narrows it on purpose.
 	updateCurrentBounds([-180, -90, 180, 90]);
@@ -308,8 +311,24 @@ describe('SeamlessDomain – getValueFromLatLong', () => {
 		await omProtocol(params, new AbortController(), settings);
 
 		// (0, 0) lies inside all three layers; the mock data is all zeros.
-		const result = await getValueFromLatLong(0, 0, params.url, settings.domainOptions);
+		const result = await getValueFromLatLong(0, 0, params.url);
 		expect(result.value).toBe(0);
+	});
+
+	it('keeps the lookup to the layers active at the given zoom', async () => {
+		const { omProtocol } = await import('../om-protocol');
+		const { getValueFromLatLong } = await import('../om-protocol-state');
+		// Each sub-domain's data is told apart by its value.
+		mockValueFor.fn = (url) => ({ test_d2: 2, test_eu: 1 })[domainOf(url) ?? ''] ?? 0;
+		const params = tileParams(5);
+		await omProtocol(params, new AbortController(), makeSettings());
+
+		// All three states are loaded; the zoom decides which take part, like it
+		// does for the tiles, so a popup at a coarser zoom matches its pixels.
+		expect((await getValueFromLatLong(0, 0, params.url)).value).toBe(2);
+		expect((await getValueFromLatLong(0, 0, params.url, 5)).value).toBe(2);
+		expect((await getValueFromLatLong(0, 0, params.url, 3)).value).toBe(1);
+		expect((await getValueFromLatLong(0, 0, params.url, 0)).value).toBe(0);
 	});
 
 	it('throws when no sub-domain state exists for the composite', async () => {
@@ -319,8 +338,6 @@ describe('SeamlessDomain – getValueFromLatLong', () => {
 		// TileJSON initializes the protocol instance without creating any state.
 		await omProtocol(jsonParams(), new AbortController(), settings);
 
-		await expect(
-			getValueFromLatLong(0, 0, tileParams(5).url, settings.domainOptions)
-		).rejects.toThrow('State not found');
+		await expect(getValueFromLatLong(0, 0, tileParams(5).url)).rejects.toThrow('State not found');
 	});
 });

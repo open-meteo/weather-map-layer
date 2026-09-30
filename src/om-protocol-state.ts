@@ -9,7 +9,6 @@ import { normalizeUrl, parseUrlComponents, replaceUrlDomain } from './utils/pars
 import { createSamplers } from './utils/samplers';
 
 import { type SeamlessLayerFilter, isSeamlessDomain, selectSeamlessLayers } from './domain-helpers';
-import { domainOptions as defaultDomainOptions } from './domains';
 import { GridFactory } from './grids';
 import { WeatherMapLayerFileReader } from './om-file-reader';
 
@@ -57,11 +56,15 @@ export const getProtocolInstance = (settings: OmProtocolSettings): OmProtocolIns
 					'The protocol instance is shared and uses the first settings provided.'
 			);
 		}
+		// Domains may change between calls (a consumer swapping its list), and
+		// the tiles already follow the latest settings, so lookups do too.
+		omProtocolInstance.domainOptions = settings.domainOptions;
 		return omProtocolInstance;
 	}
 
 	const instance = {
 		omFileReader: new WeatherMapLayerFileReader(settings.fileReaderConfig),
+		domainOptions: settings.domainOptions,
 		stateByKey: new Map()
 	};
 	omProtocolInstance = instance;
@@ -249,27 +252,38 @@ export const ensureData = async (
 	}
 };
 
+/**
+ * The value (and direction, for vector variables) at a point, sampled from the
+ * loaded state of `omUrl` the way its tiles are rendered.
+ *
+ * `zoom` is the map zoom the point is looked at. A seamless composite only
+ * renders the layers active at the tile's zoom, but a layer zoomed away from
+ * can still have its state loaded; passing the zoom keeps the lookup to the
+ * layers the pixels come from. Without it every layer with loaded data takes
+ * part.
+ */
 export const getValueFromLatLong = async (
 	lat: number,
 	lon: number,
 	omUrl: string,
-	domainOptions: Domain[] = defaultDomainOptions
+	zoom?: number
 ): Promise<{ value: number; direction?: number }> => {
 	if (!omProtocolInstance) {
 		throw new Error('OmProtocolInstance is not initialized');
 	}
-	const { stateByKey } = omProtocolInstance;
+	const { stateByKey, domainOptions } = omProtocolInstance;
 
 	const url = await normalizeUrl(omUrl, domainOptions);
 	const { baseUrl, fileAndVariableKey, params } = parseUrlComponents(url);
 
 	// A composite has no state of its own: its value comes from its sub-domains'
-	// states, finest-first, like its pixels. The zoom is not part of the URL, so
-	// every layer with loaded data takes part.
+	// states, finest-first, like its pixels.
 	const domainValue = baseUrl.match(RESOLVE_DOMAIN_REGEX)?.groups?.domain;
 	const domain = domainOptions.find((d) => d.value === domainValue);
 	const stateKeys = domain
-		? resolveLayers(domain, baseUrl, fileAndVariableKey, domainOptions).map((l) => l.stateKey)
+		? resolveLayers(domain, baseUrl, fileAndVariableKey, domainOptions, { zoom }).map(
+				(l) => l.stateKey
+			)
 		: [fileAndVariableKey];
 	const states = stateKeys.flatMap((key) => stateByKey.get(key) ?? []);
 	if (states.length === 0) {
@@ -296,7 +310,7 @@ export const getValueFromLatLong = async (
 	// Derived variables (u/v components, speed+direction, wave height+direction)
 	// carry a direction field. Sampled the same way the arrows are (circular on
 	// the degrees), so a popup arrow points exactly like the arrow under it.
-	if (!layers.some((layer) => layer.data.directions)) {
+	if (layers[0].data.directions === undefined) {
 		return { value: sampleValue(lat, lonNormalized) };
 	}
 	const { value, direction } = sampleVector(lat, lonNormalized);

@@ -10,6 +10,7 @@
 import { GridFactory } from '../grids/index';
 
 import type { GridPointSource } from './grid-points';
+import { halfQuantum } from './math';
 
 import type { InterpolationMethod, LayerRenderData } from '../types';
 
@@ -26,6 +27,14 @@ export type VectorSampler = (lat: number, lon: number) => VectorSample;
 
 export interface Samplers {
 	sampleValue: ValueSampler;
+	/**
+	 * `sampleValue` plus half the quantization step of the layer that supplied
+	 * the value. Colour bands and contours test their thresholds against this,
+	 * so band edges fall inside grid cells (smooth) instead of snapping to the
+	 * cell corners when a breakpoint coincides with a quantization level. Each
+	 * layer's file has its own scale factor, so the offset follows the layer.
+	 */
+	sampleThresholdValue: ValueSampler;
 	sampleVector: VectorSampler;
 	/** The layers' grids and arrays for the grid-point layer, finest-first. */
 	gridSources: GridPointSource[];
@@ -36,15 +45,29 @@ export const createSamplers = (
 	method: InterpolationMethod
 ): Samplers => {
 	const grids = layers.map((layer) => GridFactory.create(layer.domain.grid, layer.ranges));
+	const halfQuanta = layers.map((layer) => halfQuantum(layer.data.scaleFactor));
 
-	const sampleValue: ValueSampler = (lat, lon) => {
+	// The finest layer with a finite value at the point, or -1. The value itself
+	// is left in `sampled` so the hot path returns two things without allocating.
+	let sampled = NaN;
+	const sampleLayer = (lat: number, lon: number): number => {
 		for (let i = 0; i < layers.length; i++) {
 			const values = layers[i].data.values;
 			if (!values) continue;
 			const value = grids[i].getInterpolatedValue(values, lat, lon, method);
-			if (isFinite(value)) return value;
+			if (isFinite(value)) {
+				sampled = value;
+				return i;
+			}
 		}
-		return NaN;
+		return -1;
+	};
+
+	const sampleValue: ValueSampler = (lat, lon) => (sampleLayer(lat, lon) < 0 ? NaN : sampled);
+
+	const sampleThresholdValue: ValueSampler = (lat, lon) => {
+		const i = sampleLayer(lat, lon);
+		return i < 0 ? NaN : sampled + halfQuanta[i];
 	};
 
 	// The magnitude is sampled with the selected method so arrow size/colour
@@ -67,5 +90,5 @@ export const createSamplers = (
 		directions: layer.data.directions
 	}));
 
-	return { sampleValue, sampleVector, gridSources };
+	return { sampleValue, sampleThresholdValue, sampleVector, gridSources };
 };

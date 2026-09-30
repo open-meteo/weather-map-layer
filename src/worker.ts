@@ -5,7 +5,7 @@ import { checkAgainstBounds } from './utils/bounds';
 import { clipRasterToPolygons } from './utils/clipping';
 import { generateContours } from './utils/contours';
 import { generateGridPoints } from './utils/grid-points';
-import { halfQuantum as computeHalfQuantum, tile2lat, tile2lon } from './utils/math';
+import { tile2lat, tile2lon } from './utils/math';
 import { createSamplers } from './utils/samplers';
 import { makeColorSampler } from './utils/styling';
 import { generateWindBarbs } from './utils/wind-barbs';
@@ -31,17 +31,12 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 	if (!layers.some((layer) => layer.data.values)) {
 		throw new Error('No values provided');
 	}
-	const { sampleValue, sampleVector, gridSources } = createSamplers(layers, interpolation);
+	const { sampleThresholdValue, sampleVector, gridSources } = createSamplers(layers, interpolation);
 
 	if (message.data.type == 'getImage') {
 		const pixels = tileSize * tileSize;
 		// Initialized with zeros
 		const rgba = new Uint8ClampedArray(pixels * 4);
-
-		// Offset the colour threshold by half the data's quantization step so
-		// band edges fall inside grid cells (smooth) instead of snapping to the
-		// cell corners when a breakpoint coincides with a quantization level.
-		const halfQuantum = computeHalfQuantum(layers[0].data.scaleFactor);
 
 		// Reused per-pixel so colour blending doesn't allocate an array per pixel.
 		const colorOut: [number, number, number, number] = [0, 0, 0, 0];
@@ -75,10 +70,12 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 					if (checkAgainstBounds(lon, clippingOptions.bounds[0], clippingOptions.bounds[2]))
 						continue;
 
-				const px = sampleValue(lat, lon);
+				// Threshold-offset sample, so colour band edges stay off the
+				// quantization grid (see `sampleThresholdValue`).
+				const px = sampleThresholdValue(lat, lon);
 
 				if (isFinite(px)) {
-					const color = sampleColor(px + halfQuantum, colorOut);
+					const color = sampleColor(px, colorOut);
 					rgba[4 * ind] = color[0];
 					rgba[4 * ind + 1] = color[1];
 					rgba[4 * ind + 2] = color[2];
@@ -107,7 +104,9 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 
 		postMessage({ type: 'returnImage', tile: imageBitmap, key: key }, { transfer: [imageBitmap] });
 	} else if (message.data.type == 'getArrayBuffer') {
-		const hasDirections = layers.some((layer) => layer.data.directions !== undefined);
+		// Directions come from the variable's derivation rule, which is the same
+		// for every layer of a request, so one layer tells.
+		const hasDirections = layers[0].data.directions !== undefined;
 		const renderOptions = message.data.renderOptions;
 
 		const pbf = new PbfWriter();
@@ -120,16 +119,17 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 			draw(pbf, sampleVector, x, y, z, clippingOptions);
 		}
 		if (renderOptions.drawContours) {
+			// Same threshold-offset sample as the raster, so contours align with
+			// the colour band edges.
 			generateContours(
 				pbf,
-				sampleValue,
+				sampleThresholdValue,
 				x,
 				y,
 				z,
 				tileSize,
 				renderOptions.intervals,
-				clippingOptions,
-				computeHalfQuantum(layers[0].data.scaleFactor)
+				clippingOptions
 			);
 		}
 

@@ -98,9 +98,11 @@ export const omProtocol = async (
 		return { data: null };
 	}
 
-	// A request costs a state per layer, so the cap the caller expressed in
-	// variables is multiplied by them: at the plain cap, every tile request of a
-	// composite would evict the sub-domains the next one still needs.
+	// `maxStatesWithData` counts states, but callers size it in variables (one
+	// state per variable for a plain domain). A composite needs one state per
+	// layer for a single variable, so the cap is scaled by the layer count;
+	// otherwise a composite's tile requests would evict the sub-domain states
+	// the next tile still needs.
 	const maxStatesWithData =
 		(settings.maxStatesWithData ?? DEFAULT_MAX_STATES_WITH_DATA) * layers.length;
 	const states = layers.map((layer) =>

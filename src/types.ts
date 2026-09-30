@@ -4,6 +4,12 @@ import { FileReaderConfig, WeatherMapLayerFileReader } from './om-file-reader';
 
 export interface OmProtocolInstance {
 	omFileReader: WeatherMapLayerFileReader;
+	/**
+	 * The domain list of the settings the protocol was last called with, so
+	 * lookups outside the tile pipeline (`getValueFromLatLong`) resolve the same
+	 * domains as the tiles without the caller passing the settings again.
+	 */
+	domainOptions: Domain[];
 
 	// per-URL state:
 	stateByKey: Map<string, OmUrlState>;
