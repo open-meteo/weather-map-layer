@@ -517,22 +517,24 @@ const colorScaleDefinitions: Record<string, ColorScaleDefinition> = {
 	},
 	wind: {
 		unit: 'm/s',
-		breakpoints: [
-			0, 0.3, 0.6, 1, 1.5, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12.5, 15, 17.5, 20, 25, 30, 40, 50, 60
-		],
+		breakpoints: [0, 0.3, 0.6, 1, 1.5, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 18, 21, 25, 30, 40],
+		// Roughly Beaufort-paced above a moderate breeze: yellow around a fresh
+		// breeze (10 m/s), orange for a strong breeze, red from a near gale
+		// (18 m/s), purple for storm force. A wider green band would make winds
+		// that are already strong at ground level look harmless.
 		colorSegments: [
-			{ range: [0, 5], colors: ['steelblue', 'green'] }, // 0 to 5m/s
-			{ range: [5, 14], colors: ['green', 'orange'] }, // 5 to 15m/s
-			{ range: [14, 28], colors: ['orange', '#ff0000'] }, // 14 to 28m/s
-			{ range: [28, 45], colors: ['#ff0000', '#800080'] },
-			{ range: [45, 60], colors: ['#800080', '#740505'] }
+			{ range: [0, 5], colors: ['steelblue', 'green'] },
+			{ range: [5, 12], colors: ['green', 'orange'] },
+			{ range: [12, 18], colors: ['orange', '#ff0000'] },
+			{ range: [18, 25], colors: ['#ff0000', '#800080'] },
+			{ range: [25, 40], colors: ['#800080', '#740505'] }
 		],
 		opacitySegments: [
 			{ range: [0, 0.3], opacity: [0, 0.1], easing: 'linear' },
 			{ range: [0.3, 1], opacity: [0.1, 0.2], easing: 'linear' },
 
 			{ range: [1, 7], opacity: [0.2, 1], easing: 'linear' },
-			{ range: [7, 60], opacity: [1, 1], easing: 'linear' }
+			{ range: [7, 40], opacity: [1, 1], easing: 'linear' }
 		]
 	}
 };
