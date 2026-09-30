@@ -1,13 +1,16 @@
 import {
 	BlockCache,
+	FileBackend,
 	LruBlockCache,
 	OmDataType,
 	OmFileReadOptions,
-	type OmFileReader,
+	OmFileReader,
 	OmHttpBackendPool
 } from '@openmeteo/file-reader';
 
 import { fastAtan2, radiansToDegrees } from './utils/math';
+
+import { getLocalOmFile } from './local-files';
 
 import type { Data, DimensionRange } from './types';
 
@@ -79,8 +82,16 @@ export class WeatherMapLayerFileReader {
 	 * only memoizes per-URL HTTP metadata (no wasm resources), keeping repeat
 	 * opens cheap without reintroducing shared reader state.
 	 */
-	private withReader<T>(omUrl: string, fn: (reader: OmFileReader) => Promise<T>): Promise<T> {
-		return this.backendPool.withReader(omUrl, this.cache, fn);
+	private async withReader<T>(omUrl: string, fn: (reader: OmFileReader) => Promise<T>): Promise<T> {
+		// A registered local file is read from memory; the pool only knows HTTP
+		const local = getLocalOmFile(omUrl);
+		if (!local) return this.backendPool.withReader(omUrl, this.cache, fn);
+		const reader = await OmFileReader.create(new FileBackend(local.file));
+		try {
+			return await fn(reader);
+		} finally {
+			reader.dispose();
+		}
 	}
 
 	private getRanges(ranges: DimensionRange[] | null, dimensions: number[]): DimensionRange[] {

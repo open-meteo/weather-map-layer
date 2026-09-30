@@ -2,6 +2,7 @@ export { omProtocol } from './om-protocol';
 
 // Functions
 
+export { isSeamlessDomain, getConcreteDomainValue, selectSeamlessLayers } from './domain-helpers';
 export {
 	getValueFromLatLong,
 	clearBlockCache,
@@ -16,6 +17,12 @@ export { variableHasDirections, variableSupportsBarbs } from './om-file-reader';
 export { getCachedResolvedClipping } from './utils/parse-request';
 export { wktToGridData } from './utils/wkt';
 export { getColor, getColorScale } from './utils/styling';
+export {
+	registerLocalOmFile,
+	unregisterLocalOmFile,
+	getLocalOmFile,
+	isLocalOmUrl
+} from './local-files';
 
 // Classes
 
@@ -52,8 +59,11 @@ export { addOpenLayersProtocolSupport } from './adapters/openlayers';
 
 // Types
 
+export type { LocalOmFile } from './local-files';
+export type { ActiveSeamlessLayer, SeamlessLayerFilter } from './domain-helpers';
 export type {
 	ArrowStyle,
+	Bounds,
 	ClippingOptions,
 	Data,
 	Domain,
@@ -65,7 +75,9 @@ export type {
 	InterpolationMethod,
 	OmProtocolSettings,
 	OmUrlState,
-	RenderableColorScale
+	RenderableColorScale,
+	SeamlessDomain,
+	SeamlessLayer
 } from './types';
 
 export type { VariableDerivationRule, WeatherMapLayerFileReader } from './om-file-reader';
