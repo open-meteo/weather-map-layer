@@ -41,11 +41,18 @@ export const TIME_SELECTED_REGEX = /([0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}00)/;
 // "YYYY/MM/DD/HHMMZ/" may sit between the domain and the file, so it is skipped:
 //   <domain>/file.om                         -> <domain>
 //   <domain>/YYYY/MM/DD/HHMMZ/<time>.om      -> <domain>
+//   <domain>/<meta>.json                     -> <domain>
+// A query string may follow the file.
 export const RESOLVE_DOMAIN_REGEX =
-	/(?<domain>[^/]+)\/(?:\d{4}\/\d{2}\/\d{2}\/\d{4}Z\/)?[^/]+\.om$/;
+	/(?<domain>[^/]+)\/(?:\d{4}\/\d{2}\/\d{2}\/\d{4}Z\/)?[^/?]+\.(?:om|json)(?=$|\?)/;
 
 export const DOMAIN_META_REGEX =
 	/(http|https):\/\/(?<uri>[\s\S]+)\/(?<domain>[\s\S]+)\/(?<meta>[\s\S]+).json/;
+
+// Model run and valid time of an om file path:
+//   <domain>/YYYY/MM/DD/HHMMZ/YYYY-MM-DDTHHMM.om
+export const RUN_AND_VALID_TIME_REGEX =
+	/\/(?<runDate>\d{4}\/\d{2}\/\d{2})\/(?<runTime>\d{4})Z\/(?<validDate>\d{4}-\d{2}-\d{2})T(?<validTime>\d{4})\.om/;
 
 export const TIME_STEP_REGEX =
 	/(?<capture>(current_time|valid_times))(_)?(?<modifier>(\+|-))?(?<amountAndUnit>.*)?/;

@@ -306,6 +306,22 @@ describe('omProtocol', () => {
 			// DWD ICON global bounds
 			expect(resultData.bounds).toEqual([-180, -90, 179.875, 90.125]);
 		});
+
+		it('clips the bounds to clippingOptions', async () => {
+			const { omProtocol } = await import('../om-protocol');
+			const settings = createTestSettings({ clippingOptions: { bounds: [-5, -5, 5, 5] } });
+			const params: RequestParameters = {
+				url: 'om://https://data-spatial.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m',
+				type: 'json'
+			};
+			const result = await omProtocol(params, new AbortController(), settings);
+			const [lonMin, latMin, lonMax, latMax] = (result.data as TileJSON).bounds!;
+
+			expect(lonMin).toBeGreaterThanOrEqual(-5);
+			expect(latMin).toBeGreaterThanOrEqual(-5);
+			expect(lonMax).toBeLessThanOrEqual(5);
+			expect(latMax).toBeLessThanOrEqual(5);
+		});
 	});
 
 	describe('tile requests', () => {
@@ -333,6 +349,33 @@ describe('omProtocol', () => {
 			await expect(
 				omProtocol(params, new AbortController(), defaultOmProtocolSettings)
 			).rejects.toThrow('Tile coordinates required');
+		});
+
+		it('throws for an unsupported request type', async () => {
+			const { omProtocol } = await import('../om-protocol');
+
+			const params = {
+				url: 'om://https://data-spatial.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m/0/0/0',
+				type: 'vector' as RequestParameters['type']
+			};
+
+			await expect(
+				omProtocol(params, new AbortController(), defaultOmProtocolSettings)
+			).rejects.toThrow("Unsupported request type 'vector'");
+		});
+
+		it('returns { data: null } when the signal is already aborted', async () => {
+			const { omProtocol } = await import('../om-protocol');
+
+			const params: RequestParameters = {
+				url: 'om://https://data-spatial.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m/0/0/0',
+				type: 'arrayBuffer'
+			};
+			const abortController = new AbortController();
+			abortController.abort();
+			const result = await omProtocol(params, abortController, defaultOmProtocolSettings);
+
+			expect(result.data).toBeNull();
 		});
 
 		it('calls postReadCallback after data is loaded', async () => {
