@@ -69,6 +69,8 @@ export interface OmUrlState {
 	omFileUrl: string;
 	data: Data | null;
 	dataPromise: Promise<Data> | null;
+	/** Set when the last data load failed; cleared when a new load starts. */
+	lastError?: unknown;
 	lastAccess: number;
 }
 

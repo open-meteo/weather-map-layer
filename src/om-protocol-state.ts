@@ -192,6 +192,7 @@ export const ensureData = async (
 		const entry: InflightRequest = { controller: new AbortController(), subscriberCount: 0 };
 		inflightRequests.set(state, entry);
 
+		state.lastError = undefined;
 		const promise = (async () => {
 			try {
 				const data = await omFileReader.readVariable(
@@ -207,6 +208,15 @@ export const ensureData = async (
 
 				state.data = data;
 				return data;
+			} catch (error) {
+				// Recorded so getDataState can report 'error' — MapLibre counts
+				// failed tiles as complete, so renderers cannot see this otherwise.
+				// An abort is every subscriber cancelling (normal map navigation),
+				// not a failed load, so it leaves no error behind.
+				if (!(error instanceof Error && error.name === 'AbortError')) {
+					state.lastError = error;
+				}
+				throw error;
 			} finally {
 				// Only clear what still belongs to this read: an abandoned one can
 				// have been replaced by a fresh read before it settles
@@ -251,6 +261,46 @@ export const ensureData = async (
 		cleanup();
 	}
 };
+
+export type OmDataState = 'loaded' | 'loading' | 'error' | 'missing';
+
+/**
+ * Synchronous data-availability check for an om url (with or without the
+ * om:// prefix). Lets renderers await actual data instead of inferring it
+ * from tile events: failed tiles count as complete in MapLibre, so a purely
+ * tile-based check can show an empty frame.
+ *
+ * States are keyed by the normalized URL: meta-JSON URLs (`latest.json`,
+ * `in-progress.json`) must be resolved to their dated `.om` form first (see
+ * `normalizeUrl`), otherwise this always returns 'missing'.
+ */
+/** The state of an om url (with or without the om:// prefix), if any. */
+const stateOf = (omUrl: string): OmUrlState | undefined => {
+	if (!omProtocolInstance) return undefined;
+	try {
+		const url = omUrl.startsWith('om://') ? omUrl : 'om://' + omUrl;
+		const { fileAndVariableKey } = parseUrlComponents(url);
+		return omProtocolInstance.stateByKey.get(fileAndVariableKey);
+	} catch {
+		return undefined;
+	}
+};
+
+export const getDataState = (omUrl: string): OmDataState => {
+	const state = stateOf(omUrl);
+	if (!state) return 'missing';
+	if (state.data) return 'loaded';
+	if (state.dataPromise) return 'loading';
+	return state.lastError !== undefined ? 'error' : 'missing';
+};
+
+/**
+ * The loaded value array of a URL's state, if any: the identity key of the
+ * GPU renderer's texture cache, so hosts can tell RAM residency (values
+ * present) from VRAM residency (a texture exists for these values).
+ */
+export const getStateValues = (omUrl: string): Float32Array | undefined =>
+	stateOf(omUrl)?.data?.values ?? undefined;
 
 /**
  * The value (and direction, for vector variables) at a point, sampled from the
