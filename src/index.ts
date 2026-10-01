@@ -6,6 +6,8 @@ export { isSeamlessDomain, getConcreteDomainValue, selectSeamlessLayers } from '
 export {
 	getValueFromLatLong,
 	clearBlockCache,
+	getDataState,
+	getStateValues,
 	clearBackends,
 	getRanges,
 	getProtocolInstance
@@ -39,10 +41,20 @@ export {
 	LEVEL_UNIT_REGEX,
 	VALID_ARROW_STYLES,
 	DEFAULT_ARROW_STYLE,
+	VALID_ARROW_RENDERS,
+	DEFAULT_ARROW_RENDER,
 	TILE_PX,
 	ARROW_LATTICE,
 	BARB_LATTICE
 } from './utils/constants';
+
+// GPU custom layer (experimental, see src/gpu/README.md)
+
+export { WeatherGpuLayer } from './gpu/layer';
+export type { GpuAdvectionSource, WeatherGpuLayerOptions } from './gpu/layer';
+export type { GpuArrowConfig } from './gpu/arrows';
+export type { GpuParticleConfig } from './gpu/particles';
+export type { GpuContourStyle } from './gpu/renderer';
 
 // Adapters
 
@@ -54,6 +66,7 @@ export { addOpenLayersProtocolSupport } from './adapters/openlayers';
 
 export type { ActiveSeamlessLayer, SeamlessLayerFilter } from './domain-helpers';
 export type {
+	ArrowRender,
 	ArrowStyle,
 	Bounds,
 	ClippingOptions,

@@ -285,6 +285,24 @@ const colorScaleDefinitions: Record<string, ColorScaleDefinition> = {
 		],
 		opacitySegments: [{ range: [4600, 6000], opacity: [0.7, 0.7], easing: 'linear' }]
 	},
+	// Ocean surface currents: most open-ocean flow sits below 0.3 m/s, the
+	// western boundary currents (Gulf Stream, Kuroshio, Agulhas) reach ~2-2.5.
+	// The wind ramp's colour language, compressed onto that range, with fine
+	// steps in the crowded low band and near-transparent still water.
+	ocean_current: {
+		unit: 'm/s',
+		breakpoints: [0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.7, 1, 1.25, 1.5, 2, 2.5],
+		colorSegments: [
+			{ range: [0, 0.5], colors: ['steelblue', 'green'] },
+			{ range: [0.5, 1.5], colors: ['green', 'orange'] },
+			{ range: [1.5, 2.5], colors: ['orange', '#ff0000'] }
+		],
+		opacitySegments: [
+			{ range: [0, 0.05], opacity: [0, 0.15], easing: 'linear' },
+			{ range: [0.05, 0.4], opacity: [0.15, 1], easing: 'linear' },
+			{ range: [0.4, 2.5], opacity: [1, 1], easing: 'linear' }
+		]
+	},
 	precipitation: {
 		unit: 'mm',
 		breakpoints: [0.01, 0.055, 0.2, 1, 2, 3, 4.5, 6, 8, 10, 12, 16, 20, 25, 30],

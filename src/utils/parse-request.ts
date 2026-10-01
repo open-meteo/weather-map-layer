@@ -3,12 +3,17 @@ import { variableSupportsBarbs } from '../om-file-reader';
 import { currentBounds, setClippingBounds } from './bounds';
 import { type ResolvedClippingOptions, resolveClippingOptions } from './clipping';
 import {
+	DEFAULT_ARROW_RENDER,
 	DEFAULT_ARROW_STYLE,
 	DEFAULT_COLOR_BLEND,
 	DEFAULT_INTERPOLATION,
 	DEFAULT_INTERVAL,
 	DEFAULT_TILE_SIZE,
+	DEFAULT_WIND_POINTS,
+	MAX_WIND_POINTS,
+	MIN_WIND_POINTS,
 	RESOLVE_DOMAIN_REGEX,
+	VALID_ARROW_RENDERS,
 	VALID_ARROW_STYLES,
 	VALID_INTERPOLATIONS,
 	VALID_TILE_SIZES
@@ -17,6 +22,7 @@ import { parseUrlComponents } from './parse-url';
 import { getColorScale, resolveColorScale } from './styling';
 
 import type {
+	ArrowRender,
 	ArrowStyle,
 	ClippingOptions,
 	ColorScales,
@@ -145,6 +151,8 @@ const defaultResolveRenderOptions = (
 		requestedArrowStyle === 'barb' && !variableSupportsBarbs(dataOptions.variable)
 			? 'arrow'
 			: requestedArrowStyle;
+	const arrowRender = parseArrowRender(params.get('arrow_render'));
+	const arrowPoints = parseArrowPoints(params.get('arrow_points'));
 	const drawContours = params.get('contours') === 'true';
 
 	return {
@@ -154,6 +162,8 @@ const defaultResolveRenderOptions = (
 		drawGrid,
 		drawArrows,
 		arrowStyle,
+		arrowRender,
+		arrowPoints,
 		drawContours,
 		colorScale,
 		intervals
@@ -174,6 +184,21 @@ const parseArrowStyle = (value: string | null): ArrowStyle => {
 		throw new Error(`Invalid arrow style, please use one of: ${VALID_ARROW_STYLES.join(', ')}`);
 	}
 	return arrowStyle as ArrowStyle;
+};
+
+/** Clamped: the lattice cost grows with the square of the count. */
+const parseArrowPoints = (value: string | null): number => {
+	const points = value ? Number(value) : DEFAULT_WIND_POINTS;
+	if (!isFinite(points)) return DEFAULT_WIND_POINTS;
+	return Math.min(MAX_WIND_POINTS, Math.max(MIN_WIND_POINTS, Math.round(points)));
+};
+
+const parseArrowRender = (value: string | null): ArrowRender => {
+	const arrowRender = value ?? DEFAULT_ARROW_RENDER;
+	if (!VALID_ARROW_RENDERS.includes(arrowRender as ArrowRender)) {
+		throw new Error(`Invalid arrow render, please use one of: ${VALID_ARROW_RENDERS.join(', ')}`);
+	}
+	return arrowRender as ArrowRender;
 };
 
 const parseInterpolation = (value: string | null): InterpolationMethod => {
