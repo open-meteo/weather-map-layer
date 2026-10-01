@@ -58,7 +58,6 @@ const ensurePool = (): Promise<Worker[]> => {
 	// would ship and instantiate it for every consumer of the library, Leaflet
 	// user or not. As a dynamic import it is a separate chunk that only the
 	// first Leaflet vector tile pulls in.
-	// @ts-expect-error Vite worker import
 	const workerModule = import('./leaflet-pbf-worker?worker&inline');
 	pool = workerModule.then(({ default: LeafletPbfWorker }) => {
 		const count = Math.min(

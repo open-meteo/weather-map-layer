@@ -4,6 +4,8 @@ import { FileReaderConfig, WeatherMapLayerFileReader } from './om-file-reader';
 
 export interface OmProtocolInstance {
 	omFileReader: WeatherMapLayerFileReader;
+	/** Off-thread decoder; undefined when the host did not opt in (see FileReaderConfig.workerCacheOptions). */
+	decodeWorker?: import('./decode-worker-client').DecodeWorkerClient;
 	/**
 	 * The domain list of the settings the protocol was last called with, so
 	 * lookups outside the tile pipeline (`getValueFromLatLong`) resolve the same
