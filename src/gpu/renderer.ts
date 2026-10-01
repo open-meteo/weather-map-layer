@@ -1,0 +1,1145 @@
+/**
+ * WebGL2 renderer core of the custom map layer. Owns the compiled program
+ * variants, the value/LUT textures and the single draw routine.
+ *
+ * A draw takes 1..N layers (finest-first); a plain domain is the single-layer
+ * case, a seamless composite passes one entry per active sub-domain.
+ */
+import type { ResolvedClippingOptions } from '../utils/clipping';
+
+import {
+	ARROW_FRAGMENT_SOURCE,
+	ARROW_INSTANCE_FLOATS,
+	ARROW_TEMPLATE,
+	arrowVertexSource
+} from './arrows';
+import { rasterizeClipMask } from './clip-mask';
+import { LUT_SIZE, buildColorLut, colorLutKey } from './color-lut';
+import type { GpuGridUniforms } from './grid-uniforms';
+import { buildProgram, uploadProjectionUniforms, variantKey } from './program';
+import {
+	MISSING_SENTINEL,
+	fragmentSource,
+	layerUniformNames,
+	shaderKey,
+	vertexSource
+} from './shader-source';
+import type { FragmentShaderSpec, LayerShaderSpec, ProjectionShaderData } from './shader-source';
+import {
+	VISIBILITY_FRAGMENT,
+	VISIBILITY_VERTEX_BODY,
+	elevationQuad,
+	projectPointSource,
+	uploadElevationUniforms,
+	uploadSurfaceQuad
+} from './terrain-elevation';
+import type { GpuElevationMap } from './terrain-elevation';
+
+import type { Bounds, InterpolationMethod, RenderableColorScale } from '../types';
+
+interface ProgramInfo {
+	program: WebGLProgram;
+	/**
+	 * Geometry per mesh density (cells per side). Terrain draws pick the
+	 * density per view, so a program serves several.
+	 */
+	vaos: Map<number, { vao: WebGLVertexArrayObject; indexCount: number }>;
+	/** All active uniform locations, by name. */
+	uniforms: Map<string, WebGLUniformLocation>;
+}
+
+/**
+ * A layer's uploaded arrow instances: the renderer can be shared by several
+ * layers on one GL context, so this state lives with the layer. VAOs are
+ * cached per projection variant.
+ */
+export interface ArrowInstances {
+	buffer: WebGLBuffer;
+	capacityBytes: number;
+	count: number;
+	vaos: Map<string, WebGLVertexArrayObject>;
+}
+
+/** Host styling for the in-shader contour isolines. */
+export interface GpuContourStyle {
+	/** Line RGB 0..1 (plain black or white in practice). */
+	color: [number, number, number];
+	/** Alpha per modulo class: other, ×moduli[0], ×moduli[1], ×moduli[2]. */
+	classAlphas: [number, number, number, number];
+	/** Line width in px per modulo class. */
+	classWidths: [number, number, number, number];
+	/** Level divisors that upgrade a line's class (ascending), e.g. 10/50/100. */
+	moduli: [number, number, number];
+}
+
+/** A draw's contour pass: the style plus the levels of this request. */
+export interface GpuContourDraw extends GpuContourStyle {
+	/** Lines at every multiple of this step; 0 when `levels` is explicit. */
+	step: number;
+	/** Explicit levels (at most 48), e.g. the colour-scale breakpoints. */
+	levels: number[];
+	/** Smallest level spacing, for the crowding fade. */
+	minGap: number;
+	opacity: number;
+}
+
+/**
+ * The projection uniforms of CustomRenderMethodInput['defaultProjectionData'],
+ * feeding the prelude's `projectTile` (mercator, globe and the transition).
+ */
+export interface GpuProjectionData {
+	mainMatrix: ArrayLike<number>;
+	fallbackMatrix: ArrayLike<number>;
+	tileMercatorCoords: [number, number, number, number];
+	clippingPlane: [number, number, number, number];
+	projectionTransition: number;
+}
+
+interface LutHandle {
+	texture: WebGLTexture;
+	min: number;
+	max: number;
+}
+
+/** An uploaded polygon clip mask (see clip-mask.ts). */
+interface GpuClipMask {
+	texture: WebGLTexture;
+	/** (x0, y0, 1/w, 1/h) of the mask rectangle in mercator [0..1] space. */
+	rect: [number, number, number, number];
+}
+
+export interface GpuLayerDraw {
+	gridUniforms: GpuGridUniforms;
+	valuesTexture: WebGLTexture;
+	/**
+	 * Previous-timestep values on the same grid. When every layer of a
+	 * multi-layer draw carries one, the whole composite blends temporally by
+	 * `mix` (single-layer draws use GpuDrawOptions.prevTexture instead).
+	 */
+	prevTexture?: WebGLTexture;
+	/**
+	 * Reveal factor 0..1 (default 1) scaling this layer's blend weight in a
+	 * multi-layer composite: a sub-layer joining or leaving (lazy load, zoom
+	 * crossing its range) morphs against the coarser field instead of popping.
+	 * Ignored on the coarsest layer (it seeds the composite).
+	 */
+	reveal?: number;
+}
+
+export interface GpuDrawOptions {
+	/**
+	 * MapLibre custom-layer projection support: the per-projection vertex prelude
+	 * and its uniforms. Renders correctly on mercator, globe and the transition.
+	 */
+	projection: {
+		shaderData: ProjectionShaderData;
+		data: GpuProjectionData;
+		/**
+		 * Terrain elevation map: vertices lift onto the ground surface and the
+		 * quad is clipped to the map's rectangle (the part of the world with
+		 * terrain in view), where the mesh is dense enough to follow the relief.
+		 */
+		elevation?: GpuElevationMap;
+	};
+	/** Finest-first; a plain (non-seamless) domain passes exactly one. */
+	layers: GpuLayerDraw[];
+	interpolation: InterpolationMethod;
+	/** Previous-timestep texture for in-shader temporal blending (single layer only). */
+	prevTexture?: WebGLTexture;
+	/** Blend factor: 0 = previous texture, 1 = current. Default 1. */
+	mix?: number;
+	/**
+	 * Wind-advected temporal blend (single layer): eastward/northward wind
+	 * component textures (m/s) plus the upstream/downstream displacement
+	 * scales in degrees per m/s (mix and 1-mix times the timestep interval).
+	 */
+	advect?: { uTexture: WebGLTexture; vTexture: WebGLTexture; prevDeg: number; nextDeg: number };
+	lut: LutHandle;
+	halfQuantum: number;
+	opacity: number;
+	/** Optional geographic clip bounds [west, south, east, north]. */
+	clipBounds?: Bounds;
+	/** Optional polygon clip mask multiplied into the output. */
+	clipMask?: GpuClipMask;
+	/** Whole-world x offsets to draw (antimeridian copies). Default [0]. */
+	worldOffsets?: number[];
+	/** Isoline pass over the value field (set opacity 0 for a lines-only draw). */
+	contours?: GpuContourDraw;
+}
+
+export const layerSpecOf = (layer: Pick<GpuLayerDraw, 'gridUniforms'>): LayerShaderSpec => ({
+	gridKind: layer.gridUniforms.gridKind,
+	projectionName: layer.gridUniforms.projectionName
+});
+
+/**
+ * Upload one layer's grid-geometry uniforms (everything the generated
+ * sampling functions read except the value texture itself, which the caller
+ * binds under its own name). Shared by the raster draw and the
+ * particle-update pass.
+ */
+export const uploadGridLayerUniforms = (
+	gl: WebGL2RenderingContext,
+	u: (name: string) => WebGLUniformLocation | null,
+	i: number,
+	layer: Pick<GpuLayerDraw, 'gridUniforms' | 'reveal'>
+): void => {
+	const g = layer.gridUniforms;
+	const names = layerUniformNames(i);
+
+	// The uniform only exists for the finer layers of a multi-layer composite;
+	// elsewhere the null location makes this a no-op. Must always be set — a
+	// float uniform defaults to 0, which would blank the layer entirely.
+	gl.uniform1f(u(names.reveal), layer.reveal ?? 1);
+
+	if (g.gridKind === 'gaussian') {
+		gl.uniform4i(u(names.gauss), g.gauss[0], g.gauss[1], g.gauss[2], g.gauss[3]);
+	} else {
+		gl.uniform2i(u(names.n), g.nx, g.ny);
+		gl.uniform2f(u(names.origin), g.originX, g.originY);
+		gl.uniform2f(u(names.delta), g.dx, g.dy);
+		if (g.gridKind === 'projected') {
+			gl.uniform4f(u(names.projA), g.projA[0], g.projA[1], g.projA[2], g.projA[3]);
+			gl.uniform4f(u(names.projB), g.projB[0], g.projB[1], g.projB[2], g.projB[3]);
+		} else {
+			gl.uniform2i(u(names.flags), g.lonWrap ? 1 : 0, g.wrapLastCellDouble ? 1 : 0);
+		}
+	}
+};
+
+/**
+ * Depth pre-pass fragment stage: besides the depth it writes the ground's
+ * mercator position, giving a screen-space ground map (RG32F; cleared to 0,
+ * so y = 0 marks pixels without ground) that the particles respawn from on
+ * tilted views.
+ */
+const GROUND_FRAGMENT_SOURCE = `#version 300 es
+precision highp float;
+in vec2 v_mercator;
+out vec4 outColor;
+void main() {
+	outColor = vec4(v_mercator, 1.0, 1.0);
+}
+`;
+
+export class WeatherGpuRenderer {
+	private gl: WebGL2RenderingContext;
+	private programs = new Map<string, ProgramInfo>();
+	/** Terrain depth pre-pass / visibility programs per projection variant. */
+	private depthPrograms = new Map<string, ProgramInfo>();
+	private visibilityPrograms = new Map<string, ProgramInfo>();
+	/** Subdivided quad meshes by cells per side. */
+	private meshBuffers = new Map<
+		number,
+		{
+			vertices: WebGLBuffer;
+			indices: WebGLBuffer;
+			indexCount: number;
+		}
+	>();
+
+	private arrowPrograms = new Map<
+		string,
+		{ program: WebGLProgram; uniforms: Map<string, WebGLUniformLocation> }
+	>();
+	private arrowTemplateBuffer: WebGLBuffer | null = null;
+
+	// Value textures keyed by the source Float32Array identity: the protocol
+	// state caches one array per variable/timestep, so identity is a stable key.
+	// LRU-evicted by a byte budget: at global views a single O1280 texture is
+	// ~26 MB, and an unbounded count would exhaust VRAM during animation loops
+	// (failed allocations sample as uninitialised-memory noise on real drivers).
+	private valueTextures = new Map<
+		Float32Array,
+		{ texture: WebGLTexture; nx: number; ny: number; bytes: number; label?: string }
+	>();
+	/** URL-state key -> value array, for residency queries that outlive the RAM state. */
+	private textureLabels = new Map<string, Float32Array>();
+	private valueTextureBytes = 0;
+	private valueTextureBudget: number;
+	static readonly DEFAULT_TEXTURE_CACHE_MB = 256;
+
+	private lutTextures = new Map<string, LutHandle>();
+	private static readonly LUT_CACHE_MAX = 8;
+
+	// Clip masks keyed by the resolved clipping identity (parse-request caches
+	// one resolution per options object, so identity is stable across frames).
+	private clipMasks = new Map<ResolvedClippingOptions, GpuClipMask | undefined>();
+	private static readonly CLIP_MASK_CACHE_MAX = 2;
+
+	private contourLevelScratch = new Float32Array(48);
+
+	constructor(gl: WebGL2RenderingContext, options: { textureCacheMb?: number } = {}) {
+		this.gl = gl;
+		this.valueTextureBudget =
+			(options.textureCacheMb ?? WeatherGpuRenderer.DEFAULT_TEXTURE_CACHE_MB) * 1024 * 1024;
+	}
+
+	/** Bytes of cached value textures, the configured budget, and the count. */
+	getMemoryUsage(): { bytes: number; budgetBytes: number; textures: number } {
+		return {
+			bytes: this.valueTextureBytes,
+			budgetBytes: this.valueTextureBudget,
+			textures: this.valueTextures.size
+		};
+	}
+
+	/** Raise (never lower below use) the value-texture budget at runtime. */
+	setTextureBudget(mb: number): void {
+		this.valueTextureBudget = Math.max(this.valueTextureBudget, mb * 1024 * 1024);
+	}
+
+	/** True when a texture labelled with this URL-state key is resident. */
+	hasTextureForLabel(label: string): boolean {
+		const values = this.textureLabels.get(label);
+		return values !== undefined && this.valueTextures.has(values);
+	}
+
+	/** Upload (or reuse) the R32F value texture for a data array. */
+	getValueTexture(values: Float32Array, nx: number, ny: number, label?: string): WebGLTexture {
+		const cached = this.valueTextures.get(values);
+		if (cached && cached.nx === nx && cached.ny === ny) {
+			// Re-insert to keep insertion order as LRU order
+			this.valueTextures.delete(values);
+			this.valueTextures.set(values, cached);
+			this.labelTexture(cached, values, label);
+			return cached.texture;
+		}
+
+		const gl = this.gl;
+		const maxSize = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
+		if (nx > maxSize || ny > maxSize) {
+			throw new Error(`gpu: grid ${nx}x${ny} exceeds MAX_TEXTURE_SIZE ${maxSize}`);
+		}
+
+		// NaN behaviour in float textures varies per driver: encode missing values
+		// as a large finite sentinel instead. Also pads short arrays (gaussian
+		// packing, defensive elsewhere) so texImage2D never reads out of bounds.
+		const texels = nx * ny;
+		const sanitized = new Float32Array(texels);
+		const n = Math.min(values.length, texels);
+		for (let i = 0; i < n; i++) {
+			const v = values[i];
+			sanitized[i] = Number.isFinite(v) ? v : MISSING_SENTINEL;
+		}
+		sanitized.fill(MISSING_SENTINEL, n);
+
+		const bytes = texels * 4;
+		// Evict to budget before allocating (never evicting what a current draw
+		// uses: everything a draw binds it fetched via this call in the same
+		// frame, so those entries are the most recent).
+		this.evictValueTextures(this.valueTextureBudget - bytes);
+
+		let texture = this.uploadValueTexture(nx, ny, sanitized);
+		if (!texture) {
+			// Allocation failed (VRAM exhausted): drop the whole cache and retry
+			// once — corrupt sampling from a failed allocation must never persist.
+			this.evictValueTextures(0);
+			texture = this.uploadValueTexture(nx, ny, sanitized);
+			if (!texture) throw new Error(`gpu: value texture allocation failed (${nx}x${ny})`);
+		}
+
+		const entry = { texture, nx, ny, bytes, label: undefined as string | undefined };
+		this.valueTextures.set(values, entry);
+		this.valueTextureBytes += bytes;
+		this.labelTexture(entry, values, label);
+		return texture;
+	}
+
+	/** Texels above which a warm upload streams in chunks instead of one call
+	 *  (~1 MB of R32F — mobile viewport crops land in the chunked path too). */
+	private static readonly WARM_SYNC_TEXELS = 1 << 18;
+	/** Texels per streamed chunk (~2 MB of R32F per texSubImage2D). */
+	private static readonly WARM_CHUNK_TEXELS = 1 << 19;
+	/** Reused sanitize scratch: one allocation instead of one per warm — the
+	 *  multi-MB churn showed up as GC pauses on mobile data loads. */
+	private warmScratch = new Float32Array(0);
+
+	/**
+	 * Upload (or reuse) the value texture like getValueTexture, but stream
+	 * large grids in row chunks across animation frames: a single texImage2D
+	 * of a world-view grid blocks a mobile main thread for a visible moment.
+	 * Meant for the prepare phase — the entry registers up front so repeated
+	 * warms and the later commit reuse it, and nothing samples the texture
+	 * before the commit, which only runs after this resolves.
+	 */
+	async warmValueTexture(
+		values: Float32Array,
+		nx: number,
+		ny: number,
+		label?: string
+	): Promise<void> {
+		const cached = this.valueTextures.get(values);
+		if (cached && cached.nx === nx && cached.ny === ny) {
+			this.valueTextures.delete(values);
+			this.valueTextures.set(values, cached);
+			this.labelTexture(cached, values, label);
+			return;
+		}
+		const texels = nx * ny;
+		if (
+			texels <= WeatherGpuRenderer.WARM_SYNC_TEXELS ||
+			typeof requestAnimationFrame === 'undefined'
+		) {
+			this.getValueTexture(values, nx, ny, label);
+			return;
+		}
+
+		const gl = this.gl;
+		const maxSize = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
+		if (nx > maxSize || ny > maxSize) {
+			throw new Error(`gpu: grid ${nx}x${ny} exceeds MAX_TEXTURE_SIZE ${maxSize}`);
+		}
+		const bytes = texels * 4;
+		this.evictValueTextures(this.valueTextureBudget - bytes);
+
+		let texture = this.allocValueTextureStorage(nx, ny);
+		if (!texture) {
+			this.evictValueTextures(0);
+			texture = this.allocValueTextureStorage(nx, ny);
+			if (!texture) throw new Error(`gpu: value texture allocation failed (${nx}x${ny})`);
+		}
+		const entry = { texture, nx, ny, bytes, label: undefined as string | undefined };
+		this.valueTextures.set(values, entry);
+		this.valueTextureBytes += bytes;
+		this.labelTexture(entry, values, label);
+
+		const rowsPerChunk = Math.max(1, Math.floor(WeatherGpuRenderer.WARM_CHUNK_TEXELS / nx));
+		if (this.warmScratch.length < rowsPerChunk * nx) {
+			this.warmScratch = new Float32Array(rowsPerChunk * nx);
+		}
+		const scratch = this.warmScratch;
+		for (let row = 0; row < ny; row += rowsPerChunk) {
+			// Evicted mid-warm (budget pressure): the texture is gone; a later
+			// getValueTexture re-uploads it synchronously.
+			if (this.valueTextures.get(values) !== entry) return;
+			const rows = Math.min(rowsPerChunk, ny - row);
+			const start = row * nx;
+			const count = rows * nx;
+			for (let i = 0; i < count; i++) {
+				const v = values[start + i];
+				scratch[i] = Number.isFinite(v) ? v : MISSING_SENTINEL;
+			}
+			gl.bindTexture(gl.TEXTURE_2D, entry.texture);
+			gl.texSubImage2D(
+				gl.TEXTURE_2D,
+				0,
+				0,
+				row,
+				nx,
+				rows,
+				gl.RED,
+				gl.FLOAT,
+				scratch.subarray(0, count)
+			);
+			if (row + rowsPerChunk < ny) {
+				await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+			}
+		}
+	}
+
+	/** Immutable R32F storage for the chunked warm path; null when allocation fails. */
+	private allocValueTextureStorage(nx: number, ny: number): WebGLTexture | null {
+		const gl = this.gl;
+		const texture = gl.createTexture();
+		if (!texture) return null;
+		gl.bindTexture(gl.TEXTURE_2D, texture);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+		gl.getError();
+		gl.texStorage2D(gl.TEXTURE_2D, 1, gl.R32F, nx, ny);
+		if (gl.getError() !== gl.NO_ERROR) {
+			gl.deleteTexture(texture);
+			return null;
+		}
+		this.initValueTextureStorage(texture);
+		return texture;
+	}
+
+	private warmClearFbo: WebGLFramebuffer | null = null;
+	private warmClearSupported: boolean | undefined;
+
+	/**
+	 * Explicitly initialize fresh storage from the GPU side: the chunked warm
+	 * path fills it with partial texSubImage2D uploads, and the browser must
+	 * otherwise lazily clear the whole texture at the first one (a console
+	 * warning, and a forced clear it flags as potentially slow). Filled with
+	 * the missing sentinel so never-uploaded texels sample as "no data".
+	 * Needs R32F to be renderable (EXT_color_buffer_float — present wherever
+	 * the particle pass runs); without it the browser's lazy clear applies.
+	 */
+	private initValueTextureStorage(texture: WebGLTexture): void {
+		const gl = this.gl;
+		this.warmClearSupported ??= gl.getExtension('EXT_color_buffer_float') !== null;
+		if (!this.warmClearSupported) return;
+		this.warmClearFbo ??= gl.createFramebuffer();
+		if (!this.warmClearFbo) return;
+		const prevFbo = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
+		const scissor = gl.isEnabled(gl.SCISSOR_TEST);
+		const mask = gl.getParameter(gl.COLOR_WRITEMASK) as boolean[];
+		if (scissor) gl.disable(gl.SCISSOR_TEST);
+		gl.colorMask(true, true, true, true);
+		gl.bindFramebuffer(gl.FRAMEBUFFER, this.warmClearFbo);
+		gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+		if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE) {
+			gl.clearBufferfv(gl.COLOR, 0, [MISSING_SENTINEL, 0, 0, 0]);
+		}
+		gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, null, 0);
+		gl.bindFramebuffer(gl.FRAMEBUFFER, prevFbo);
+		gl.colorMask(mask[0], mask[1], mask[2], mask[3]);
+		if (scissor) gl.enable(gl.SCISSOR_TEST);
+	}
+
+	private labelTexture(
+		entry: { label?: string },
+		values: Float32Array,
+		label: string | undefined
+	): void {
+		if (!label || entry.label === label) return;
+		entry.label = label;
+		this.textureLabels.set(label, values);
+	}
+
+	private uploadValueTexture(nx: number, ny: number, data: Float32Array): WebGLTexture | null {
+		const gl = this.gl;
+		const texture = gl.createTexture();
+		if (!texture) return null;
+		gl.bindTexture(gl.TEXTURE_2D, texture);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+		// Flush pending errors so the check below attributes to this upload.
+		gl.getError();
+		gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, nx, ny, 0, gl.RED, gl.FLOAT, data);
+		if (gl.getError() !== gl.NO_ERROR) {
+			gl.deleteTexture(texture);
+			return null;
+		}
+		return texture;
+	}
+
+	/**
+	 * A draw binds up to ~9 textures fetched one after another in the same
+	 * frame; the most recent entries must survive eviction or a batch could
+	 * delete a texture it is about to bind. (targetBytes 0 = full clear.)
+	 */
+	private static readonly MIN_RESIDENT_TEXTURES = 12;
+
+	/** Evict least-recently-used value textures until at most `targetBytes` remain. */
+	private evictValueTextures(targetBytes: number): void {
+		const gl = this.gl;
+		const keepCount = targetBytes <= 0 ? 0 : WeatherGpuRenderer.MIN_RESIDENT_TEXTURES;
+		for (const [key, entry] of this.valueTextures) {
+			if (this.valueTextureBytes <= Math.max(0, targetBytes)) break;
+			if (this.valueTextures.size <= keepCount) break;
+			gl.deleteTexture(entry.texture);
+			this.valueTextureBytes -= entry.bytes;
+			this.valueTextures.delete(key);
+			if (entry.label && this.textureLabels.get(entry.label) === key) {
+				this.textureLabels.delete(entry.label);
+			}
+		}
+	}
+
+	/**
+	 * Rasterise (or reuse) the polygon clip mask for resolved clipping options.
+	 * Returns undefined when the options carry no polygons.
+	 */
+	getClipMask(clipping: ResolvedClippingOptions): GpuClipMask | undefined {
+		if (this.clipMasks.has(clipping)) return this.clipMasks.get(clipping);
+
+		const gl = this.gl;
+		let mask: GpuClipMask | undefined;
+		const source = rasterizeClipMask(clipping);
+		if (source) {
+			const texture = gl.createTexture();
+			if (texture) {
+				gl.bindTexture(gl.TEXTURE_2D, texture);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+				gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source.canvas);
+				mask = { texture, rect: source.rect };
+			}
+		}
+
+		this.clipMasks.set(clipping, mask);
+		while (this.clipMasks.size > WeatherGpuRenderer.CLIP_MASK_CACHE_MAX) {
+			const oldest = this.clipMasks.keys().next().value!;
+			const evicted = this.clipMasks.get(oldest);
+			if (evicted) gl.deleteTexture(evicted.texture);
+			this.clipMasks.delete(oldest);
+		}
+		return mask;
+	}
+
+	/** Bake (or reuse) the colour LUT texture for a scale. */
+	getLut(scale: RenderableColorScale, blend: boolean): LutHandle {
+		const key = colorLutKey(scale, blend);
+		const cached = this.lutTextures.get(key);
+		if (cached) {
+			this.lutTextures.delete(key);
+			this.lutTextures.set(key, cached);
+			return cached;
+		}
+
+		const gl = this.gl;
+		const lut = buildColorLut(scale, blend);
+		const texture = gl.createTexture();
+		if (!texture) throw new Error('gpu: could not create LUT texture');
+		const filter = blend ? gl.LINEAR : gl.NEAREST;
+		gl.bindTexture(gl.TEXTURE_2D, texture);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+		gl.texImage2D(
+			gl.TEXTURE_2D,
+			0,
+			gl.RGBA,
+			lut.data.length / 4,
+			1,
+			0,
+			gl.RGBA,
+			gl.UNSIGNED_BYTE,
+			lut.data
+		);
+
+		const handle: LutHandle = { texture, min: lut.min, max: lut.max };
+		this.lutTextures.set(key, handle);
+		if (this.lutTextures.size > WeatherGpuRenderer.LUT_CACHE_MAX) {
+			const oldestKey = this.lutTextures.keys().next().value!;
+			gl.deleteTexture(this.lutTextures.get(oldestKey)!.texture);
+			this.lutTextures.delete(oldestKey);
+		}
+		return handle;
+	}
+
+	draw(opts: GpuDrawOptions): void {
+		const gl = this.gl;
+		const layers = opts.layers;
+		const multiTemporal = layers.length > 1 && layers.every((layer) => layer.prevTexture);
+		const advect = opts.advect !== undefined && layers.length === 1;
+		const spec: FragmentShaderSpec = {
+			layers: layers.map(layerSpecOf),
+			interpolation: opts.interpolation,
+			temporal: multiTemporal,
+			contours: opts.contours !== undefined,
+			clipMask: opts.clipMask !== undefined,
+			advect
+		};
+		const projection = opts.projection;
+		const elevation = projection.elevation;
+		const info = this.getProgram(spec, projection.shaderData, elevation !== undefined);
+		const u = (name: string): WebGLUniformLocation | null => info.uniforms.get(name) ?? null;
+		const meshN = elevation?.meshN ?? WeatherGpuRenderer.MESH_N;
+		const geometry = this.getGeometry(info, meshN);
+
+		gl.useProgram(info.program);
+		gl.bindVertexArray(geometry.vao);
+
+		// Texture unit assignment: per-layer values, then the LUT and the
+		// single-layer temporal-blend texture.
+		let unit = 0;
+		const bindTexture = (name: string, texture: WebGLTexture): void => {
+			gl.activeTexture(gl.TEXTURE0 + unit);
+			gl.bindTexture(gl.TEXTURE_2D, texture);
+			gl.uniform1i(u(name), unit);
+			unit++;
+		};
+
+		for (let i = 0; i < layers.length; i++) {
+			bindTexture(layerUniformNames(i).values, layers[i].valuesTexture);
+			uploadGridLayerUniforms(gl, u, i, layers[i]);
+		}
+
+		bindTexture('u_lut', opts.lut.texture);
+		if (layers.length === 1) {
+			// A one-layer seamless composite carries its blend state per layer.
+			const prevTexture = opts.prevTexture ?? layers[0].prevTexture;
+			bindTexture('u_valuesPrev', prevTexture ?? layers[0].valuesTexture);
+			gl.uniform1f(u('u_mix'), prevTexture ? (opts.mix ?? 1) : 1);
+			if (advect && opts.advect) {
+				bindTexture('u_windU', opts.advect.uTexture);
+				bindTexture('u_windV', opts.advect.vTexture);
+				gl.uniform2f(u('u_advect'), opts.advect.prevDeg, opts.advect.nextDeg);
+			}
+		} else if (multiTemporal) {
+			for (let i = 0; i < layers.length; i++) {
+				bindTexture(`u_valuesPrev${i}`, layers[i].prevTexture!);
+			}
+			gl.uniform1f(u('u_mix'), opts.mix ?? 1);
+		}
+
+		uploadProjectionUniforms(gl, u, projection.data);
+		if (elevation) {
+			uploadElevationUniforms(gl, u, elevation, unit++);
+		}
+		const quad = unionQuad(layers.map((layer) => layer.gridUniforms.quad));
+
+		gl.uniform4f(
+			u('u_lutRange'),
+			opts.lut.min,
+			1 / (opts.lut.max - opts.lut.min),
+			0.5 / LUT_SIZE,
+			1 - 1 / LUT_SIZE
+		);
+		gl.uniform1f(u('u_halfQuantum'), opts.halfQuantum);
+		gl.uniform1f(u('u_opacity'), opts.opacity);
+
+		const contours = opts.contours;
+		if (contours) {
+			this.contourLevelScratch.fill(0);
+			this.contourLevelScratch.set(contours.levels.slice(0, 48));
+			gl.uniform1fv(u('u_contourLevels'), this.contourLevelScratch);
+			gl.uniform1i(u('u_contourCount'), Math.min(contours.levels.length, 48));
+			gl.uniform1f(u('u_contourStep'), contours.step);
+			gl.uniform1f(u('u_contourMinGap'), contours.minGap);
+			gl.uniform3f(u('u_contourColor'), ...contours.color);
+			gl.uniform4f(u('u_contourAlpha'), ...contours.classAlphas);
+			gl.uniform4f(u('u_contourWidth'), ...contours.classWidths);
+			gl.uniform3f(u('u_contourMods'), ...contours.moduli);
+			gl.uniform1f(u('u_contourOpacity'), contours.opacity);
+		}
+
+		const clip = opts.clipBounds;
+		if (clip) {
+			gl.uniform4f(u('u_clipBounds'), clip[0], clip[1], clip[2], clip[3]);
+		} else {
+			gl.uniform4f(u('u_clipBounds'), -1e9, -1e9, 1e9, 1e9);
+		}
+		if (opts.clipMask) {
+			bindTexture('u_clipMask', opts.clipMask.texture);
+			gl.uniform4f(u('u_clipMaskRect'), ...opts.clipMask.rect);
+		}
+
+		for (const offset of opts.worldOffsets ?? [0]) {
+			// Over terrain the mesh spans exactly the elevation map's rectangle
+			// (the view's terrain), whatever the data crop: a crop far larger
+			// than the view (a global grid, a seamless composite's world-wide
+			// base) would spread the mesh cells too thin to follow the relief,
+			// and the depth pre-pass (drawSurfaceDepth) must rasterize the very
+			// same triangles for its LEQUAL test to pass. The fragment shader
+			// samples by mercator position, so the quad changes nothing else.
+			// The rectangle lies in the view's world copies, hence the offset.
+			let q = quad;
+			if (elevation) {
+				q = elevationQuad(elevation.bounds, offset);
+				if (q[2] <= q[0] + 1e-9 || q[3] <= q[1] + 1e-9) continue;
+				if (q[2] <= quad[0] || q[0] >= quad[2] || q[3] <= quad[1] || q[1] >= quad[3]) continue;
+			}
+			gl.uniform4f(u('u_quad'), q[0], q[1], q[2], q[3]);
+			gl.uniform1f(u('u_worldOffset'), offset);
+			gl.drawElements(gl.TRIANGLES, geometry.indexCount, gl.UNSIGNED_INT, 0);
+		}
+
+		gl.bindVertexArray(null);
+	}
+
+	/**
+	 * Depth pre-pass of the terrain surface (see surface-target.ts): the
+	 * elevated mesh over the elevation map's rectangle, writing depth and the
+	 * ground map. Uses the colour passes' vertex shader so the rasterized
+	 * depths coincide.
+	 */
+	drawSurfaceDepth(
+		projection: NonNullable<GpuDrawOptions['projection']>,
+		worldOffsets: number[]
+	): void {
+		const elevation = projection.elevation;
+		if (!elevation) return;
+		const gl = this.gl;
+		const info = this.getDepthProgram(projection.shaderData);
+		const u = (name: string): WebGLUniformLocation | null => info.uniforms.get(name) ?? null;
+		const geometry = this.getGeometry(info, elevation.meshN);
+		gl.useProgram(info.program);
+		gl.bindVertexArray(geometry.vao);
+		uploadProjectionUniforms(gl, u, projection.data);
+		uploadElevationUniforms(gl, u, elevation, 0);
+		for (const offset of worldOffsets) {
+			const q = elevationQuad(elevation.bounds, offset);
+			if (q[2] <= q[0] + 1e-9 || q[3] <= q[1] + 1e-9) continue;
+			gl.uniform4f(u('u_quad'), q[0], q[1], q[2], q[3]);
+			gl.uniform1f(u('u_worldOffset'), offset);
+			gl.drawElements(gl.TRIANGLES, geometry.indexCount, gl.UNSIGNED_INT, 0);
+		}
+		gl.bindVertexArray(null);
+	}
+
+	/**
+	 * Visibility map of the terrain surface (see terrain-elevation.ts) into
+	 * the framebuffer currently bound: the mesh drawn flat over the elevation
+	 * map's rectangle, comparing each ground point's projected depth with the
+	 * surface depth texture (unit 1). Depth test must be off.
+	 */
+	drawSurfaceVisibility(
+		projection: NonNullable<GpuDrawOptions['projection']>,
+		depthTexture: WebGLTexture,
+		depthRange: [number, number]
+	): void {
+		const elevation = projection.elevation;
+		if (!elevation) return;
+		const gl = this.gl;
+		const info = this.getAuxProgram(
+			this.visibilityPrograms,
+			projection.shaderData,
+			`#version 300 es
+${projection.shaderData.vertexShaderPrelude}
+${projection.shaderData.define}
+${projectPointSource(true)}
+${VISIBILITY_VERTEX_BODY}`,
+			VISIBILITY_FRAGMENT
+		);
+		const u = (name: string): WebGLUniformLocation | null => info.uniforms.get(name) ?? null;
+		const geometry = this.getGeometry(info, elevation.meshN);
+		gl.useProgram(info.program);
+		gl.bindVertexArray(geometry.vao);
+		uploadProjectionUniforms(gl, u, projection.data);
+		uploadElevationUniforms(gl, u, elevation, 0);
+		gl.activeTexture(gl.TEXTURE1);
+		gl.bindTexture(gl.TEXTURE_2D, depthTexture);
+		gl.uniform1i(u('u_depth'), 1);
+		gl.uniform2f(u('u_depthRange'), depthRange[0], depthRange[1]);
+		// The rectangle already lies in the view's world copies: no offset.
+		gl.uniform4f(u('u_quad'), ...elevation.bounds);
+		gl.drawElements(gl.TRIANGLES, geometry.indexCount, gl.UNSIGNED_INT, 0);
+		gl.bindVertexArray(null);
+	}
+
+	private getDepthProgram(shaderData: ProjectionShaderData): ProgramInfo {
+		return this.getAuxProgram(
+			this.depthPrograms,
+			shaderData,
+			vertexSource(shaderData, true),
+			GROUND_FRAGMENT_SOURCE
+		);
+	}
+
+	/** Terrain helper programs, cached per projection variant. */
+	private getAuxProgram(
+		cache: Map<string, ProgramInfo>,
+		shaderData: ProjectionShaderData,
+		vertexSrc: string,
+		fragmentSrc: string
+	): ProgramInfo {
+		const key = variantKey(shaderData, true);
+		const cached = cache.get(key);
+		if (cached) return cached;
+		const info: ProgramInfo = { ...buildProgram(this.gl, vertexSrc, fragmentSrc), vaos: new Map() };
+		cache.set(key, info);
+		return info;
+	}
+
+	/**
+	 * Create a per-layer arrow instance store. The renderer may be shared by
+	 * several layers on one GL context, so instances (and their VAOs) belong to
+	 * the layer, not the renderer.
+	 */
+	createArrowInstances(): ArrowInstances {
+		const buffer = this.gl.createBuffer();
+		if (!buffer) throw new Error('gpu: could not create arrow instance buffer');
+		return { buffer, capacityBytes: 0, count: 0, vaos: new Map() };
+	}
+
+	deleteArrowInstances(instances: ArrowInstances): void {
+		const gl = this.gl;
+		gl.deleteBuffer(instances.buffer);
+		for (const vao of instances.vaos.values()) gl.deleteVertexArray(vao);
+		instances.vaos.clear();
+		instances.count = 0;
+	}
+
+	/**
+	 * Upload the instanced arrow states (ARROW_INSTANCE_FLOATS per arrow). The
+	 * buffer persists; call once per data/viewport change, not per frame.
+	 */
+	setArrowInstances(instances: ArrowInstances, data: Float32Array): void {
+		const gl = this.gl;
+		gl.bindBuffer(gl.ARRAY_BUFFER, instances.buffer);
+		if (data.byteLength > instances.capacityBytes) {
+			gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+			instances.capacityBytes = data.byteLength;
+		} else {
+			gl.bufferSubData(gl.ARRAY_BUFFER, 0, data);
+		}
+		instances.count = data.length / ARROW_INSTANCE_FLOATS;
+	}
+
+	/** Draw an arrow instance store as a screen-space overlay pass. */
+	drawArrows(opts: {
+		instances: ArrowInstances;
+		projection: GpuDrawOptions['projection'];
+		/** Icon box size in pixels. */
+		sizePx: number;
+		/** Stroke RGB 0..1. */
+		color: [number, number, number];
+		opacity: number;
+		/** Temporal blend factor between the instances' prev/cur states. */
+		mix: number;
+		/** Fractional zoom gating the anchors' visibility thresholds. */
+		zoomFrac: number;
+		/** Drawing buffer size in CSS pixels. */
+		viewport: [number, number];
+		/** Flat-mercator screen length of the shader's foreshortening probe step. */
+		refStepPx: number;
+		worldOffsets?: number[];
+	}): void {
+		const instances = opts.instances;
+		if (instances.count === 0) return;
+		const gl = this.gl;
+		const { shaderData, data, elevation } = opts.projection;
+		const info = this.getArrowProgram(shaderData, elevation !== undefined);
+		const u = (name: string): WebGLUniformLocation | null => info.uniforms.get(name) ?? null;
+
+		gl.useProgram(info.program);
+		gl.bindVertexArray(this.getArrowVao(instances, shaderData, elevation !== undefined));
+
+		uploadProjectionUniforms(gl, u, data);
+		if (elevation) uploadElevationUniforms(gl, u, elevation, 0);
+
+		gl.uniform1f(u('u_mix'), opts.mix);
+		gl.uniform1f(u('u_zoomFrac'), opts.zoomFrac);
+		gl.uniform1f(u('u_sizePx'), opts.sizePx);
+		gl.uniform2f(u('u_viewport'), opts.viewport[0], opts.viewport[1]);
+		gl.uniform1f(u('u_refStepPx'), opts.refStepPx);
+		gl.uniform3f(u('u_color'), opts.color[0], opts.color[1], opts.color[2]);
+		gl.uniform1f(u('u_opacity'), opts.opacity);
+
+		for (const offset of opts.worldOffsets ?? [0]) {
+			gl.uniform1f(u('u_worldOffset'), offset);
+			if (elevation) uploadSurfaceQuad(gl, u, elevation, offset);
+			gl.drawArraysInstanced(gl.TRIANGLES, 0, ARROW_TEMPLATE.length / 3, instances.count);
+		}
+
+		gl.bindVertexArray(null);
+	}
+
+	dispose(): void {
+		const gl = this.gl;
+		for (const { texture } of this.valueTextures.values()) gl.deleteTexture(texture);
+		this.valueTextures.clear();
+		this.textureLabels.clear();
+		this.valueTextureBytes = 0;
+		for (const { texture } of this.lutTextures.values()) gl.deleteTexture(texture);
+		this.lutTextures.clear();
+		for (const mask of this.clipMasks.values()) {
+			if (mask) gl.deleteTexture(mask.texture);
+		}
+		this.clipMasks.clear();
+		for (const { program, vaos } of [
+			...this.programs.values(),
+			...this.depthPrograms.values(),
+			...this.visibilityPrograms.values()
+		]) {
+			gl.deleteProgram(program);
+			for (const { vao } of vaos.values()) gl.deleteVertexArray(vao);
+		}
+		this.programs.clear();
+		this.depthPrograms.clear();
+		this.visibilityPrograms.clear();
+		for (const { program } of this.arrowPrograms.values()) {
+			gl.deleteProgram(program);
+		}
+		this.arrowPrograms.clear();
+		for (const mesh of this.meshBuffers.values()) {
+			gl.deleteBuffer(mesh.vertices);
+			gl.deleteBuffer(mesh.indices);
+		}
+		this.meshBuffers.clear();
+		if (this.arrowTemplateBuffer) {
+			gl.deleteBuffer(this.arrowTemplateBuffer);
+			this.arrowTemplateBuffer = null;
+		}
+		if (this.warmClearFbo) {
+			gl.deleteFramebuffer(this.warmClearFbo);
+			this.warmClearFbo = null;
+		}
+	}
+
+	/**
+	 * Subdivision of the quad for projectTile variants: the globe projection is
+	 * non-linear, so the rectangle must be a mesh to curve around the sphere.
+	 * 128 cells across the whole world keep the silhouette smooth at low zoom.
+	 * Terrain draws pick a denser mesh per view (GpuElevationMap.meshN).
+	 */
+	private static readonly MESH_N = 128;
+
+	private getMeshBuffers(n: number): {
+		vertices: WebGLBuffer;
+		indices: WebGLBuffer;
+		indexCount: number;
+	} {
+		const cached = this.meshBuffers.get(n);
+		if (cached) return cached;
+		const gl = this.gl;
+
+		const vertices = new Float32Array((n + 1) * (n + 1) * 2);
+		let k = 0;
+		for (let j = 0; j <= n; j++) {
+			for (let i = 0; i <= n; i++) {
+				vertices[k++] = i / n;
+				vertices[k++] = j / n;
+			}
+		}
+		const indices = new Uint32Array(n * n * 6);
+		k = 0;
+		for (let j = 0; j < n; j++) {
+			for (let i = 0; i < n; i++) {
+				const a = j * (n + 1) + i;
+				const b = a + 1;
+				const c = a + n + 1;
+				const d = c + 1;
+				indices[k++] = a;
+				indices[k++] = c;
+				indices[k++] = b;
+				indices[k++] = b;
+				indices[k++] = c;
+				indices[k++] = d;
+			}
+		}
+
+		const vertexBuffer = gl.createBuffer();
+		const indexBuffer = gl.createBuffer();
+		if (!vertexBuffer || !indexBuffer) throw new Error('gpu: could not create mesh buffers');
+		gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+		gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+		gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+		const mesh = { vertices: vertexBuffer, indices: indexBuffer, indexCount: k };
+		this.meshBuffers.set(n, mesh);
+		return mesh;
+	}
+
+	private getProgram(
+		spec: FragmentShaderSpec,
+		shaderData: ProjectionShaderData,
+		elevated: boolean
+	): ProgramInfo {
+		const key = `${shaderKey(spec)}|${variantKey(shaderData, elevated)}`;
+		const cached = this.programs.get(key);
+		if (cached) return cached;
+
+		// Active uniforms are enumerated by buildProgram: the per-layer uniform
+		// set varies per shader variant, so a fixed name list would not fit.
+		const info: ProgramInfo = {
+			...buildProgram(this.gl, vertexSource(shaderData, elevated), fragmentSource(spec)),
+			vaos: new Map()
+		};
+		this.programs.set(key, info);
+		return info;
+	}
+
+	/** The program's VAO for a mesh density. */
+	private getGeometry(
+		info: ProgramInfo,
+		meshN: number
+	): { vao: WebGLVertexArrayObject; indexCount: number } {
+		const cached = info.vaos.get(meshN);
+		if (cached) return cached;
+		const gl = this.gl;
+		const vao = gl.createVertexArray();
+		if (!vao) throw new Error('gpu: could not create VAO');
+		gl.bindVertexArray(vao);
+		const mesh = this.getMeshBuffers(meshN);
+		gl.bindBuffer(gl.ARRAY_BUFFER, mesh.vertices);
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, mesh.indices);
+		const aUv = gl.getAttribLocation(info.program, 'a_uv');
+		gl.enableVertexAttribArray(aUv);
+		gl.vertexAttribPointer(aUv, 2, gl.FLOAT, false, 0, 0);
+		gl.bindVertexArray(null);
+		const geometry = { vao, indexCount: mesh.indexCount };
+		info.vaos.set(meshN, geometry);
+		return geometry;
+	}
+
+	private getArrowProgram(
+		shaderData: ProjectionShaderData,
+		elevated: boolean
+	): {
+		program: WebGLProgram;
+		uniforms: Map<string, WebGLUniformLocation>;
+	} {
+		const key = variantKey(shaderData, elevated);
+		const cached = this.arrowPrograms.get(key);
+		if (cached) return cached;
+
+		const info = buildProgram(
+			this.gl,
+			arrowVertexSource(shaderData, elevated),
+			ARROW_FRAGMENT_SOURCE,
+			'gpu arrows'
+		);
+		this.arrowPrograms.set(key, info);
+		return info;
+	}
+
+	/** VAO tying a layer's instance buffer to the projection variant's program. */
+	private getArrowVao(
+		instances: ArrowInstances,
+		shaderData: ProjectionShaderData,
+		elevated: boolean
+	): WebGLVertexArrayObject {
+		const key = variantKey(shaderData, elevated);
+		const cached = instances.vaos.get(key);
+		if (cached) return cached;
+
+		const gl = this.gl;
+		const { program } = this.getArrowProgram(shaderData, elevated);
+		if (!this.arrowTemplateBuffer) {
+			const buffer = gl.createBuffer();
+			if (!buffer) throw new Error('gpu: could not create arrow template buffer');
+			gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+			gl.bufferData(gl.ARRAY_BUFFER, ARROW_TEMPLATE, gl.STATIC_DRAW);
+			this.arrowTemplateBuffer = buffer;
+		}
+
+		const vao = gl.createVertexArray();
+		if (!vao) throw new Error('gpu: could not create arrow VAO');
+		gl.bindVertexArray(vao);
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.arrowTemplateBuffer);
+		const aTemplate = gl.getAttribLocation(program, 'a_template');
+		gl.enableVertexAttribArray(aTemplate);
+		gl.vertexAttribPointer(aTemplate, 3, gl.FLOAT, false, 0, 0);
+
+		// Per-instance state: anchor + previous/current samples + alphas.
+		gl.bindBuffer(gl.ARRAY_BUFFER, instances.buffer);
+		const stride = ARROW_INSTANCE_FLOATS * 4;
+		const instanceAttribute = (name: string, size: number, offsetFloats: number): void => {
+			const location = gl.getAttribLocation(program, name);
+			if (location < 0) return;
+			gl.enableVertexAttribArray(location);
+			gl.vertexAttribPointer(location, size, gl.FLOAT, false, stride, offsetFloats * 4);
+			gl.vertexAttribDivisor(location, 1);
+		};
+		instanceAttribute('a_anchor', 2, 0);
+		instanceAttribute('a_prev', 4, 2);
+		instanceAttribute('a_cur', 4, 6);
+		instanceAttribute('a_alpha', 2, 10);
+		instanceAttribute('a_threshold', 1, 12);
+		gl.bindVertexArray(null);
+
+		instances.vaos.set(key, vao);
+		return vao;
+	}
+}
+
+/** Union of mercator quads (top-left / bottom-right convention). */
+const unionQuad = (quads: [number, number, number, number][]): [number, number, number, number] => {
+	let x0 = Infinity;
+	let y0 = Infinity;
+	let x1 = -Infinity;
+	let y1 = -Infinity;
+	for (const [qx0, qy0, qx1, qy1] of quads) {
+		x0 = Math.min(x0, qx0);
+		y0 = Math.min(y0, qy0);
+		x1 = Math.max(x1, qx1);
+		y1 = Math.max(y1, qy1);
+	}
+	return [x0, y0, x1, y1];
+};

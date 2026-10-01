@@ -134,16 +134,30 @@ export const getOrCreateState = (
 	stateKey: string,
 	dataOptions: DataIdentityOptions,
 	omFileUrl: string,
-	maxStatesWithData: number = DEFAULT_MAX_STATES_WITH_DATA
+	maxStatesWithData: number = DEFAULT_MAX_STATES_WITH_DATA,
+	/**
+	 * Reuse an existing state only when its crop bounds are exactly the
+	 * requested ones. The default included-bounds reuse is right for
+	 * rendering (a larger crop covers the view), but the GPU temporal blend
+	 * re-resolves the outgoing frame to match the incoming frame's grid
+	 * geometry exactly — a zoomed-in view reusing the old, larger crop there
+	 * fails the geometry check and degrades every morph into a crossfade.
+	 */
+	exactCrop = false
 ): OmUrlState => {
 	const existingState = stateByKey.get(stateKey);
 	if (existingState) {
-		if (existingState.dataOptions.bounds && dataOptions.bounds) {
-			if (boundsIncluded(dataOptions.bounds, existingState.dataOptions.bounds)) {
+		const existingBounds = existingState.dataOptions.bounds;
+		const requestedBounds = dataOptions.bounds;
+		if (existingBounds && requestedBounds) {
+			const reusable = exactCrop
+				? existingBounds.every((value, i) => value === requestedBounds[i])
+				: boundsIncluded(requestedBounds, existingBounds);
+			if (reusable) {
 				touchState(stateByKey, stateKey, existingState);
 				return existingState;
 			}
-		} else if (existingState.dataOptions.bounds === undefined && dataOptions.bounds === undefined) {
+		} else if (existingBounds === undefined && requestedBounds === undefined) {
 			touchState(stateByKey, stateKey, existingState);
 			return existingState;
 		}
