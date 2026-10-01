@@ -10,6 +10,8 @@ import { createSamplers } from './utils/samplers';
 import { makeColorSampler } from './utils/styling';
 import { generateWindBarbs } from './utils/wind-barbs';
 
+import { acceptGpuTile, cancelGpuTile } from './gpu/tile-worker';
+
 import type { WorkerRequest } from './types';
 
 self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => {
@@ -17,6 +19,7 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 
 	// Handle cancellation messages
 	if (message.data.type === 'cancel') {
+		cancelGpuTile(key);
 		postMessage({ type: 'cancelled', key });
 		return;
 	}
@@ -24,6 +27,9 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 	const { z, x, y } = message.data.tileIndex;
 	const { tileSize, interpolation, colorBlend, colorScale } = message.data.renderOptions;
 	const clippingOptions = message.data.clippingOptions;
+
+	// GPU-flagged raster tiles skip the pixel loop (unless the worker has no WebGL2)
+	if (acceptGpuTile(message.data)) return;
 
 	// The domains the tile is rendered from, finest-first: at any point the
 	// finest one with data there wins. A plain request has a single layer.
