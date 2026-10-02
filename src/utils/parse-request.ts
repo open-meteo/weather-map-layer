@@ -1,4 +1,8 @@
-import { variableSupportsBarbs } from '../om-file-reader';
+import {
+	type VariableDerivationRule,
+	defaultDerivationRules,
+	variableSupportsBarbs
+} from '../om-file-reader';
 
 import { currentBounds, setClippingBounds } from './bounds';
 import { type ResolvedClippingOptions, resolveClippingOptions } from './clipping';
@@ -74,7 +78,8 @@ export const defaultResolveRequest = (
 	const renderOptions = defaultResolveRenderOptions(
 		urlComponents,
 		dataOptions,
-		settings.colorScales
+		settings.colorScales,
+		settings.fileReaderConfig.derivationRules ?? defaultDerivationRules
 	);
 
 	return { dataOptions, renderOptions };
@@ -109,7 +114,8 @@ const defaultResolveDataIdentity = (
 const defaultResolveRenderOptions = (
 	urlComponents: ParsedUrlComponents,
 	dataOptions: DataIdentityOptions,
-	colorScales: ColorScales
+	colorScales: ColorScales,
+	derivationRules: VariableDerivationRule[]
 ): RenderOptions => {
 	const { params } = urlComponents;
 
@@ -142,7 +148,7 @@ const defaultResolveRenderOptions = (
 	// Barbs encode knots, so a variable whose directions come with another
 	// quantity (waves, currents) is drawn with arrows whatever was requested
 	const arrowStyle =
-		requestedArrowStyle === 'barb' && !variableSupportsBarbs(dataOptions.variable)
+		requestedArrowStyle === 'barb' && !variableSupportsBarbs(dataOptions.variable, derivationRules)
 			? 'arrow'
 			: requestedArrowStyle;
 	const drawContours = params.get('contours') === 'true';

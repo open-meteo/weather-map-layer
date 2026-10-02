@@ -214,6 +214,42 @@ maplibregl.addProtocol('om', (params, abortController) =>
 
 An example implementation with a useful case is available in the `examples/callbacks` sub-directory.
 
+### Derivation rules
+
+Some variables are not stored in the `.om` files but computed while reading them: wind speed and direction come from the `u`/`v` components, wave height is paired with the wave direction. Each of these is a derivation rule, matching the requested variable name and listing the variables it is read from. The defaults are exported as `defaultDerivationRules`; own rules are passed through `fileReaderConfig`:
+
+```ts
+// `snowfall` is not in the files: the models provide its water equivalent in
+// mm, which becomes cm of fresh snow with a fixed 0.7 factor.
+const snowfallRule = {
+	pattern: /^snowfall$/,
+	provides: { directions: false, barbs: false },
+	// The water equivalent is stored in 0.1 mm steps, so snowfall lands on a
+	// 0.07 cm grid: colour and contour thresholds are offset by half of that.
+	scaleFactor: 1 / 0.07,
+	getSourceVars: () => ['snowfall_water_equivalent'],
+	process: ([waterEquivalent]) => ({
+		values: waterEquivalent.map((mm) => mm * 0.7),
+		directions: undefined
+	})
+};
+
+const omProtocolOptions = OMWeatherMapLayer.defaultOmProtocolSettings;
+omProtocolOptions.fileReaderConfig = {
+	...omProtocolOptions.fileReaderConfig,
+	// The first matching rule wins, so own rules go in front of the defaults.
+	derivationRules: [snowfallRule, ...OMWeatherMapLayer.defaultDerivationRules]
+};
+```
+
+A layer can then request `variable=snowfall`, and the protocol reads `snowfall_water_equivalent` for it. A rule lists as many source variables as it needs: a single one to convert units, two for the `u`/`v` pairs, more to combine fields. They all have to live in the same file and share its dimensions, and `process` receives their data in the order `getSourceVars` returns.
+
+`provides` is declared up front because it is needed before any data is read: `directions: true` makes a variable eligible for arrows, and `barbs: true` additionally marks its values as a wind speed, since barbs encode knots. Both are also queried through `variableHasDirections(variable, rules)` and `variableSupportsBarbs(variable, rules)`, for a UI that offers arrow styles.
+
+Since the rules replace the defaults rather than extending them, leaving out `defaultDerivationRules` is how a default rule is dropped. The list is read once, when the protocol creates its shared file reader, so it has to be set before the first tile request.
+
+- `examples/custom-derivation-rules.html` – derives snowfall in cm from the stored water equivalent.
+
 ### Clipping
 
 To restrict weather data to a geometric boundary, the clipping parameters can be supplied during the instantiation of the omProtocol.
