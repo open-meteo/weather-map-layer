@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Weather Map Layer - Custom Derivation Rules Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.css" />
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<script type="module">
+			import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.mjs';
+
+			const OMWeatherMapLayer = await import(
+				location.hostname === 'localhost'
+					? '../dist/index.mjs' // local development
+					: 'https://unpkg.com/@openmeteo/weather-map-layer@0.2.1/dist/index.mjs' // x-release-please-version
+			);
+
+			// `snowfall` is not stored in the files; the models provide its water
+			// equivalent in mm, which the Open-Meteo API turns into cm of fresh snow
+			// with a fixed 0.7 factor. A derivation rule does the same for the map,
+			// so a layer can request `variable=snowfall`.
+			const snowfallRule = {
+				pattern: /^snowfall$/,
+				provides: { directions: false, barbs: false },
+				// The water equivalent is stored in 0.1 mm steps, so snowfall lands on
+				// a 0.07 cm grid: colour and contour thresholds are offset by half of
+				// that.
+				scaleFactor: 1 / 0.07,
+				getSourceVars: () => ['snowfall_water_equivalent'],
+				process: ([waterEquivalent]) => ({
+					values: waterEquivalent.map((mm) => mm * 0.7),
+					directions: undefined
+				})
+			};
+
+			const settings = OMWeatherMapLayer.defaultOmProtocolSettings;
+			// Own rules first, the defaults behind them, so wind components and wave
+			// directions keep deriving as usual.
+			settings.fileReaderConfig = {
+				...settings.fileReaderConfig,
+				derivationRules: [snowfallRule, ...OMWeatherMapLayer.defaultDerivationRules]
+			};
+			// A derived variable has no colour scale of its own: reuse the one of the
+			// variable it comes from.
+			settings.colorScales = {
+				...settings.colorScales,
+				snowfall: { ...settings.colorScales['snowfall_water_equivalent'], unit: 'cm' }
+			};
+
+			maplibregl.addProtocol('om', (params, abortController) =>
+				OMWeatherMapLayer.omProtocol(params, abortController, settings)
+			);
+
+			const map = new maplibregl.Map({
+				container: 'map',
+				style: 'https://static-assets.open-meteo.com/map-assets/styles/minimal-planet-maps.json', // replace with your own style sheet
+				hash: true
+			});
+
+			const omUrl = `https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=snowfall`;
+
+			map.on('load', () => {
+				map.addSource('omFileSource', {
+					url: 'om://' + omUrl,
+					type: 'raster',
+					maxzoom: 12
+				});
+
+				map.addLayer(
+					{
+						id: 'omFileLayer',
+						type: 'raster',
+						source: 'omFileSource',
+						paint: {
+							'raster-opacity': 0.75
+						}
+					},
+					'waterway-tunnel'
+				);
+			});
+		</script>
+	</body>
+</html>

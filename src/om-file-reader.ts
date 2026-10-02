@@ -34,9 +34,25 @@ export interface FileReaderConfig {
 	 * If omitted, falls back to an in-memory LruBlockCache.
 	 */
 	cache?: BlockCache<string | bigint>;
+
+	/**
+	 * Rules deriving a requested variable from the variables actually stored in
+	 * the file (wind speed from u/v components, snowfall from its water
+	 * equivalent). The first rule whose pattern matches wins, so the list
+	 * replaces the defaults rather than extending them: spread
+	 * `defaultDerivationRules` to keep them.
+	 *
+	 * Read once, when the protocol builds its shared reader: like the other
+	 * `fileReaderConfig` fields, later changes are ignored.
+	 *
+	 * @default defaultDerivationRules
+	 */
+	derivationRules?: VariableDerivationRule[];
 }
 
-export const defaultFileReaderConfig: Required<Omit<FileReaderConfig, 'cache'>> = {
+export const defaultFileReaderConfig: Required<
+	Omit<FileReaderConfig, 'cache' | 'derivationRules'>
+> = {
 	useSAB: typeof SharedArrayBuffer !== 'undefined',
 	retries: 2,
 	eTagValidation: false
@@ -47,8 +63,8 @@ export const defaultFileReaderConfig: Required<Omit<FileReaderConfig, 'cache'>> 
  */
 export class WeatherMapLayerFileReader {
 	readonly cache: BlockCache;
-	readonly config: Required<Omit<FileReaderConfig, 'cache'>>;
-	private readonly allDerivationRules: VariableDerivationRule[];
+	readonly config: Required<Omit<FileReaderConfig, 'cache' | 'derivationRules'>>;
+	readonly derivationRules: VariableDerivationRule[];
 	/** Memoizes one backend per URL, so repeat reads skip the HEAD request. */
 	private readonly backendPool: OmHttpBackendPool;
 
@@ -58,8 +74,7 @@ export class WeatherMapLayerFileReader {
 			...config
 		};
 
-		// TODO: This could be a combination of user-defined and default derivation rules
-		this.allDerivationRules = DEFAULT_DERIVATION_RULES;
+		this.derivationRules = config.derivationRules ?? defaultDerivationRules;
 
 		// Use the injected cache, or fall back to an in-memory LRU cache
 		this.cache = config.cache ?? new LruBlockCache(64 * 1024, 128);
@@ -102,36 +117,35 @@ export class WeatherMapLayerFileReader {
 		ranges: DimensionRange[] | null,
 		signal?: AbortSignal
 	): Promise<Data> {
-		const [primaryVar, secondaryVar] = rule.getSourceVars(variable);
+		const sourceVars = rule.getSourceVars(variable);
+		if (sourceVars.length === 0) {
+			throw new Error(`Derivation rule for ${variable} returned no source variables`);
+		}
 
 		// Get readers for source variables (each can hit the network for its
 		// metadata block, so resolve them concurrently). allSettled rather than
 		// all, so a child created by one lookup still reaches the cleanup below
-		// when its sibling lookup rejects.
-		const [primaryResult, secondaryResult] = await Promise.allSettled([
-			reader.getChildByName(primaryVar),
-			reader.getChildByName(secondaryVar)
-		]);
-		const primaryReader = primaryResult.status === 'fulfilled' ? primaryResult.value : undefined;
-		const secondaryReader =
-			secondaryResult.status === 'fulfilled' ? secondaryResult.value : undefined;
+		// when a sibling lookup rejects.
+		const results = await Promise.allSettled(
+			sourceVars.map((sourceVar) => reader.getChildByName(sourceVar))
+		);
+		const sourceReaders = results.map((result) =>
+			result.status === 'fulfilled' ? result.value : undefined
+		);
 
 		try {
-			if (primaryResult.status === 'rejected') {
-				throw primaryResult.reason;
-			}
-			if (secondaryResult.status === 'rejected') {
-				throw secondaryResult.reason;
-			}
-			if (!primaryReader) {
-				throw new Error(`Primary variable ${primaryVar} not found`);
-			}
-			if (!secondaryReader) {
-				throw new Error(`Secondary variable ${secondaryVar} not found`);
-			}
+			results.forEach((result, i) => {
+				if (result.status === 'rejected') {
+					throw result.reason;
+				}
+				if (!result.value) {
+					throw new Error(`Source variable ${sourceVars[i]} not found`);
+				}
+			});
 
-			// Read data
-			const dimensions = primaryReader.getDimensions();
+			// The first source variable defines the read geometry; a rule combines
+			// variables of one file, which share their dimensions.
+			const dimensions = sourceReaders[0]!.getDimensions();
 			const readRanges = this.getRanges(ranges, dimensions);
 			const readOptions: OmFileReadOptions<OmDataType.FloatArray> = {
 				type: OmDataType.FloatArray,
@@ -140,27 +154,26 @@ export class WeatherMapLayerFileReader {
 				signal
 			};
 
-			const primaryPromise = primaryReader.read(readOptions);
-			const secondaryPromise = secondaryReader.read(readOptions);
-			const [primaryData, secondaryData] = await Promise.all([primaryPromise, secondaryPromise]);
+			const sourceData = await Promise.all(
+				sourceReaders.map((sourceReader) => sourceReader!.read(readOptions))
+			);
 
 			// Process using the rule
-			const data = rule.process(primaryData, secondaryData);
+			const data = rule.process(sourceData);
 
 			// Every derivation rule defines its quantization scale factor so the
 			// half-quantum threshold offset is always available. `'primary'` inherits
-			// the primary source variable's stored scale factor — exact when `values`
-			// is the primary passed through unchanged (speed/direction, wave), and a
+			// the first source variable's stored scale factor — exact when `values`
+			// is that variable passed through unchanged (speed/direction, wave), and a
 			// good proxy for derived magnitudes (wind speed from u/v).
 			data.scaleFactor =
-				rule.scaleFactor === 'primary' ? primaryReader.scaleFactor() : rule.scaleFactor;
+				rule.scaleFactor === 'primary' ? sourceReaders[0]!.scaleFactor() : rule.scaleFactor;
 
 			return data;
 		} finally {
 			// Child readers hold their own wasm allocations; disposing the scoped
 			// root reader does not free them.
-			primaryReader?.dispose();
-			secondaryReader?.dispose();
+			sourceReaders.forEach((sourceReader) => sourceReader?.dispose());
 		}
 	}
 
@@ -214,7 +227,7 @@ export class WeatherMapLayerFileReader {
 		signal?: AbortSignal
 	): Promise<Data> {
 		return this.withReader(omUrl, (reader) => {
-			const derivationRule = findDerivationRule(variable, this.allDerivationRules);
+			const derivationRule = findDerivationRule(variable, this.derivationRules);
 
 			if (derivationRule) {
 				return this.readWithDerivationRule(reader, variable, derivationRule, ranges, signal);
@@ -236,7 +249,7 @@ export class WeatherMapLayerFileReader {
 		signal?: AbortSignal
 	): Promise<void> {
 		await this.withReader(omUrl, async (reader) => {
-			const derivationRule = findDerivationRule(variable, this.allDerivationRules);
+			const derivationRule = findDerivationRule(variable, this.derivationRules);
 			const varsToPrefetch = derivationRule ? derivationRule.getSourceVars(variable) : [variable];
 
 			await Promise.all(
@@ -279,7 +292,7 @@ export class WeatherMapLayerFileReader {
 }
 
 /**
- * Rule for deriving values and directions from one or two source variables.
+ * Rule for deriving values and directions from the variables stored in a file.
  */
 export interface VariableDerivationRule {
 	/** Pattern to match variable names (string or RegExp) */
@@ -294,23 +307,26 @@ export interface VariableDerivationRule {
 	 */
 	provides: { directions: boolean; barbs: boolean };
 
-	/** Derive two variables from the requested variable. */
-	getSourceVars: (variable: string) => [string, string];
+	/**
+	 * Names of the variables in the file that the requested variable is derived
+	 * from, in the order `process` expects them. All of them must exist in the
+	 * file, and they must share their dimensions.
+	 */
+	getSourceVars: (variable: string) => string[];
 
 	/**
 	 * Quantization scale factor of the derived `values`, so a half-quantum
-	 * threshold offset can be applied. `'primary'` uses the primary source
+	 * threshold offset can be applied. `'primary'` uses the first source
 	 * variable's stored scale factor; a number sets a fixed factor.
 	 */
 	scaleFactor: number | 'primary';
 
 	/**
-	 * Process the raw data from source variables into values and directions.
-	 * @param primary - Data from the primary source variable
-	 * @param secondary - Data from the secondary source variable
+	 * Process the raw data from the source variables into values and directions.
+	 * @param sources - Data per source variable, in `getSourceVars` order
 	 * @returns Data object with values and optional directions
 	 */
-	process: (primary: Float32Array, secondary: Float32Array) => Data;
+	process: (sources: Float32Array[]) => Data;
 }
 
 /** First rule whose pattern matches the variable name, if any. */
@@ -329,7 +345,7 @@ const findDerivationRule = (
  */
 export const variableHasDirections = (
 	variable: string,
-	rules: VariableDerivationRule[] = DEFAULT_DERIVATION_RULES
+	rules: VariableDerivationRule[] = defaultDerivationRules
 ): boolean => findDerivationRule(variable, rules)?.provides.directions ?? false;
 
 /**
@@ -338,11 +354,11 @@ export const variableHasDirections = (
  */
 export const variableSupportsBarbs = (
 	variable: string,
-	rules: VariableDerivationRule[] = DEFAULT_DERIVATION_RULES
+	rules: VariableDerivationRule[] = defaultDerivationRules
 ): boolean => findDerivationRule(variable, rules)?.provides.barbs ?? false;
 
 /** Vector magnitude and meteorological direction from u/v components. */
-const uvToSpeedAndDirection = (u: Float32Array, v: Float32Array): Data => {
+const uvToSpeedAndDirection = ([u, v]: Float32Array[]): Data => {
 	const BufferConstructor = u.buffer.constructor as typeof ArrayBuffer;
 	const values = new Float32Array(new BufferConstructor(u.byteLength));
 	const directions = new Float32Array(new BufferConstructor(u.byteLength));
@@ -370,9 +386,11 @@ const uvRule = (postfix: string, barbs: boolean): VariableDerivationRule => ({
 });
 
 /**
- * Default derivation rules for common meteorological variables.
+ * Default derivation rules for common meteorological variables. Spread into a
+ * custom `fileReaderConfig.derivationRules` list to keep them alongside own
+ * rules.
  */
-const DEFAULT_DERIVATION_RULES: VariableDerivationRule[] = [
+export const defaultDerivationRules: VariableDerivationRule[] = [
 	// Wind components -> speed and direction
 	uvRule('component', true),
 
@@ -388,7 +406,7 @@ const DEFAULT_DERIVATION_RULES: VariableDerivationRule[] = [
 			variable.includes('_speed_') ? variable : variable.replace('_direction_', '_speed_'),
 			variable.includes('_direction_') ? variable : variable.replace('_speed_', '_direction_')
 		],
-		process: (speed: Float32Array, direction: Float32Array) => ({
+		process: ([speed, direction]: Float32Array[]) => ({
 			values: speed,
 			directions: direction
 		})
@@ -403,7 +421,7 @@ const DEFAULT_DERIVATION_RULES: VariableDerivationRule[] = [
 			variable.replace('wave_direction', 'wave_height'),
 			variable.replace('wave_height', 'wave_direction')
 		],
-		process: (height: Float32Array, direction: Float32Array) => ({
+		process: ([height, direction]: Float32Array[]) => ({
 			values: height,
 			directions: direction
 		})
