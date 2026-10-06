@@ -158,3 +158,36 @@ describe('custom derivation rules', () => {
 		expect(u.disposed && v.disposed).toBe(true);
 	});
 });
+
+describe('humidity-derived default rules', () => {
+	it('derives apparent temperature from five stored fields', async () => {
+		file.set('temperature_2m', new FakeVariable([30, 0], 20));
+		file.set('relative_humidity_2m', new FakeVariable([70, 50], 1));
+		file.set('wind_u_component_10m', new FakeVariable([3, 6], 10));
+		file.set('wind_v_component_10m', new FakeVariable([4, 8], 10));
+		file.set('shortwave_radiation', new FakeVariable([800, 0], 1));
+
+		const data = await createReader().readVariable('file.om', 'apparent_temperature');
+
+		expect(data.values?.[0]).toBeCloseTo(34.699, 2);
+		expect(data.values?.[1]).toBeCloseTo(-8.438, 2);
+		expect(data.directions).toBeUndefined();
+		// `'primary'`: the air temperature's stored factor
+		expect(data.scaleFactor).toBe(20);
+		expect(variableHasDirections('apparent_temperature')).toBe(false);
+	});
+
+	it('derives vapour pressure deficit and wet-bulb temperature from temperature and humidity', async () => {
+		file.set('temperature_2m', new FakeVariable([25, 30], 20));
+		file.set('relative_humidity_2m', new FakeVariable([60, 70], 1));
+		const reader = createReader();
+
+		const deficit = await reader.readVariable('file.om', 'vapour_pressure_deficit');
+		expect(deficit.values?.[0]).toBeCloseTo(1.267, 2);
+		expect(deficit.scaleFactor).toBe(100);
+
+		const wetBulb = await reader.readVariable('file.om', 'wet_bulb_temperature_2m');
+		expect(wetBulb.values?.[1]).toBeCloseTo(25.596, 2);
+		expect(wetBulb.scaleFactor).toBe(20);
+	});
+});

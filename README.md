@@ -216,7 +216,7 @@ An example implementation with a useful case is available in the `examples/callb
 
 ### Derivation rules
 
-Some variables are not stored in the `.om` files but computed while reading them: wind speed and direction come from the `u`/`v` components, wave height is paired with the wave direction. Each of these is a derivation rule, matching the requested variable name and listing the variables it is read from. The defaults are exported as `defaultDerivationRules`; own rules are passed through `fileReaderConfig`:
+Some variables are not stored in the `.om` files but computed while reading them: wind speed and direction come from the `u`/`v` components, wave height is paired with the wave direction, and `vapour_pressure_deficit`, `wet_bulb_temperature_2m` and `apparent_temperature` are computed from the 2 m temperature and relative humidity with the formulas of the Open-Meteo API, the last one also from the 10 m `u`/`v` wind and `shortwave_radiation`. A derived variable is only available where all of its sources are stored. Each of these is a derivation rule, matching the requested variable name and listing the variables it is read from. The defaults are exported as `defaultDerivationRules`; own rules are passed through `fileReaderConfig`:
 
 ```ts
 // `snowfall` is not in the files: the models provide its water equivalent in

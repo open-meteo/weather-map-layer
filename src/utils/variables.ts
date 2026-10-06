@@ -16,6 +16,7 @@ export const variableOptions = [
 	{ value: 'alder_pollen', label: 'Alder Pollen' },
 
 	{ value: 'ammonia', label: 'Ammonia' },
+	{ value: 'apparent_temperature', label: 'Apparent Temperature' },
 
 	{ value: 'birch_pollen', label: 'Birch Pollen' },
 
@@ -228,6 +229,7 @@ export const variableOptions = [
 
 	{ value: 'uv_index', label: 'UV Index' },
 	{ value: 'uv_index_clear_sky', label: 'UV Index Clear Sky' },
+	{ value: 'vapour_pressure_deficit', label: 'Vapour Pressure Deficit' },
 
 	{ value: 'visibility', label: 'Visibility' },
 
@@ -241,6 +243,7 @@ export const variableOptions = [
 	{ value: 'wave_peak_period_spread', label: 'Wave Peak Period Spread' },
 
 	{ value: 'weather_code', label: 'Weather Codes' },
+	{ value: 'wet_bulb_temperature_2m', label: 'Wet Bulb Temperature (2m)' },
 
 	{ value: 'wind_direction', label: 'Wind Direction' },
 	{ value: 'wind_gusts', label: 'Wind Gusts' },

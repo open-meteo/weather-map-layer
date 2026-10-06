@@ -8,6 +8,12 @@ import {
 } from '@openmeteo/file-reader';
 
 import { fastAtan2, radiansToDegrees } from './utils/math';
+import {
+	apparentTemperature,
+	dewPoint,
+	vapourPressureDeficit,
+	wetBulbTemperature
+} from './utils/meteorology';
 
 import type { Data, DimensionRange } from './types';
 
@@ -390,6 +396,19 @@ const uvRule = (postfix: string, barbs: boolean): VariableDerivationRule => ({
 });
 
 /**
+ * Output array of the source's buffer kind: SAB-backed sources give a
+ * SAB-backed result, so it stays zero-copy for the tile workers.
+ */
+const mapCells = (source: Float32Array, cell: (i: number) => number): Float32Array => {
+	const BufferConstructor = source.buffer.constructor as typeof ArrayBuffer;
+	const values = new Float32Array(new BufferConstructor(source.byteLength));
+	for (let i = 0; i < source.length; i++) {
+		values[i] = cell(i);
+	}
+	return values;
+};
+
+/**
  * Default derivation rules for common meteorological variables. Spread into a
  * custom `fileReaderConfig.derivationRules` list to keep them alongside own
  * rules.
@@ -428,6 +447,59 @@ export const defaultDerivationRules: VariableDerivationRule[] = [
 		process: ([height, direction]: Float32Array[]) => ({
 			values: height,
 			directions: direction
+		})
+	},
+
+	// Fields the API computes from the 2 m temperature and relative humidity
+	// rather than stores, with the API's formulas so a map matches the forecast
+	// endpoint. Available where the sources are stored: the first file of a run
+	// has no radiation yet, and some models store wind speed, not components.
+	{
+		pattern: /^vapour_pressure_deficit$/,
+		provides: { directions: false, barbs: false },
+		// kPa from a nonlinear formula, so no exact quantum exists; a 0.01 kPa
+		// step keeps the threshold offset negligible.
+		scaleFactor: 100,
+		getSourceVars: () => ['temperature_2m', 'relative_humidity_2m'],
+		process: ([temperature, relativeHumidity]: Float32Array[]) => ({
+			values: mapCells(temperature, (i) =>
+				vapourPressureDeficit(temperature[i], dewPoint(temperature[i], relativeHumidity[i]))
+			),
+			directions: undefined
+		})
+	},
+	{
+		pattern: /^wet_bulb_temperature_2m$/,
+		provides: { directions: false, barbs: false },
+		// A temperature in °C, so the air temperature's stored step applies.
+		scaleFactor: 'primary',
+		getSourceVars: () => ['temperature_2m', 'relative_humidity_2m'],
+		process: ([temperature, relativeHumidity]: Float32Array[]) => ({
+			values: mapCells(temperature, (i) => wetBulbTemperature(temperature[i], relativeHumidity[i])),
+			directions: undefined
+		})
+	},
+	{
+		pattern: /^apparent_temperature$/,
+		provides: { directions: false, barbs: false },
+		scaleFactor: 'primary',
+		getSourceVars: () => [
+			'temperature_2m',
+			'relative_humidity_2m',
+			'wind_u_component_10m',
+			'wind_v_component_10m',
+			'shortwave_radiation'
+		],
+		process: ([temperature, relativeHumidity, u, v, shortwaveRadiation]: Float32Array[]) => ({
+			values: mapCells(temperature, (i) =>
+				apparentTemperature(
+					temperature[i],
+					relativeHumidity[i],
+					Math.sqrt(u[i] * u[i] + v[i] * v[i]),
+					shortwaveRadiation[i]
+				)
+			),
+			directions: undefined
 		})
 	}
 ];
