@@ -295,7 +295,11 @@ export class WeatherMapLayerFileReader {
  * Rule for deriving values and directions from the variables stored in a file.
  */
 export interface VariableDerivationRule {
-	/** Pattern to match variable names (string or RegExp) */
+	/**
+	 * Matches the requested variable name: a string anywhere in the name, a
+	 * RegExp through `test`. Anchor it when the name is also the start of a
+	 * stored variable (`/^snowfall$/` next to `snowfall_water_equivalent`).
+	 */
 	pattern: string | RegExp;
 
 	/**

@@ -13,11 +13,7 @@ export {
 export { updateCurrentBounds } from './utils/bounds';
 export { createClippingTester } from './utils/clipping';
 export { domainStep, closestModelRun } from './utils/model-runs';
-export {
-	defaultDerivationRules,
-	variableHasDirections,
-	variableSupportsBarbs
-} from './om-file-reader';
+export { variableHasDirections, variableSupportsBarbs } from './om-file-reader';
 export { getCachedResolvedClipping } from './utils/parse-request';
 export { getColor, getColorScale } from './utils/styling';
 
@@ -33,6 +29,7 @@ export { BrowserBlockCache, LruBlockCache } from '@openmeteo/file-reader';
 
 export { currentBounds } from './utils/bounds';
 export { defaultOmProtocolSettings } from './om-protocol';
+export { defaultDerivationRules } from './om-file-reader';
 export { domainOptions, domainGroups } from './domains';
 export { getDomainBoundary } from './domain-footprints';
 export { variableOptions, levelGroupVariables } from './utils/variables';

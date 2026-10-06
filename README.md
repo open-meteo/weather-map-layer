@@ -242,7 +242,7 @@ omProtocolOptions.fileReaderConfig = {
 };
 ```
 
-A layer can then request `variable=snowfall`, and the protocol reads `snowfall_water_equivalent` for it. A rule lists as many source variables as it needs: a single one to convert units, two for the `u`/`v` pairs, more to combine fields. They all have to live in the same file and share its dimensions, and `process` receives their data in the order `getSourceVars` returns.
+A layer can then request `variable=snowfall`, and the protocol reads `snowfall_water_equivalent` for it. A string pattern matches anywhere in the name, which is why the rule above anchors a RegExp: a plain `'snowfall'` would also claim `snowfall_water_equivalent`. A rule lists as many source variables as it needs: a single one to convert units, two for the `u`/`v` pairs, more to combine fields. They all have to live in the same file and share its dimensions, and `process` receives their data in the order `getSourceVars` returns.
 
 `provides` is declared up front because it is needed before any data is read: `directions: true` makes a variable eligible for arrows, and `barbs: true` additionally marks its values as a wind speed, since barbs encode knots. Both are also queried through `variableHasDirections(variable, rules)` and `variableSupportsBarbs(variable, rules)`, for a UI that offers arrow styles.
 

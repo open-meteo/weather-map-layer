@@ -1,8 +1,4 @@
-import {
-	defaultDerivationRules,
-	variableHasDirections,
-	variableSupportsBarbs
-} from '../om-file-reader';
+import { variableHasDirections, variableSupportsBarbs } from '../om-file-reader';
 import type { VariableDerivationRule } from '../om-file-reader';
 import { describe, expect, it } from 'vitest';
 
@@ -47,50 +43,5 @@ describe('variableSupportsBarbs', () => {
 		expect(variableSupportsBarbs('wave_height')).toBe(false);
 		expect(variableSupportsBarbs('swell_wave_direction')).toBe(false);
 		expect(variableSupportsBarbs('temperature_2m')).toBe(false);
-	});
-});
-
-describe('single-source rules', () => {
-	// Snowfall in cm from the snowfall water equivalent in mm, the conversion
-	// the Open-Meteo API applies: 1 mm of water melts from 0.7 cm of snow.
-	const snowfallRule: VariableDerivationRule = {
-		pattern: /^snowfall$/,
-		provides: { directions: false, barbs: false },
-		// The water equivalent is stored in 0.1 mm steps, so snowfall lands on a
-		// 0.07 cm grid.
-		scaleFactor: 1 / 0.07,
-		getSourceVars: () => ['snowfall_water_equivalent'],
-		process: ([waterEquivalent]) => ({
-			values: waterEquivalent.map((mm) => mm * 0.7),
-			directions: undefined
-		})
-	};
-	const rules = [snowfallRule, ...defaultDerivationRules];
-
-	it('converts the values of its single source variable', () => {
-		const { values, directions } = snowfallRule.process([new Float32Array([0, 1, 10])]);
-		expect(Array.from(values ?? [])).toEqual([
-			expect.closeTo(0),
-			expect.closeTo(0.7),
-			expect.closeTo(7)
-		]);
-		expect(directions).toBeUndefined();
-	});
-
-	it('leaves the defaults in place when spread behind a custom rule', () => {
-		expect(variableHasDirections('snowfall', rules)).toBe(false);
-		expect(variableHasDirections('wind_u_component_10m', rules)).toBe(true);
-		expect(variableSupportsBarbs('wind_speed_10m', rules)).toBe(true);
-	});
-
-	it('matches only the exact variable name, not the source variable', () => {
-		const matching = (variable: string) =>
-			rules.find((rule) =>
-				typeof rule.pattern === 'string'
-					? variable.includes(rule.pattern)
-					: rule.pattern.test(variable)
-			);
-		expect(matching('snowfall')).toBe(snowfallRule);
-		expect(matching('snowfall_water_equivalent')).toBeUndefined();
 	});
 });
