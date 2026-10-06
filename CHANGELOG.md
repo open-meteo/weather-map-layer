@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/open-meteo/weather-map-layer/compare/v0.2.1...v0.2.2) (2026-10-06)
+
+
+### Bug Fixes
+
+* return an empty tile instead of null from the protocol ([#350](https://github.com/open-meteo/weather-map-layer/issues/350)) ([8fc0719](https://github.com/open-meteo/weather-map-layer/commit/8fc071968185532313f5f09ea0bcfad035ea7fdb))
+
 ## [0.2.1](https://github.com/open-meteo/weather-map-layer/compare/v0.2.0...v0.2.1) (2026-09-30)
 
 
