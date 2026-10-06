@@ -256,8 +256,9 @@ export const addMapboxProtocolSupport = (): MapboxProtocolAdapter => {
 					const response = await handler({ url, type: 'image' }, abortController, settings);
 					const data = response?.data;
 
-					// No data here (outside the domain): Mapbox renders nothing for `null`
-					if (!data) return null;
+					// Nothing to draw here, outside the domain or aborted: Mapbox renders
+					// nothing for `null`
+					if (!data || (data instanceof ArrayBuffer && data.byteLength === 0)) return null;
 
 					if (data instanceof ImageBitmap) {
 						return data;

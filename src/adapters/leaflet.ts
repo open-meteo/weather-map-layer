@@ -342,7 +342,7 @@ export const addLeafletProtocolSupport = (L: LeafletLib): LeafletProtocolAdapter
 							}
 
 							const data = response.data;
-							if (!data) {
+							if (!data || (data instanceof ArrayBuffer && data.byteLength === 0)) {
 								// Empty tile — return blank canvas.
 								done(null, canvas);
 								return;
