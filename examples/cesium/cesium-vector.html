@@ -47,9 +47,10 @@
 			});
 
 			// The whole model file is read for a variable (no `updateCurrentBounds`):
-			// Cesium requests tiles while the camera moves, so a data window limited
-			// to the view at the last `moveEnd` would leave the tiles requested during
-			// the move empty, and Cesium keeps those until it changes tile level.
+			// Cesium requests the root tiles and the ancestors of what it shows, which
+			// cover the whole domain, plus tiles beyond the view while the camera moves,
+			// and keeps them all. A data window limited to the view could not save that
+			// first read, and the tiles reaching outside it would stay partly empty.
 
 			// Both layers share the same model file and time step. The vector layer appends `&arrows=true` to request PBF arrow tiles.
 			const omUrl = `https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=wind_u_component_10m`;
