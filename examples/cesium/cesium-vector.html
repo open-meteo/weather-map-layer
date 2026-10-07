@@ -28,8 +28,8 @@
 					: 'https://unpkg.com/@openmeteo/weather-map-layer@0.2.2/dist/index.mjs' // x-release-please-version
 			);
 
-			// The adapter turns "om://" URLs into Cesium layers whose tiles are rendered by omProtocol:
-			// a raster imagery provider, and a polyline layer built from the vector tiles (arrows).
+			// The adapter turns "om://" URLs into Cesium imagery providers whose tiles are rendered by omProtocol:
+			// a raster provider, and one that draws the vector tiles (arrows) onto raster tiles.
 			const cesiumAdapter = OMWeatherMapLayer.addCesiumProtocolSupport(Cesium);
 			cesiumAdapter.addProtocol('om', OMWeatherMapLayer.omProtocol);
 
@@ -70,20 +70,24 @@
 				)
 			);
 
-			// Vectors: the arrows covering the view are drawn as polylines in world space, fetched at
-			// one zoom level derived from the camera height and refreshed on every moveEnd, so they keep
-			// their line width on screen and their density over the globe. (createVectorImageryProvider
-			// drapes them as imagery instead, for shapes that must follow terrain.)
-			cesiumAdapter.addVectorLayer(viewer, 'om://' + omUrl + '&arrows=true', {
-				style: (properties) => {
-					const value = Number(properties.value) || 0;
-					const alpha = value > 5 ? 0.6 : value > 4 ? 0.5 : value > 3 ? 0.4 : value > 2 ? 0.3 : 0.2;
-					return {
-						strokeStyle: `rgba(0, 0, 0, ${alpha})`,
-						lineWidth: 2
-					};
-				}
-			});
+			// Vectors: Cesium has no vector tile renderer, so the arrow tiles are drawn onto
+			// raster tiles with the style function, like the Leaflet vector tile layer.
+			viewer.imageryLayers.add(
+				Cesium.ImageryLayer.fromProviderAsync(
+					cesiumAdapter.createVectorImageryProvider('om://' + omUrl + '&arrows=true', {
+						style: (properties) => {
+							const value = Number(properties.value) || 0;
+							const alpha =
+								value > 5 ? 0.6 : value > 4 ? 0.5 : value > 3 ? 0.4 : value > 2 ? 0.3 : 0.2;
+							return {
+								strokeStyle: `rgba(0, 0, 0, ${alpha})`,
+								lineWidth: 2,
+								lineCap: 'round'
+							};
+						}
+					})
+				)
+			);
 
 			viewer.camera.setView({
 				destination: Cesium.Cartesian3.fromDegrees(10, 50, 5_000_000)
