@@ -37,12 +37,12 @@
 			});
 
 			map.on('load', () => {
-				// Raster tiles: plain PNGs, as any XYZ tile source.
+				// Raster tiles: plain PNGs behind the server's TileJSON, whose `maxzoom` is
+				// the domain's, so the map scales tiles from there instead of requesting more.
 				map.addSource('tileServerRaster', {
 					type: 'raster',
-					tiles: [tiles + '/{z}/{x}/{y}.png'],
+					url: tiles + '.json',
 					tileSize: 512,
-					maxzoom: 12,
 					attribution: '<a href="https://open-meteo.com/en/licence#maps">© Open-Meteo</a>'
 				});
 				map.addLayer(
@@ -58,11 +58,10 @@
 				);
 
 				// Vector tiles: the PBF endpoint carries the arrows, contours and grid points
-				// the query asks for, in the usual MVT layers.
+				// the query asks for, in the usual MVT layers; `format=pbf` selects it in the TileJSON.
 				map.addSource('tileServerVector', {
 					type: 'vector',
-					tiles: [tiles + '/{z}/{x}/{y}.pbf?arrows=true'],
-					maxzoom: 12
+					url: tiles + '.json?format=pbf&arrows=true'
 				});
 
 				// Wind arrows, darker with the wind speed in the `value` property.

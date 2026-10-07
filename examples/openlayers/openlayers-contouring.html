@@ -35,7 +35,11 @@
 			const omUrl = `https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=precipitation&contours=true`;
 
 			// Create sources — synchronous; TileJSON resolves on first tile load.
-			const rasterSource = olAdapter.createRasterSource('om://' + omUrl);
+			const rasterSource = olAdapter.createRasterSource('om://' + omUrl, {
+				// OpenLayers does not read the TileJSON `maxzoom`, so cap it by hand: 8 is where
+				// even the finest domains stop changing, OpenLayers upsamples those tiles beyond it
+				maxZoom: 8
+			});
 			const vectorSource = olAdapter.createVectorTileSource('om://' + omUrl);
 
 			// Style for contour lines.
