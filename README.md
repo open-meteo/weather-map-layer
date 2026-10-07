@@ -152,11 +152,12 @@ For the vector source examples there is the `examples/vector` sub-directory with
 
 ## Framework Adapters
 
-The core `omProtocol` handler is designed for MapLibre GL JS, but this package also ships adapters for **Mapbox GL JS**, **Leaflet** and **OpenLayers**. Each adapter provides `addProtocol` / `removeProtocol` plus factory methods for creating map-library-native source or layer objects. See `examples/leaflet`, `examples/openlayers` and `examples/mapbox`.
+The core `omProtocol` handler is designed for MapLibre GL JS, but this package also ships adapters for **Mapbox GL JS**, **Leaflet**, **OpenLayers** and **CesiumJS**. Each adapter provides `addProtocol` / `removeProtocol` plus factory methods for creating map-library-native source or layer objects. See `examples/leaflet`, `examples/openlayers`, `examples/mapbox` and `examples/cesium`.
 
 - **Leaflet** – `addLeafletProtocolSupport(L)` gives `createTileLayer` and `createVectorTileLayer`, both plain `L.GridLayer`s. They default to `tileSize: 512, zoomOffset: -1`: the protocol renders 512 px tiles and sizes its arrow/barb lattice for them, so this reproduces the MapLibre look 1:1. Pass `tileSize: 256, zoomOffset: 0` for 256 px tiles.
 - **OpenLayers** – `addOpenLayersProtocolSupport(ol)` gives `createRasterSource` (a `DataTile` source for `WebGLTile` layers) and `createVectorTileSource` (an MVT `VectorTile` source).
 - **Mapbox GL JS** – `addMapboxProtocolSupport()` gives `createRasterSource`, a `type: 'custom'` raster source for `map.addSource`, and `addVectorSource(map, sourceId, url)`, which keeps a GeoJSON source in sync with the vector tiles of the viewport (Mapbox custom sources carry raster data only). Style layers select their features with a filter on the `layer` property, e.g. `['==', ['get', 'layer'], 'wind-arrows']`, instead of `source-layer`.
+- **CesiumJS** – `addCesiumProtocolSupport(Cesium)` gives `createImageryProvider` and `createVectorImageryProvider`, both resolving to an `ImageryProvider` once the TileJSON is known; add them with `viewer.imageryLayers.add(Cesium.ImageryLayer.fromProviderAsync(provider))`. Cesium has no vector tile renderer, so the vector provider draws the arrows, barbs or contours onto raster tiles with a style function, like the Leaflet vector tile layer.
 
 #### Cross-origin isolation
 

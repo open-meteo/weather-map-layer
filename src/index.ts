@@ -46,6 +46,7 @@ export {
 
 // Adapters
 
+export { addCesiumProtocolSupport } from './adapters/cesium';
 export { addLeafletProtocolSupport } from './adapters/leaflet';
 export { addMapboxProtocolSupport } from './adapters/mapbox';
 export { addOpenLayersProtocolSupport } from './adapters/openlayers';
