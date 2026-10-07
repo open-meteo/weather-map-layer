@@ -1,5 +1,6 @@
 import {
 	BlockCache,
+	type BrowserBlockCache,
 	LruBlockCache,
 	OmDataType,
 	OmFileReadOptions,
@@ -34,9 +35,33 @@ export interface FileReaderConfig {
 	 * If omitted, falls back to an in-memory LruBlockCache.
 	 */
 	cache?: BlockCache<string | bigint>;
+
+	/**
+	 * Serializable BrowserBlockCache options for the decode worker. Providing
+	 * this opts the protocol into decoding om variables in a worker (wasm
+	 * decompression + derivation loops off the main thread — they freeze
+	 * mobile for hundreds of ms per load when run inline). The worker cannot
+	 * share the live `cache` object, so it builds its own cache from these
+	 * options; using the same cacheName shares the persistent Cache API layer
+	 * with the main-thread reader.
+	 */
+	workerCacheOptions?: ConstructorParameters<typeof BrowserBlockCache>[0];
+
+	/**
+	 * Absolute URL of `om_reader_wasm.web.wasm` for the decode worker. The
+	 * bundled worker cannot locate the wasm itself (a blob-URL worker has no
+	 * usable `import.meta.url`), so the host resolves it through its own
+	 * bundler, e.g. Vite:
+	 * `new URL((await import('@openmeteo/file-format-wasm/dist/om_reader_wasm.web.wasm?url')).default, location.href).href`.
+	 * Without it the worker's first read fails and decoding falls back to the
+	 * main thread.
+	 */
+	workerWasmUrl?: string;
 }
 
-export const defaultFileReaderConfig: Required<Omit<FileReaderConfig, 'cache'>> = {
+export const defaultFileReaderConfig: Required<
+	Omit<FileReaderConfig, 'cache' | 'workerCacheOptions' | 'workerWasmUrl'>
+> = {
 	useSAB: typeof SharedArrayBuffer !== 'undefined',
 	retries: 2,
 	eTagValidation: false
@@ -47,7 +72,9 @@ export const defaultFileReaderConfig: Required<Omit<FileReaderConfig, 'cache'>> 
  */
 export class WeatherMapLayerFileReader {
 	readonly cache: BlockCache;
-	readonly config: Required<Omit<FileReaderConfig, 'cache'>>;
+	readonly config: Required<
+		Omit<FileReaderConfig, 'cache' | 'workerCacheOptions' | 'workerWasmUrl'>
+	>;
 	private readonly allDerivationRules: VariableDerivationRule[];
 	/** Memoizes one backend per URL, so repeat reads skip the HEAD request. */
 	private readonly backendPool: OmHttpBackendPool;

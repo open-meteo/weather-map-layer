@@ -8,6 +8,7 @@ import { normalizeLon } from './utils/math';
 import { normalizeUrl, parseUrlComponents, replaceUrlDomain } from './utils/parse-url';
 import { createSamplers } from './utils/samplers';
 
+import { createDecodeWorkerClient } from './decode-worker-client';
 import { type SeamlessLayerFilter, isSeamlessDomain, selectSeamlessLayers } from './domain-helpers';
 import { GridFactory } from './grids';
 import { WeatherMapLayerFileReader } from './om-file-reader';
@@ -64,6 +65,7 @@ export const getProtocolInstance = (settings: OmProtocolSettings): OmProtocolIns
 
 	const instance = {
 		omFileReader: new WeatherMapLayerFileReader(settings.fileReaderConfig),
+		decodeWorker: createDecodeWorkerClient(settings.fileReaderConfig),
 		domainOptions: settings.domainOptions,
 		stateByKey: new Map()
 	};
@@ -194,12 +196,31 @@ export const ensureData = async (
 
 		const promise = (async () => {
 			try {
-				const data = await omFileReader.readVariable(
-					state.omFileUrl,
-					state.dataOptions.variable,
-					state.ranges,
-					entry.controller.signal
-				);
+				// Decode in the worker when available: the wasm decompression and
+				// derivation loops freeze mobile for hundreds of ms when run here.
+				// An error the worker *posts* is a real data error and propagates;
+				// only a crash of the worker itself falls back to the inline read.
+				const readInline = (): Promise<Data> =>
+					omFileReader.readVariable(
+						state.omFileUrl,
+						state.dataOptions.variable,
+						state.ranges,
+						entry.controller.signal
+					);
+				const decodeWorker = omProtocolInstance?.decodeWorker;
+				const data =
+					decodeWorker && !decodeWorker.broken
+						? await decodeWorker
+								.readVariable(
+									state.omFileUrl,
+									state.dataOptions.variable,
+									state.ranges,
+									entry.controller.signal
+								)
+								.catch((error: Error) =>
+									error.name === 'DecodeWorkerBroken' ? readInline() : Promise.reject(error)
+								)
+						: await readInline();
 
 				if (postReadCallback) {
 					postReadCallback(omFileReader, data, state);
