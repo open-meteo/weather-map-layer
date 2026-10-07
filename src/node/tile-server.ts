@@ -13,14 +13,22 @@
  * model run never change, so they are kept in memory and marked immutable for
  * browsers and CDNs; `latest` tiles are kept for a minute, as long as the
  * protocol caches `latest.json`. Identical requests under way render once.
+ *
+ * Raster tiles past the domain's maximum zoom (`domainMaxZoom`: where a tile
+ * pixel is finer than the grid) are not rendered but magnified from the tile
+ * at that zoom, as a map client overzooms. The TileJSON at
+ * `/tiles/{domain}/{run}/{time}/{variable}.json` tells clients that zoom, so
+ * they stop requesting tiles there in the first place.
  */
 import { domainOptions } from '../domains';
+import { domainMaxZoom } from '../grids/max-zoom';
 import { type OmProtocol, defaultOmProtocolSettings } from '../om-protocol-core';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
+import { overzoomTile } from './overzoom';
 import { encodePng } from './png';
 
-import type { OmProtocolSettings, RgbaTile } from '../types';
+import type { Domain, OmProtocolSettings, RgbaTile, TileJSON } from '../types';
 
 export interface TileServerOptions {
 	/** The protocol handler rendering the tiles. @default the Node `omProtocol` */
@@ -59,12 +67,26 @@ interface TileRoute {
 	format: 'png' | 'pbf';
 }
 
+const TILEJSON_PATH =
+	/^\/tiles\/(?<domain>[\w-]+)\/(?<run>latest|\d{4}-\d{2}-\d{2}T\d{4}Z)\/(?<time>[\w+-]+)\/(?<variable>[\w-]+)\.json$/;
+
+/** The data part of a route: a TileJSON request has no tile coordinates. */
+type DataRoute = Omit<TileRoute, 'z' | 'x' | 'y' | 'format'>;
+
 /** The route of a request path, or undefined when it is not a tile path. */
 export const parseTileRoute = (pathname: string): TileRoute | undefined =>
 	TILE_PATH.exec(pathname)?.groups as TileRoute | undefined;
 
+/** The route of a TileJSON request path, or undefined when it is not one. */
+export const parseTileJsonRoute = (pathname: string): DataRoute | undefined =>
+	TILEJSON_PATH.exec(pathname)?.groups as DataRoute | undefined;
+
 /** The protocol URL for a route: the metadata file for `latest`, the model run's file otherwise. */
-export const tileUrl = (route: TileRoute, query: string, dataUrl = DEFAULT_DATA_URL): string => {
+export const tileUrl = (
+	route: DataRoute & Partial<Pick<TileRoute, 'z' | 'x' | 'y'>>,
+	query: string,
+	dataUrl = DEFAULT_DATA_URL
+): string => {
 	const { domain, run, time, variable, z, x, y } = route;
 	// The tile coordinates follow the last query parameter, and the protocol
 	// drops `time_step` once resolved, so that one must not be last
@@ -77,7 +99,8 @@ export const tileUrl = (route: TileRoute, query: string, dataUrl = DEFAULT_DATA_
 		run === 'latest'
 			? `${domain}/latest.json`
 			: `${domain}/${run.slice(0, 10).replaceAll('-', '/')}/${run.slice(11)}/${time}.om`;
-	return `om://${dataUrl}/${file}?${params}/${z}/${x}/${y}`;
+	const tile = z === undefined ? '' : `/${z}/${x}/${y}`;
+	return `om://${dataUrl}/${file}?${params}${tile}`;
 };
 
 interface RenderedTile {
@@ -111,20 +134,40 @@ export const createTileHandler = (options: TileServerOptions): TileHandler => {
 	const cache = new Map<string, RenderedTile>();
 	const inflight = new Map<string, Promise<RenderedTile>>();
 
-	const render = async (route: TileRoute, url: string): Promise<RenderedTile> => {
+	const render = async (
+		route: TileRoute,
+		domain: Domain,
+		search: string
+	): Promise<RenderedTile> => {
 		const expires = route.run === 'latest' ? Date.now() + latestMaxAge * 1000 : Infinity;
-		const type = route.format === 'png' ? 'image' : 'arrayBuffer';
-		const { data } = await protocol({ url, type }, new AbortController(), settings);
 		if (route.format === 'png') {
+			// Past the domain's maximum zoom the tile is magnified from the tile
+			// at that zoom, as a map client would do with it
+			const z = Number(route.z);
+			const levels = Math.max(0, z - domainMaxZoom(domain, settings.domainOptions));
+			const x = Number(route.x) >> levels;
+			const y = Number(route.y) >> levels;
+			const url = tileUrl(
+				{ ...route, z: String(z - levels), x: String(x), y: String(y) },
+				search,
+				dataUrl
+			);
+			const { data } = await protocol({ url, type: 'image' }, new AbortController(), settings);
 			// Nothing to draw: the tile lies outside the domain
 			if (data instanceof ArrayBuffer) return { status: 204, expires };
-			return {
-				status: 200,
-				body: encodePng(data as RgbaTile),
-				contentType: 'image/png',
-				expires
-			};
+			const tile =
+				levels === 0
+					? (data as RgbaTile)
+					: overzoomTile(
+							data as RgbaTile,
+							levels,
+							Number(route.x) - (x << levels),
+							Number(route.y) - (y << levels)
+						);
+			return { status: 200, body: encodePng(tile), contentType: 'image/png', expires };
 		}
+		const url = tileUrl(route, search, dataUrl);
+		const { data } = await protocol({ url, type: 'arrayBuffer' }, new AbortController(), settings);
 		return {
 			status: 200,
 			body: new Uint8Array(data as ArrayBuffer),
@@ -133,7 +176,12 @@ export const createTileHandler = (options: TileServerOptions): TileHandler => {
 		};
 	};
 
-	const getTile = (route: TileRoute, key: string, url: string): Promise<RenderedTile> => {
+	const getTile = (
+		route: TileRoute,
+		domain: Domain,
+		key: string,
+		search: string
+	): Promise<RenderedTile> => {
 		const cached = cache.get(key);
 		if (cached && cached.expires > Date.now()) {
 			cache.delete(key);
@@ -142,7 +190,7 @@ export const createTileHandler = (options: TileServerOptions): TileHandler => {
 		}
 		let pending = inflight.get(key);
 		if (!pending) {
-			pending = render(route, url)
+			pending = render(route, domain, search)
 				.then((tile) => {
 					cache.set(key, tile);
 					if (cache.size > cacheSize) cache.delete(cache.keys().next().value!);
@@ -154,22 +202,69 @@ export const createTileHandler = (options: TileServerOptions): TileHandler => {
 		return pending;
 	};
 
+	/**
+	 * The protocol's TileJSON for the data, with the tiles template pointing
+	 * back at this server. `maxzoom` is the domain's for raster tiles, so a
+	 * client stops requesting tiles past it; a `.pbf` template needs the vector
+	 * query, which is what makes the protocol answer the full range.
+	 */
+	const tileJson = async (
+		req: IncomingMessage,
+		res: ServerResponse,
+		route: DataRoute,
+		search: string
+	): Promise<void> => {
+		const params = new URLSearchParams(search);
+		const format = params.get('format') === 'pbf' ? 'pbf' : 'png';
+		params.delete('format');
+		const query = params.size > 0 ? `?${params}` : '';
+		try {
+			const { data } = await protocol(
+				{ url: tileUrl(route, query, dataUrl), type: 'json' },
+				new AbortController(),
+				settings
+			);
+			const { domain, run, time, variable } = route;
+			const base = `${req.headers['x-forwarded-proto'] ?? 'http'}://${req.headers.host ?? 'localhost'}`;
+			const tileJson: TileJSON = {
+				...(data as TileJSON),
+				tiles: [`${base}/tiles/${domain}/${run}/${time}/${variable}/{z}/{x}/{y}.${format}${query}`]
+			};
+			res.setHeader('cache-control', `public, max-age=${latestMaxAge}`);
+			res.writeHead(200, { 'content-type': 'application/json' });
+			res.end(JSON.stringify(tileJson));
+		} catch (error) {
+			console.error(`${req.url}:`, error);
+			res.writeHead(500).end(String(error));
+		}
+	};
+
 	return async (req, res) => {
 		// Map pages on other origins (a Cesium or MapLibre app) fetch the tiles cross-origin
 		res.setHeader('access-control-allow-origin', '*');
 		const { pathname, search } = new URL(req.url ?? '/', 'http://localhost');
-		const route = parseTileRoute(pathname);
+		const tileRoute = parseTileRoute(pathname);
+		const route = tileRoute ?? parseTileJsonRoute(pathname);
 		if (!route) {
-			res.writeHead(404).end('Use /tiles/{domain}/{run}/{time}/{variable}/{z}/{x}/{y}.png or .pbf');
+			res
+				.writeHead(404)
+				.end(
+					'Use /tiles/{domain}/{run}/{time}/{variable}/{z}/{x}/{y}.png or .pbf, or /tiles/{domain}/{run}/{time}/{variable}.json'
+				);
 			return;
 		}
 		const domains = settings.domainOptions ?? domainOptions;
-		if (!domains.some((domain) => domain.value === route.domain)) {
+		const domain = domains.find((domain) => domain.value === route.domain);
+		if (!domain) {
 			res.writeHead(404).end(`Unknown domain ${route.domain}`);
 			return;
 		}
+		if (!tileRoute) {
+			await tileJson(req, res, route, search);
+			return;
+		}
 		try {
-			const tile = await getTile(route, pathname + search, tileUrl(route, search, dataUrl));
+			const tile = await getTile(tileRoute, domain, pathname + search, search);
 			res.setHeader(
 				'cache-control',
 				route.run === 'latest'

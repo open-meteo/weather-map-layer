@@ -18,7 +18,10 @@ export default defineConfig([
 						'scripts/*.ts',
 						'scripts/*.js',
 						'examples/node/*.mjs'
-					]
+					],
+					// The config, script and example files above are more than the
+					// default allowance of eight
+					maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 16
 				},
 				ecmaVersion: 'latest',
 				sourceType: 'module'

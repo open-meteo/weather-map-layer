@@ -21,6 +21,7 @@ export { LruBlockCache } from '@openmeteo/file-reader';
 
 export { defaultOmProtocolSettings } from '../om-protocol-core';
 export { domainOptions, domainGroups } from '../domains';
+export { gridMaxZoom, domainMaxZoom, MAX_TILE_ZOOM } from '../grids/max-zoom';
 
 // Types
 

@@ -2,7 +2,12 @@
  * Tests for the Node tile server handler, against a mock protocol and a real
  * `node:http` server on a free port.
  */
-import { createTileHandler, parseTileRoute, tileUrl } from '../node/tile-server';
+import {
+	createTileHandler,
+	parseTileJsonRoute,
+	parseTileRoute,
+	tileUrl
+} from '../node/tile-server';
 import type { OmProtocol } from '../om-protocol-core';
 import { createServer } from 'node:http';
 import type { Server } from 'node:http';
@@ -55,6 +60,14 @@ describe('parseTileRoute / tileUrl', () => {
 		});
 		expect(parseTileRoute('/tiles/2/2/1.png')).toBeUndefined();
 		expect(parseTileRoute('/other')).toBeUndefined();
+		expect(
+			parseTileJsonRoute('/tiles/dwd_icon/latest/current_time_1H/temperature_2m.json')
+		).toEqual({
+			domain: 'dwd_icon',
+			run: 'latest',
+			time: 'current_time_1H',
+			variable: 'temperature_2m'
+		});
 	});
 
 	it('builds the metadata URL for latest with time_step before the tile coordinates', () => {
@@ -149,6 +162,49 @@ describe('createTileHandler', () => {
 		await fetch(base + RUN.replace('/2/2/1', '/2/2/0'));
 		await fetch(base + RUN);
 		expect(protocol).toHaveBeenCalledTimes(3);
+	});
+
+	it('magnifies tiles past the domain maximum zoom from the tile at that zoom', async () => {
+		const protocol = createMockProtocol();
+		const base = await listen(createTileHandler({ protocol }));
+
+		// dwd_icon stops changing at zoom 4; zoom 6 is served from its zoom 4 ancestor
+		const response = await fetch(base + RUN.replace('/2/2/1', '/6/37/21'));
+
+		expect(response.status).toBe(200);
+		expect(protocol).toHaveBeenCalledTimes(1);
+		expect(protocol.mock.calls[0][0].url).toMatch(/\/4\/9\/5$/);
+	});
+
+	it('serves the TileJSON with the server tile template and the domain maxzoom', async () => {
+		const protocol = vi.fn(async (params: { url: string; type: string }) => ({
+			data:
+				params.type === 'json'
+					? { tilejson: '3.0.0', tiles: [params.url + '/{z}/{x}/{y}'], minzoom: 0, maxzoom: 4 }
+					: tile()
+		})) as unknown as OmProtocol & ReturnType<typeof vi.fn>;
+		const base = await listen(createTileHandler({ protocol }));
+
+		const response = await fetch(
+			`${base}/tiles/dwd_icon/latest/current_time_1H/temperature_2m.json?colorscale=wind`
+		);
+		expect(response.status).toBe(200);
+		const json = (await response.json()) as { tiles: string[]; maxzoom: number };
+		expect(json.maxzoom).toBe(4);
+		expect(json.tiles).toEqual([
+			`${base}/tiles/dwd_icon/latest/current_time_1H/temperature_2m/{z}/{x}/{y}.png?colorscale=wind`
+		]);
+		expect(protocol.mock.calls[0][0]).toEqual({
+			url: 'om://https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m&colorscale=wind',
+			type: 'json'
+		});
+
+		const vector = await fetch(
+			`${base}/tiles/dwd_icon/latest/current_time_1H/temperature_2m.json?format=pbf&arrows=true`
+		);
+		expect(((await vector.json()) as { tiles: string[] }).tiles[0]).toBe(
+			`${base}/tiles/dwd_icon/latest/current_time_1H/temperature_2m/{z}/{x}/{y}.pbf?arrows=true`
+		);
 	});
 
 	it('answers 500 with the error when rendering fails', async () => {
