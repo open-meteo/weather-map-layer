@@ -35,7 +35,11 @@
 			// Create the raster source. TileJSON is resolved lazily on first tile load. The source is synchronous to create — no await needed.
 			const omUrl = `https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m`;
 
-			const rasterSource = olAdapter.createRasterSource('om://' + omUrl);
+			const rasterSource = olAdapter.createRasterSource('om://' + omUrl, {
+				// OpenLayers does not read the TileJSON `maxzoom`, so cap it by hand: 8 is where
+				// even the finest domains stop changing, OpenLayers upsamples those tiles beyond it
+				maxZoom: 8
+			});
 
 			const basemap = new ol.layer.Group();
 			olms.apply(

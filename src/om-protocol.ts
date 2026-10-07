@@ -8,6 +8,7 @@ import { COLOR_SCALES_WITH_ALIASES as defaultColorScales } from './utils/styling
 
 import { domainOptions as defaultDomainOptions } from './domains';
 import { GridFactory } from './grids/index';
+import { MAX_TILE_ZOOM, domainMaxZoom } from './grids/max-zoom';
 import { defaultFileReaderConfig } from './om-file-reader';
 import {
 	DEFAULT_MAX_STATES_WITH_DATA,
@@ -21,9 +22,11 @@ import { WorkerPool } from './worker-pool';
 
 import type {
 	DataIdentityOptions,
+	Domain,
 	LayerRenderData,
 	OmProtocolSettings,
 	ParsedRequest,
+	RenderOptions,
 	TileJSON,
 	TilePromise,
 	TileResponse,
@@ -68,7 +71,13 @@ export const omProtocol = async (
 	// are never requested (hidden layer, out of view).
 	if (params.type == 'json') {
 		return {
-			data: await getTilejson(params.url, request.dataOptions, request.clippingOptions)
+			data: await getTilejson(
+				params.url,
+				request.dataOptions,
+				request.renderOptions,
+				settings.domainOptions,
+				request.clippingOptions
+			)
 		};
 	}
 
@@ -221,6 +230,8 @@ const requestTile = async (
 const getTilejson = async (
 	fullUrl: string,
 	dataOptions: DataIdentityOptions,
+	renderOptions: RenderOptions,
+	domainOptions: Domain[],
 	clippingOptions?: ResolvedClippingOptions
 ): Promise<TileJSON> => {
 	// We initialize the grid with the ranges set to null, because we want to find out the maximum bounds of this grid
@@ -232,12 +243,18 @@ const getTilejson = async (
 		bounds = grid.getBounds();
 	}
 
+	// Raster tiles stop changing once a pixel is finer than the grid, so the
+	// client overzooms from there. Vector tiles keep their per-tile layout
+	// (arrow lattice, contour sampling) at every zoom.
+	const isVector = renderOptions.drawArrows || renderOptions.drawContours || renderOptions.drawGrid;
+	const maxzoom = isVector ? MAX_TILE_ZOOM : domainMaxZoom(dataOptions.domain, domainOptions);
+
 	return {
 		tilejson: '3.0.0',
 		tiles: [fullUrl + '/{z}/{x}/{y}'],
 		attribution: '<a href="https://open-meteo.com/en/licence#maps">© Open-Meteo</a>',
 		minzoom: 0,
-		maxzoom: 12,
+		maxzoom,
 		bounds: bounds
 	};
 };

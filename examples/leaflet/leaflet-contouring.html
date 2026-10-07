@@ -56,7 +56,10 @@
 			// Raster layer: precipitation colour fill.
 			leafletAdapter
 				.createTileLayer('om://' + omUrl, {
-					opacity: 0.75
+					opacity: 0.75,
+					// Leaflet does not read the TileJSON `maxzoom`, so cap the native zoom by hand:
+					// 8 is where even the finest domains stop changing, Leaflet scales those tiles beyond it
+					maxNativeZoom: 8
 				})
 				.addTo(map);
 

@@ -290,8 +290,19 @@ describe('omProtocol', () => {
 			expect(resultData.tiles[0]).toBe(params.url + '/{z}/{x}/{y}');
 			expect(resultData.attribution).toContain('Open-Meteo');
 			expect(resultData.minzoom).toBe(0);
-			expect(resultData.maxzoom).toBe(12);
+			// 0.125° grid: tiles stop changing past zoom 3, so the client overzooms from there
+			expect(resultData.maxzoom).toBe(4);
 			expect(resultData.bounds).toBeDefined();
+		});
+
+		it('keeps the full zoom range for vector tiles', async () => {
+			const { omProtocol } = await import('../om-protocol');
+			const params: RequestParameters = {
+				url: 'om://https://data-spatial.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m&contours=true',
+				type: 'json'
+			};
+			const result = await omProtocol(params, new AbortController(), defaultOmProtocolSettings);
+			expect((result.data as TileJSON).maxzoom).toBe(12);
 		});
 
 		it('returns correct bounds for domain grid', async () => {

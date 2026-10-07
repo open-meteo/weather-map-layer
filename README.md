@@ -39,8 +39,7 @@ const omUrl = `https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon/latest.j
 map.on('load', () => {
 	map.addSource('omFileSource', {
 		url: 'om://' + omUrl,
-		type: 'raster',
-		maxzoom: 12 // tiles look pretty much the same below zoom-level 12, even on the high res models
+		type: 'raster'
 	});
 
 	map.addLayer({
@@ -55,6 +54,8 @@ map.on('load', () => {
 ```
 
 Two files ship next to the module and are referenced with `new URL(..., import.meta.url)`: the tile render worker (`dist/worker.js`) and the file reader's WebAssembly binary (`dist/om_file_format.web.wasm`). Bundlers that understand that pattern (Vite, webpack 5, Rollup, Parcel) copy them into their output as assets without configuration. The worker starts with the protocol; the binary is fetched on the first data read, not at import time.
+
+Raster TileJSON carries a `maxzoom` per domain (`domainMaxZoom`, derived from the grid spacing, for a seamless composite from its finest layer): the zoom one past the point where a tile pixel is finer than the grid, measured over the domains as where tiles stop differing visibly from their magnified parent. Map clients overzoom from there instead of requesting tiles that only interpolate the same grid points, as long as the source definition sets no `maxzoom` of its own, which takes precedence over the TileJSON. Vector TileJSON keeps the full range, since arrows and contours are laid out per tile.
 
 ### HTML / UNPKG
 
@@ -76,8 +77,7 @@ The package ships as an ES module only, so load it from a `<script type="module"
 	map.on('load', () => {
 		map.addSource('omFileSource', {
 			url: 'om://' + omUrl,
-			type: 'raster',
-			maxzoom: 12 // tiles look pretty much the same below zoom-level 12, even on the high res models
+			type: 'raster'
 		});
 
 		map.addLayer({
@@ -154,8 +154,8 @@ For the vector source examples there is the `examples/vector` sub-directory with
 
 The core `omProtocol` handler is designed for MapLibre GL JS, but this package also ships adapters for **Mapbox GL JS**, **Leaflet**, **OpenLayers** and **CesiumJS**. Each adapter provides `addProtocol` / `removeProtocol` plus factory methods for creating map-library-native source or layer objects. See `examples/leaflet`, `examples/openlayers`, `examples/mapbox` and `examples/cesium`.
 
-- **Leaflet** – `addLeafletProtocolSupport(L)` gives `createTileLayer` and `createVectorTileLayer`, both plain `L.GridLayer`s. They default to `tileSize: 512, zoomOffset: -1`: the protocol renders 512 px tiles and sizes its arrow/barb lattice for them, so this reproduces the MapLibre look 1:1. Pass `tileSize: 256, zoomOffset: 0` for 256 px tiles.
-- **OpenLayers** – `addOpenLayersProtocolSupport(ol)` gives `createRasterSource` (a `DataTile` source for `WebGLTile` layers) and `createVectorTileSource` (an MVT `VectorTile` source).
+- **Leaflet** – `addLeafletProtocolSupport(L)` gives `createTileLayer` and `createVectorTileLayer`, both plain `L.GridLayer`s. They default to `tileSize: 512, zoomOffset: -1`: the protocol renders 512 px tiles and sizes its arrow/barb lattice for them, so this reproduces the MapLibre look 1:1. Pass `tileSize: 256, zoomOffset: 0` for 256 px tiles. Leaflet does not read the TileJSON `maxzoom`; pass `maxNativeZoom` to `createTileLayer` (8 covers every domain, as in the examples) so it scales tiles past it instead of requesting them.
+- **OpenLayers** – `addOpenLayersProtocolSupport(ol)` gives `createRasterSource` (a `DataTile` source for `WebGLTile` layers) and `createVectorTileSource` (an MVT `VectorTile` source). OpenLayers does not read the TileJSON `maxzoom` either; pass `maxZoom` to `createRasterSource` (8, as in the examples) so it upsamples tiles past it.
 - **Mapbox GL JS** – `addMapboxProtocolSupport()` gives `createRasterSource`, a `type: 'custom'` raster source for `map.addSource`, and `addVectorSource(map, sourceId, url)`, which keeps a GeoJSON source in sync with the vector tiles of the viewport (Mapbox custom sources carry raster data only). Style layers select their features with a filter on the `layer` property, e.g. `['==', ['get', 'layer'], 'wind-arrows']`, instead of `source-layer`.
 - **CesiumJS** – `addCesiumProtocolSupport(Cesium)` gives `createImageryProvider` and `createVectorImageryProvider`, both resolving to an `ImageryProvider` once the TileJSON is known; add them with `viewer.imageryLayers.add(Cesium.ImageryLayer.fromProviderAsync(provider))`. Cesium has no vector tile renderer, so the vector provider draws the arrows, barbs or contours onto raster tiles with a style function, like the Leaflet vector tile layer. Do not limit the data window with `updateCurrentBounds` in Cesium: it requests the root tiles and the ancestors of what it shows, which cover the whole domain anyway, plus tiles beyond the view while the camera moves, and keeps them all. A window would save nothing and leave those tiles partly empty until their level changes.
 

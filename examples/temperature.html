@@ -42,8 +42,7 @@
 			map.on('load', () => {
 				map.addSource('omFileSource', {
 					url: 'om://' + omUrl,
-					type: 'raster',
-					maxzoom: 12
+					type: 'raster'
 				});
 				map.addLayer(
 					{
