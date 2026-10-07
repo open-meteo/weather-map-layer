@@ -71,16 +71,19 @@ export const gridResolutionZoom = (grid: GridData): number => {
 export const gridMaxZoom = (grid: GridData): number =>
 	Math.min(MAX_TILE_ZOOM, gridResolutionZoom(grid) + 1);
 
+/** A domain's `maxZoom`, derived from its grid when the domain does not set it. */
+const concreteMaxZoom = (domain: Domain): number => domain.maxZoom ?? gridMaxZoom(domain.grid);
+
 /**
- * `gridMaxZoom` for a domain: a composite takes the deepest of its layers,
+ * The maximum zoom of a domain: a composite takes the deepest of its layers,
  * since its finest layer decides where tiles stop changing.
  */
 export const domainMaxZoom = (domain: Domain, domainOptions: Domain[]): number => {
-	if (!isSeamlessDomain(domain)) return gridMaxZoom(domain.grid);
+	if (!isSeamlessDomain(domain)) return concreteMaxZoom(domain);
 	return Math.max(
 		...domain.layers.map((layer) => {
 			const concrete = resolveConcreteDomain(layer.domainValue, domainOptions);
-			return concrete ? gridMaxZoom(concrete.grid) : 0;
+			return concrete ? concreteMaxZoom(concrete) : 0;
 		})
 	);
 };

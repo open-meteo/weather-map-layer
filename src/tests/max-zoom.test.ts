@@ -1,3 +1,4 @@
+import { isSeamlessDomain } from '../domain-helpers';
 import { domainOptions } from '../domains';
 import { domainMaxZoom, gridMaxZoom, gridResolutionZoom, gridSpacing } from '../grids/max-zoom';
 import { describe, expect, it } from 'vitest';
@@ -74,5 +75,21 @@ describe('gridMaxZoom / domainMaxZoom', () => {
 		const finest = Math.max(...layers.map((l) => gridMaxZoom(grid(l.domainValue))));
 		expect(domainMaxZoom(seamless, domainOptions)).toBe(finest);
 		expect(domainMaxZoom(domain('dwd_icon'), domainOptions)).toBe(gridMaxZoom(grid('dwd_icon')));
+	});
+});
+
+describe('maxZoom in domains.ts', () => {
+	it('matches gridMaxZoom for every concrete domain', () => {
+		for (const d of domainOptions) {
+			if (isSeamlessDomain(d)) continue;
+			expect(d.maxZoom, d.value).toBe(gridMaxZoom(d.grid));
+		}
+	});
+
+	it('is preferred over the grid, and derived when a domain lacks it', () => {
+		const custom: Domain = { ...domain('dwd_icon'), value: 'custom', maxZoom: 9 };
+		expect(domainMaxZoom(custom, domainOptions)).toBe(9);
+		const { maxZoom: _, ...derived } = domain('dwd_icon');
+		expect(domainMaxZoom(derived, domainOptions)).toBe(gridMaxZoom(derived.grid));
 	});
 });

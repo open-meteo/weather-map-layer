@@ -349,6 +349,13 @@ export interface Domain {
 	grid: GridData;
 	time_interval: ModelDt;
 	model_interval: ModelUpdateInterval;
+	/**
+	 * The deepest zoom raster tiles are rendered for. Past it a tile pixel is
+	 * finer than the grid, so tiles only interpolate between the same points
+	 * and clients overzoom from there instead. `gridMaxZoom` derives it from
+	 * the grid (one past the resolution zoom) for domains that do not set it.
+	 */
+	maxZoom?: number;
 }
 
 export type ModelDt =
