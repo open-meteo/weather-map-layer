@@ -11,7 +11,7 @@
 			"import": "./dist/index.mjs"
 		},
 		"./node": {
-			"types": "./dist/node.d.ts",
+			"types": "./dist/node/index.d.ts",
 			"import": "./dist/node.mjs"
 		}
 	},
@@ -27,6 +27,9 @@
 		"weather-maps",
 		"omfile"
 	],
+	"bin": {
+		"weather-map-tiles": "dist/cli.mjs"
+	},
 	"files": [
 		"dist/**/*"
 	],
