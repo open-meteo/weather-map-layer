@@ -21,9 +21,14 @@
 			import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.mjs';
 
 			// The tiles come from the Node tile server in this directory, so the page needs
-			// neither the library nor the om:// protocol. Start the server first:
-			//   OM_URL='https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon/latest.json?variable=temperature_2m&contours=true&intervals=2' node examples/node/server.mjs
+			// neither the library nor the om:// protocol. Start it with
+			//   node examples/node/server.mjs
+			// The path picks the data (domain, run, time step, variable), the query the
+			// render options, as in an om:// URL. The wind variable gives the tiles a
+			// direction field for the arrows; a scalar variable (temperature_2m, …)
+			// renders the raster and the contours only.
 			const tileServer = 'http://localhost:8080';
+			const tiles = tileServer + '/tiles/dwd_icon/latest/current_time_1H/wind_u_component_10m';
 
 			const map = new maplibregl.Map({
 				container: 'map',
@@ -35,10 +40,10 @@
 				// Raster tiles: plain PNGs, as any XYZ tile source.
 				map.addSource('tileServerRaster', {
 					type: 'raster',
-					tiles: [tileServer + '/tiles/{z}/{x}/{y}.png'],
+					tiles: [tiles + '/{z}/{x}/{y}.png'],
 					tileSize: 512,
 					maxzoom: 12,
-					attribution: '© Open-Meteo'
+					attribution: '<a href="https://open-meteo.com/en/licence#maps">© Open-Meteo</a>'
 				});
 				map.addLayer(
 					{
@@ -52,22 +57,39 @@
 					'waterway-tunnel'
 				);
 
-				// Vector tiles: the PBF endpoint carries the contours (or arrows, grid points)
-				// the server's OM_URL asks for, in the usual MVT layers.
+				// Vector tiles: the PBF endpoint carries the arrows, contours and grid points
+				// the query asks for, in the usual MVT layers.
 				map.addSource('tileServerVector', {
 					type: 'vector',
-					tiles: [tileServer + '/tiles/{z}/{x}/{y}.pbf'],
+					tiles: [tiles + '/{z}/{x}/{y}.pbf?arrows=true'],
 					maxzoom: 12
 				});
+
+				// Wind arrows, darker with the wind speed in the `value` property.
 				map.addLayer(
 					{
-						id: 'tileServerContours',
+						id: 'tileServerArrows',
 						type: 'line',
 						source: 'tileServerVector',
-						'source-layer': 'contours',
+						'source-layer': 'wind-arrows',
 						paint: {
-							'line-color': 'rgba(0, 0, 0, 0.5)',
-							'line-width': 1
+							'line-color': [
+								'step',
+								['to-number', ['get', 'value']],
+								'rgba(0, 0, 0, 0.2)',
+								2,
+								'rgba(0, 0, 0, 0.3)',
+								3,
+								'rgba(0, 0, 0, 0.4)',
+								4,
+								'rgba(0, 0, 0, 0.5)',
+								5,
+								'rgba(0, 0, 0, 0.6)'
+							],
+							'line-width': 2
+						},
+						layout: {
+							'line-cap': 'round'
 						}
 					},
 					'place_label_other'
