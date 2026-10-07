@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Weather Map Layer - CesiumJS Vector Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link
+			rel="stylesheet"
+			href="https://unpkg.com/cesium@1.146.0/Build/Cesium/Widgets/widgets.css"
+		/>
+		<script src="https://unpkg.com/cesium@1.146.0/Build/Cesium/Cesium.js"></script>
+		<style>
+			html,
+			body,
+			#cesiumContainer {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="cesiumContainer"></div>
+		<script type="module">
+			const OMWeatherMapLayer = await import(
+				location.hostname === 'localhost'
+					? '../../dist/index.mjs' // local development
+					: 'https://unpkg.com/@openmeteo/weather-map-layer@0.2.2/dist/index.mjs' // x-release-please-version
+			);
+
+			// The adapter turns "om://" URLs into Cesium imagery providers whose tiles are rendered by omProtocol:
+			// a raster provider, and one that draws the vector tiles (arrows) onto raster tiles.
+			const cesiumAdapter = OMWeatherMapLayer.addCesiumProtocolSupport(Cesium);
+			cesiumAdapter.addProtocol('om', OMWeatherMapLayer.omProtocol);
+
+			// Natural Earth II ships with Cesium, so no Cesium ion token is needed for the base map.
+			const viewer = new Cesium.Viewer('cesiumContainer', {
+				baseLayer: Cesium.ImageryLayer.fromProviderAsync(
+					Cesium.TileMapServiceImageryProvider.fromUrl(
+						Cesium.buildModuleUrl('Assets/Textures/NaturalEarthII')
+					)
+				),
+				baseLayerPicker: false,
+				geocoder: false,
+				timeline: false,
+				animation: false
+			});
+
+			// Both layers share the same model file and time step. The vector layer appends `&arrows=true` to request PBF arrow tiles.
+			const omUrl = `https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=wind_u_component_10m`;
+
+			// Raster: wind speed.
+			viewer.imageryLayers.add(
+				Cesium.ImageryLayer.fromProviderAsync(
+					cesiumAdapter.createImageryProvider('om://' + omUrl),
+					{ alpha: 0.75 }
+				)
+			);
+
+			// Vectors: Cesium has no vector tile renderer, so the arrow tiles are drawn onto
+			// raster tiles with the style function, like the Leaflet vector tile layer.
+			viewer.imageryLayers.add(
+				Cesium.ImageryLayer.fromProviderAsync(
+					cesiumAdapter.createVectorImageryProvider('om://' + omUrl + '&arrows=true', {
+						style: (properties) => {
+							const value = Number(properties.value) || 0;
+							const alpha =
+								value > 5 ? 0.6 : value > 4 ? 0.5 : value > 3 ? 0.4 : value > 2 ? 0.3 : 0.2;
+							return {
+								strokeStyle: `rgba(0, 0, 0, ${alpha})`,
+								lineWidth: 2,
+								lineCap: 'round'
+							};
+						}
+					})
+				)
+			);
+
+			viewer.camera.setView({
+				destination: Cesium.Cartesian3.fromDegrees(10, 50, 5_000_000)
+			});
+		</script>
+	</body>
+</html>

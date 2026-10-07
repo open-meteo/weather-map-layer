@@ -7,6 +7,49 @@ export const extractProtocol = (url: string): string | null => {
 	return idx !== -1 ? url.substring(0, idx) : null;
 };
 
+/** `[west, south, east, north]` in degrees. */
+export type LngLatBounds = [number, number, number, number];
+
+/** Upper bound on tiles fetched per viewport refresh, whatever the view. */
+const MAX_TILES_PER_REFRESH = 128;
+
+/** Fractional tile column / row of a coordinate at zoom `z`. */
+const lon2tile = (lon: number, z: number): number => ((lon + 180) / 360) * 2 ** z;
+const lat2tile = (lat: number, z: number): number => {
+	const rad = (lat * Math.PI) / 180;
+	return ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * 2 ** z;
+};
+export const clamp = (value: number, min: number, max: number): number =>
+	Math.min(max, Math.max(min, value));
+
+/**
+ * The tiles at zoom `z` covering `bounds`. Columns are left unwrapped so a
+ * view across the antimeridian keeps its longitudes continuous; `wrappedX`
+ * is the column to request.
+ */
+export const coveringTiles = (
+	bounds: LngLatBounds,
+	z: number
+): { x: number; y: number; wrappedX: number }[] => {
+	const n = 2 ** z;
+	const [west, south, east, north] = bounds;
+	// The far edges are exclusive: a bound sitting exactly on a tile boundary
+	// does not pull in the next tile
+	const minX = Math.floor(lon2tile(west, z));
+	const maxX = Math.ceil(lon2tile(east, z)) - 1;
+	const minY = clamp(Math.floor(lat2tile(north, z)), 0, n - 1);
+	const maxY = clamp(Math.ceil(lat2tile(south, z)) - 1, 0, n - 1);
+
+	const tiles: { x: number; y: number; wrappedX: number }[] = [];
+	for (let x = minX; x <= maxX; x++) {
+		for (let y = minY; y <= maxY; y++) {
+			if (tiles.length >= MAX_TILES_PER_REFRESH) return tiles;
+			tiles.push({ x, y, wrappedX: ((x % n) + n) % n });
+		}
+	}
+	return tiles;
+};
+
 /** Substitute {z}/{x}/{y} placeholders in a tile URL template. */
 export const buildTileUrl = (template: string, z: number, x: number, y: number): string => {
 	return template.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y));
