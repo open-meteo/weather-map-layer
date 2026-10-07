@@ -5,8 +5,14 @@
  * vector tiles; both are exercised against a mock protocol handler and a
  * minimal mock of the Cesium namespace.
  */
-import { addCesiumProtocolSupport } from '../../adapters/cesium';
-import type { CesiumLib, CesiumRequestLike } from '../../adapters/cesium';
+import { addCesiumProtocolSupport, cameraTileZoom } from '../../adapters/cesium';
+import type {
+	CesiumLib,
+	CesiumPolylineGeometryOptions,
+	CesiumPrimitive,
+	CesiumRequestLike,
+	CesiumViewerLike
+} from '../../adapters/cesium';
 import { renderInWorker } from '../../adapters/leaflet-worker/leaflet-pbf-worker-pool';
 import { command, writeLayer, zigzag } from '../../utils/pbf';
 import { PbfWriter } from 'pbf';
@@ -34,20 +40,25 @@ const createMockHandler = (tileData: () => unknown = () => null) =>
 		params.type === 'json' ? { data: TILEJSON } : { data: tileData() }
 	);
 
-/** One MVT tile with a single 2-point line in layer `wind-arrows`. */
-const makeVectorTile = (): ArrayBuffer => {
+/** One MVT tile with `lines` 2-point lines in layer `wind-arrows`, the first a quarter into the tile. */
+const makeVectorTile = (lines = 1): ArrayBuffer => {
 	const pbf = new PbfWriter();
 	pbf.writeMessage(3, writeLayer, {
 		name: 'wind-arrows',
 		extent: 4096,
-		features: [
-			{
-				id: 1,
-				type: 2, // LineString
-				properties: { value: 3.5 },
-				geom: [command(1, 1), zigzag(1024), zigzag(1024), command(2, 1), zigzag(512), zigzag(0)]
-			}
-		]
+		features: Array.from({ length: lines }, (_, i) => ({
+			id: i + 1,
+			type: 2, // LineString
+			properties: { value: 3.5 },
+			geom: [
+				command(1, 1),
+				zigzag(1024 + i * 1024),
+				zigzag(1024),
+				command(2, 1),
+				zigzag(512),
+				zigzag(0)
+			]
+		}))
 	});
 	const bytes = pbf.finish();
 	return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
@@ -112,6 +123,99 @@ const createMockCesium = (): CesiumLib & {
 	};
 };
 
+/** A primitive that records its geometry instances and is ready at once. */
+class MockPrimitive implements CesiumPrimitive {
+	ready = true;
+	constructor(public options: { geometryInstances: unknown[]; appearance: unknown }) {}
+	/** The polyline geometry options of every instance. */
+	get geometries(): CesiumPolylineGeometryOptions[] {
+		return this.options.geometryInstances.map(
+			(instance) =>
+				(instance as { geometry: { options: CesiumPolylineGeometryOptions } }).geometry.options
+		);
+	}
+}
+
+/** The vector layer's part of the Cesium namespace. */
+const withVectorSupport = (cesium: CesiumLib): CesiumLib => ({
+	...cesium,
+	ArcType: { NONE: 'none' },
+	Cartesian3: { fromDegreesArray: (coordinates: number[]) => coordinates },
+	Color: {
+		fromCssColorString: (color: string) => ({
+			alpha: color === 'rgba(0, 0, 0, 0)' ? 0 : 1,
+			color,
+			withAlpha(alpha: number) {
+				return { ...this, alpha };
+			}
+		})
+	},
+	GeometryInstance: class {
+		constructor(public options: { geometry: unknown }) {}
+		get geometry() {
+			return this.options.geometry;
+		}
+	},
+	PolylineColorAppearance: Object.assign(class {}, { VERTEX_FORMAT: 'vertex-format' }),
+	PolylineGeometry: class {
+		constructor(public options: CesiumPolylineGeometryOptions) {}
+	},
+	Primitive: MockPrimitive
+});
+
+/** The height at which `cameraTileZoom` sees the whole world in a 512 px viewport at the equator. */
+const WORLD_HEIGHT = (Math.PI * 6378137) / Math.tan(Math.PI / 6);
+
+interface MockViewer extends CesiumViewerLike {
+	primitives: unknown[];
+	listeners: Set<() => void>;
+	/** Fire the scene's postRender event, where the layer swaps in a ready primitive. */
+	postRender: () => void;
+}
+
+/** A viewer whose camera sees the whole world from a height that maps to tile zoom 1. */
+const createMockViewer = (height = WORLD_HEIGHT / 2): MockViewer => {
+	const primitives: unknown[] = [];
+	const listeners = new Set<() => void>();
+	const postRenderListeners = new Set<() => void>();
+	return {
+		primitives,
+		listeners,
+		postRender: () => postRenderListeners.forEach((listener) => listener()),
+		scene: {
+			canvas: { clientHeight: 512 },
+			globe: { ellipsoid: 'wgs84' },
+			primitives: {
+				add: (primitive) => primitives.push(primitive),
+				remove: (primitive) => {
+					const index = primitives.indexOf(primitive);
+					if (index === -1) return false;
+					primitives.splice(index, 1);
+					return true;
+				}
+			},
+			postRender: {
+				addEventListener: (listener) => postRenderListeners.add(listener),
+				removeEventListener: (listener) => postRenderListeners.delete(listener)
+			}
+		},
+		camera: {
+			moveEnd: {
+				addEventListener: (listener) => listeners.add(listener),
+				removeEventListener: (listener) => listeners.delete(listener)
+			},
+			computeViewRectangle: () => ({
+				west: -Math.PI,
+				south: (-85 * Math.PI) / 180,
+				east: Math.PI,
+				north: (85 * Math.PI) / 180
+			}),
+			positionCartographic: { latitude: 0, height },
+			frustum: { fovy: Math.PI / 3 }
+		}
+	};
+};
+
 /** `new Request()` as Cesium's ImageryLayer hands it to `requestImage`. */
 const createRequest = (): CesiumRequestLike => ({});
 
@@ -141,6 +245,7 @@ describe('addCesiumProtocolSupport', () => {
 		expect(typeof adapter.removeProtocol).toBe('function');
 		expect(typeof adapter.createImageryProvider).toBe('function');
 		expect(typeof adapter.createVectorImageryProvider).toBe('function');
+		expect(typeof adapter.addVectorLayer).toBe('function');
 	});
 
 	it('throws when the Cesium namespace is incomplete', () => {
@@ -377,6 +482,191 @@ describe('addCesiumProtocolSupport', () => {
 
 			expect(result).toBeInstanceOf(MockImageData);
 			expect(renderInWorker).not.toHaveBeenCalled();
+		});
+	});
+
+	// ── cameraTileZoom ────────────────────────────────────────────────────
+
+	describe('cameraTileZoom', () => {
+		it('matches the viewport height to the world at zoom 0 and halves the height per zoom', () => {
+			expect(cameraTileZoom(WORLD_HEIGHT, 0, 512)).toBe(0);
+			expect(cameraTileZoom(WORLD_HEIGHT / 2, 0, 512)).toBe(1);
+			expect(cameraTileZoom(WORLD_HEIGHT / 8, 0, 512)).toBe(3);
+			// A viewport twice as tall shows twice the tiles at the same resolution
+			expect(cameraTileZoom(WORLD_HEIGHT, 0, 1024)).toBe(1);
+		});
+
+		it('follows the shrinking Mercator metre towards the poles', () => {
+			expect(cameraTileZoom(WORLD_HEIGHT / 2, Math.PI / 3, 512)).toBe(0);
+		});
+	});
+
+	// ── addVectorLayer ────────────────────────────────────────────────────
+
+	describe('addVectorLayer', () => {
+		it('throws when the Cesium namespace lacks the primitives API', () => {
+			const adapter = addCesiumProtocolSupport(createMockCesium());
+			expect(() =>
+				adapter.addVectorLayer(createMockViewer(), 'om://example.com/tiles.json')
+			).toThrow('Primitive must be available');
+		});
+
+		it('follows moveEnd and fetches the tiles covering the view at the camera zoom', async () => {
+			const handler = createMockHandler(makeVectorTile);
+			const adapter = addCesiumProtocolSupport(withVectorSupport(createMockCesium()));
+			adapter.addProtocol('om', handler);
+			const viewer = createMockViewer();
+
+			const handle = adapter.addVectorLayer(viewer, 'om://example.com/tiles.json?arrows=true');
+			expect(viewer.listeners.size).toBe(1);
+			await handle.refresh();
+
+			// The world at zoom 1 is 2×2 tiles, requested through the TileJSON's template
+			const tileCalls = handler.mock.calls.filter(([params]) => params.type === 'arrayBuffer');
+			expect(tileCalls.map(([params]) => params.url).sort()).toEqual([
+				'om://example.com/1/0/0',
+				'om://example.com/1/0/1',
+				'om://example.com/1/1/0',
+				'om://example.com/1/1/1'
+			]);
+		});
+
+		it('chains the lines of a tile into one geometry per width with the resolved style', async () => {
+			const adapter = addCesiumProtocolSupport(withVectorSupport(createMockCesium()));
+			adapter.addProtocol('om', createMockHandler(makeVectorTile));
+			const viewer = createMockViewer();
+			const style = vi.fn(() => ({ strokeStyle: 'rgba(255, 0, 0, 1)', lineWidth: 3 }));
+
+			const handle = adapter.addVectorLayer(viewer, 'om://example.com/tiles.json', { style });
+			await handle.refresh();
+
+			expect(style).toHaveBeenCalledWith({ layer: 'wind-arrows', value: 3.5 }, 'wind-arrows');
+			// One primitive per tile, each with one line of one width
+			expect(viewer.primitives).toHaveLength(4);
+			const primitive = viewer.primitives[0] as MockPrimitive;
+			expect(primitive.geometries).toHaveLength(1);
+			const geometry = primitive.geometries[0];
+			expect(geometry.width).toBe(3);
+			expect(geometry.colorsPerVertex).toBe(false);
+			expect(geometry.arcType).toBe('none');
+			// One segment, so one colour
+			expect(geometry.colors).toHaveLength(1);
+			expect(geometry.colors[0]).toMatchObject({ color: 'rgba(255, 0, 0, 1)' });
+			// Tile 1/0/0 spans lon -180..0; the line starts a quarter into it
+			const positions = geometry.positions as number[];
+			expect(positions).toHaveLength(4);
+			expect(positions[0]).toBeCloseTo(-135, 5);
+			expect(positions[1]).toBeGreaterThan(0);
+		});
+
+		it('joins the parts of a tile with transparent connector segments', async () => {
+			const adapter = addCesiumProtocolSupport(withVectorSupport(createMockCesium()));
+			adapter.addProtocol(
+				'om',
+				createMockHandler(() => makeVectorTile(2))
+			);
+			const viewer = createMockViewer();
+			const style = () => ({ lineWidth: 2 });
+
+			const handle = adapter.addVectorLayer(viewer, 'om://example.com/tiles.json', { style });
+			await handle.refresh();
+
+			// Two lines of one width: one geometry of four points, whose middle
+			// segment is the invisible connector
+			const [geometry] = (viewer.primitives[0] as MockPrimitive).geometries;
+			expect((geometry.positions as number[]).length / 2).toBe(4);
+			expect(geometry.colors.map((color) => color.alpha)).toEqual([1, 0, 1]);
+		});
+
+		it('keeps the tiles still in view and drops the rest once the new ones are ready', async () => {
+			const handler = createMockHandler(makeVectorTile);
+			const adapter = addCesiumProtocolSupport(withVectorSupport(createMockCesium()));
+			adapter.addProtocol('om', handler);
+			const viewer = createMockViewer();
+			const tileCalls = () =>
+				handler.mock.calls.filter(([params]) => params.type === 'arrayBuffer');
+
+			const handle = adapter.addVectorLayer(viewer, 'om://example.com/tiles.json');
+			await handle.refresh();
+			viewer.postRender();
+			const atZoom1 = [...viewer.primitives];
+			expect(atZoom1).toHaveLength(4);
+
+			// The same view again: nothing fetched, nothing rebuilt
+			await handle.refresh();
+			expect(tileCalls()).toHaveLength(4);
+			expect(viewer.primitives).toEqual(atZoom1);
+
+			// Zoom in: the 16 tiles of zoom 2 join the 4 of zoom 1 until they can render
+			viewer.camera.positionCartographic.height = WORLD_HEIGHT / 4;
+			await handle.refresh();
+			expect(viewer.primitives).toHaveLength(20);
+			viewer.postRender();
+			expect(viewer.primitives).toHaveLength(16);
+			expect(viewer.primitives.some((primitive) => atZoom1.includes(primitive))).toBe(false);
+
+			handle.remove();
+			expect(viewer.primitives).toHaveLength(0);
+			expect(viewer.listeners.size).toBe(0);
+		});
+
+		it('waits for the new tiles before dropping stale ones', async () => {
+			const adapter = addCesiumProtocolSupport(withVectorSupport(createMockCesium()));
+			adapter.addProtocol('om', createMockHandler(makeVectorTile));
+			const viewer = createMockViewer();
+
+			const handle = adapter.addVectorLayer(viewer, 'om://example.com/tiles.json');
+			await handle.refresh();
+			viewer.postRender();
+
+			viewer.camera.positionCartographic.height = WORLD_HEIGHT / 4;
+			await handle.refresh();
+			// Cesium's workers are still combining one of the new tiles
+			(viewer.primitives[19] as MockPrimitive).ready = false;
+			viewer.postRender();
+			expect(viewer.primitives).toHaveLength(20);
+			(viewer.primitives[19] as MockPrimitive).ready = true;
+			viewer.postRender();
+			expect(viewer.primitives).toHaveLength(16);
+		});
+
+		it('reuses a decoded tile that comes back into view', async () => {
+			const handler = createMockHandler(makeVectorTile);
+			const adapter = addCesiumProtocolSupport(withVectorSupport(createMockCesium()));
+			adapter.addProtocol('om', handler);
+			const viewer = createMockViewer();
+			const tileCalls = () =>
+				handler.mock.calls.filter(([params]) => params.type === 'arrayBuffer');
+
+			const handle = adapter.addVectorLayer(viewer, 'om://example.com/tiles.json');
+			await handle.refresh();
+			viewer.postRender();
+			viewer.camera.positionCartographic.height = WORLD_HEIGHT / 4;
+			await handle.refresh();
+			viewer.postRender();
+			expect(tileCalls()).toHaveLength(20);
+
+			viewer.camera.positionCartographic.height = WORLD_HEIGHT / 2;
+			await handle.refresh();
+			viewer.postRender();
+			expect(tileCalls()).toHaveLength(20);
+			expect(viewer.primitives).toHaveLength(4);
+		});
+
+		it('clamps the tile zoom to the zoom range and skips empty tiles', async () => {
+			const handler = createMockHandler(() => new ArrayBuffer(0));
+			const adapter = addCesiumProtocolSupport(withVectorSupport(createMockCesium()));
+			adapter.addProtocol('om', handler);
+			const viewer = createMockViewer(WORLD_HEIGHT / 64);
+
+			const handle = adapter.addVectorLayer(viewer, 'om://example.com/tiles.json', { maxzoom: 2 });
+			await handle.refresh();
+
+			const tileCalls = handler.mock.calls.filter(([params]) => params.type === 'arrayBuffer');
+			expect(tileCalls).toHaveLength(16);
+			expect(tileCalls.every(([params]) => params.url.includes('/2/'))).toBe(true);
+			// Nothing to draw: no primitive at all
+			expect(viewer.primitives).toEqual([]);
 		});
 	});
 });
