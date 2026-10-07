@@ -9,6 +9,10 @@
 		".": {
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.mjs"
+		},
+		"./node": {
+			"types": "./dist/node.d.ts",
+			"import": "./dist/node.mjs"
 		}
 	},
 	"repository": {
@@ -47,7 +51,7 @@
 		"generate:colorscales": "tsx scripts/generate-colorscales.ts && prettier --write src/utils/color-scales.ts",
 		"generate:footprints": "tsx scripts/generate-domain-footprints.ts && prettier --write src/domain-footprints.ts",
 		"watch:colorscales": "npm-watch generate:colorscales",
-		"build": "vite build",
+		"build": "vite build && vite build -c vite.config.node.ts",
 		"prepare": "npm run build",
 		"serve": "concurrently --kill-others \"npm run dev\" \"node scripts/serve-examples.js\""
 	},

@@ -1,4 +1,5 @@
 export { omProtocol } from './om-protocol';
+export { createOmProtocol } from './om-protocol-core';
 
 // Functions
 
@@ -69,7 +70,8 @@ export type {
 	OmUrlState,
 	RenderableColorScale,
 	SeamlessDomain,
-	SeamlessLayer
+	SeamlessLayer,
+	TileRenderer
 } from './types';
 
 export type { VariableDerivationRule, WeatherMapLayerFileReader } from './om-file-reader';

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Weather Map Layer - Node Tile Server Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.css" />
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<script type="module">
+			import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.mjs';
+
+			// The tiles come from the Node tile server in this directory, so the page needs
+			// neither the library nor the om:// protocol. Start the server first:
+			//   OM_URL='https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon/latest.json?variable=temperature_2m&contours=true&intervals=2' node examples/node/server.mjs
+			const tileServer = 'http://localhost:8080';
+
+			const map = new maplibregl.Map({
+				container: 'map',
+				style: 'https://static-assets.open-meteo.com/map-assets/styles/minimal-planet-maps.json', // replace with your own style sheet
+				hash: true
+			});
+
+			map.on('load', () => {
+				// Raster tiles: plain PNGs, as any XYZ tile source.
+				map.addSource('tileServerRaster', {
+					type: 'raster',
+					tiles: [tileServer + '/tiles/{z}/{x}/{y}.png'],
+					tileSize: 512,
+					maxzoom: 12,
+					attribution: '© Open-Meteo'
+				});
+				map.addLayer(
+					{
+						id: 'tileServerRasterLayer',
+						type: 'raster',
+						source: 'tileServerRaster',
+						paint: {
+							'raster-opacity': 0.75
+						}
+					},
+					'waterway-tunnel'
+				);
+
+				// Vector tiles: the PBF endpoint carries the contours (or arrows, grid points)
+				// the server's OM_URL asks for, in the usual MVT layers.
+				map.addSource('tileServerVector', {
+					type: 'vector',
+					tiles: [tileServer + '/tiles/{z}/{x}/{y}.pbf'],
+					maxzoom: 12
+				});
+				map.addLayer(
+					{
+						id: 'tileServerContours',
+						type: 'line',
+						source: 'tileServerVector',
+						'source-layer': 'contours',
+						paint: {
+							'line-color': 'rgba(0, 0, 0, 0.5)',
+							'line-width': 1
+						}
+					},
+					'place_label_other'
+				);
+			});
+		</script>
+	</body>
+</html>
