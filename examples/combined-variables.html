@@ -41,8 +41,7 @@
 			map.on('load', () => {
 				map.addSource('omCloudCoverSource', {
 					url: 'om://' + omCloudCoverUrl,
-					type: 'raster',
-					maxzoom: 12
+					type: 'raster'
 				});
 				map.addLayer(
 					{
@@ -58,8 +57,7 @@
 
 				map.addSource('omPrecipitationSource', {
 					url: 'om://' + omPrecipitationUrl,
-					type: 'raster',
-					maxzoom: 12
+					type: 'raster'
 				});
 				map.addLayer(
 					{
