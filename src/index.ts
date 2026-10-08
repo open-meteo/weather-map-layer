@@ -73,5 +73,9 @@ export type {
 	SeamlessLayer
 } from './types';
 
-export type { VariableDerivationRule, WeatherMapLayerFileReader } from './om-file-reader';
+export type {
+	DerivationContext,
+	VariableDerivationRule,
+	WeatherMapLayerFileReader
+} from './om-file-reader';
 export type { BlockCache } from '@openmeteo/file-reader';

@@ -1,6 +1,7 @@
 import {
 	apparentTemperature,
 	dewPoint,
+	relativeHumidity,
 	vapourPressureDeficit,
 	wetBulbTemperature
 } from '../utils/meteorology';
@@ -12,6 +13,12 @@ describe('meteorology', () => {
 	it('dew point by the Magnus formula', () => {
 		expect(dewPoint(25, 60)).toBeCloseTo(16.6977, 3);
 		expect(dewPoint(25, 100)).toBeCloseTo(25, 3);
+	});
+
+	it('relative humidity inverts the dew point, clamped to 0–100 %', () => {
+		expect(relativeHumidity(25, dewPoint(25, 60))).toBeCloseTo(60, 3);
+		expect(relativeHumidity(0, dewPoint(0, 95))).toBeCloseTo(95, 3);
+		expect(relativeHumidity(20, 25)).toBe(100);
 	});
 
 	it('vapour pressure deficit, never negative', () => {

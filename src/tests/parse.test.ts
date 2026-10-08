@@ -1,5 +1,5 @@
 import { pad } from '../utils';
-import { parseMetaJson, parseUrlComponents } from '../utils/parse-url';
+import { fetchRunTimeStepHours, parseMetaJson, parseUrlComponents } from '../utils/parse-url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('URL Parsing', () => {
@@ -96,5 +96,43 @@ describe('URL Parsing', () => {
 				'Invalid OM protocol URL'
 			);
 		});
+	});
+});
+
+describe('fetchRunTimeStepHours', () => {
+	// A run with hourly steps that turn 3-hourly, listed out of order
+	const meta = {
+		completed: true,
+		last_modified_time: '',
+		reference_time: '2026-10-08T00:00Z',
+		valid_times: [
+			'2026-10-08T01:00Z',
+			'2026-10-08T00:00Z',
+			'2026-10-08T05:00Z',
+			'2026-10-08T02:00Z'
+		],
+		variables: ['precipitation']
+	};
+	const run = 'https://host/data_spatial/model/2026/10/08/0000Z';
+
+	beforeEach(() =>
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => Response.json(meta))
+		)
+	);
+	afterEach(() => vi.unstubAllGlobals());
+
+	it('is the gap to the previous valid time of the run', async () => {
+		expect(await fetchRunTimeStepHours(`${run}/2026-10-08T0200.om`)).toBe(1);
+		expect(await fetchRunTimeStepHours(`${run}/2026-10-08T0500.om`)).toBe(3);
+		// The first step takes the gap to the next one
+		expect(await fetchRunTimeStepHours(`${run}/2026-10-08T0000.om`)).toBe(1);
+		expect(fetch).toHaveBeenCalledWith(`${run}/meta.json`);
+	});
+
+	it('is undefined for a valid time the run does not list, or a URL outside a run', async () => {
+		expect(await fetchRunTimeStepHours(`${run}/2026-10-08T0400.om`)).toBeUndefined();
+		expect(await fetchRunTimeStepHours('https://host/file.om')).toBeUndefined();
 	});
 });

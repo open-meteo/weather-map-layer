@@ -117,6 +117,54 @@ const resolveJsonFetchUrl = (jsonUrl: string, domainOptions?: Domain[]): string 
 	return replaceUrlDomain(jsonUrl, urlDomainValue, getConcreteDomainValue(domain));
 };
 
+/**
+ * The metadata JSON at `jsonUrl`, requested from `fetchUrl` and cached for 60
+ * seconds under `jsonUrl`.
+ */
+const fetchMetaJson = (jsonUrl: string, fetchUrl = jsonUrl): Promise<DomainMetaDataJson> => {
+	if (!metaDataCache.has(jsonUrl)) {
+		const metaRequest = fetch(fetchUrl).then((response) => {
+			if (!response.ok) {
+				throw new Error(`Failed to fetch ${fetchUrl}: ${response.status}`);
+			}
+			return response.json() as Promise<DomainMetaDataJson>;
+		});
+		// Evict failed fetches immediately so the next request retries instead of
+		// hitting the cached rejection for the rest of the 60 seconds.
+		metaRequest.catch(() => metaDataCache.delete(jsonUrl));
+		metaDataCache.set(jsonUrl, metaRequest);
+		setTimeout(() => metaDataCache.delete(jsonUrl), 60000); // delete after 60 seconds
+	}
+	return metaDataCache.get(jsonUrl)!;
+};
+
+/**
+ * Length in hours of the time step a data-spatial file covers: the gap to the
+ * previous valid time of its model run, from the run's `meta.json` (the first
+ * step takes the gap to the next one). Undefined for a URL without the
+ * run/valid-time path structure, a `meta.json` that cannot be fetched, or a
+ * valid time it does not list.
+ */
+export const fetchRunTimeStepHours = async (omUrl: string): Promise<number | undefined> => {
+	const match = omUrl.match(RUN_AND_VALID_TIME_REGEX);
+	if (!match?.groups || match.index === undefined) return undefined;
+	const runDirectory = omUrl.slice(0, match.index + match[0].lastIndexOf('/') + 1);
+	let meta: DomainMetaDataJson;
+	try {
+		meta = await fetchMetaJson(`${runDirectory}meta.json`);
+	} catch {
+		return undefined;
+	}
+	const { validDate, validTime } = match.groups;
+	const valid = Date.parse(`${validDate}T${validTime.slice(0, 2)}:${validTime.slice(2)}:00Z`);
+	// The listed valid times are not guaranteed to be in order
+	const times = meta.valid_times.map((time) => Date.parse(time)).sort((a, b) => a - b);
+	const index = times.indexOf(valid);
+	if (index === -1 || times.length < 2) return undefined;
+	const step = index === 0 ? times[1] - times[0] : times[index] - times[index - 1];
+	return step / 3_600_000;
+};
+
 export const parseMetaJson = async (omUrl: string, domainOptions?: Domain[]) => {
 	let date = new Date();
 	const url = omUrl.replace('om://', '');
@@ -128,20 +176,7 @@ export const parseMetaJson = async (omUrl: string, domainOptions?: Domain[]) => 
 	// original (seamless) key so duplicate requests are still deduplicated.
 	const fetchJsonUrl = resolveJsonFetchUrl(jsonUrl, domainOptions);
 
-	if (!metaDataCache.has(jsonUrl)) {
-		const metaRequest = fetch(fetchJsonUrl).then((response) => {
-			if (!response.ok) {
-				throw new Error(`Failed to fetch ${fetchJsonUrl}: ${response.status}`);
-			}
-			return response.json() as Promise<DomainMetaDataJson>;
-		});
-		// Evict failed fetches immediately so the next request retries instead of
-		// hitting the cached rejection for the rest of the 60 seconds.
-		metaRequest.catch(() => metaDataCache.delete(jsonUrl));
-		metaDataCache.set(jsonUrl, metaRequest);
-		setTimeout(() => metaDataCache.delete(jsonUrl), 60000); // delete after 60 seconds
-	}
-	const metaResult = await metaDataCache.get(jsonUrl)!;
+	const metaResult = await fetchMetaJson(jsonUrl, fetchJsonUrl);
 
 	const { meta } = url.match(DOMAIN_META_REGEX)?.groups as {
 		meta: string; // E.G. latest | in-progress

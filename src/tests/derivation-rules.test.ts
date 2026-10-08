@@ -29,6 +29,20 @@ describe('variableHasDirections', () => {
 		expect(variableHasDirections('temperature_anomaly_2m', [scalarOnly])).toBe(false);
 		expect(variableHasDirections('wind_u_component_10m', [scalarOnly])).toBe(false);
 	});
+
+	it('matches a global or sticky RegExp pattern on every lookup', () => {
+		const vectors: VariableDerivationRule = {
+			pattern: /_component_/g,
+			provides: { directions: true, barbs: true },
+			scaleFactor: 'primary',
+			getSourceVars: () => ['wind_u_component_10m', 'wind_v_component_10m'],
+			process: ([u]) => ({ values: u, directions: u })
+		};
+		// `RegExp.prototype.test` would advance `lastIndex` and fail every other call
+		for (let i = 0; i < 3; i++) {
+			expect(variableHasDirections('wind_u_component_10m', [vectors])).toBe(true);
+		}
+	});
 });
 
 describe('variableSupportsBarbs', () => {

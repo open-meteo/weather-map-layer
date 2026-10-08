@@ -114,6 +114,7 @@ export const variableOptions = [
 	{ value: 'precipitation_efi', label: 'Precipitation Probability' },
 	{ value: 'precipitation_mean', label: 'Precipitation Mean' },
 	{ value: 'precipitation_probability', label: 'Precipitation Probability' },
+	{ value: 'precipitation_rate', label: 'Precipitation Rate' },
 	{ value: 'precipitation_sot90', label: 'Precipitation SOT90' },
 	{ value: 'precipitation_spread', label: 'Precipitation Spread' },
 	{ value: 'precipitation_type', label: 'Precipitation Type' },
@@ -128,6 +129,7 @@ export const variableOptions = [
 
 	{ value: 'rain', label: 'Rain' },
 	{ value: 'rain_probability', label: 'Rain Probability' },
+	{ value: 'rain_rate', label: 'Rain Rate' },
 
 	{ value: 'roughness_length', label: 'Roughness Length' },
 
@@ -153,6 +155,7 @@ export const variableOptions = [
 
 	{ value: 'showers', label: 'Showers' },
 	{ value: 'showers_mean', label: 'Showers Mean' },
+	{ value: 'showers_rate', label: 'Showers Rate' },
 	{ value: 'showers_spread', label: 'Showers Spread' },
 
 	{ value: 'shortwave_radiation', label: 'Shortwave Solar Radiation' },

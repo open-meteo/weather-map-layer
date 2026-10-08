@@ -216,20 +216,28 @@ An example implementation with a useful case is available in the `examples/callb
 
 ### Derivation rules
 
-Some variables are not stored in the `.om` files but computed while reading them: wind speed and direction come from the `u`/`v` components, wave height is paired with the wave direction, and `vapour_pressure_deficit`, `wet_bulb_temperature_2m` and `apparent_temperature` are computed from the 2 m temperature and relative humidity with the formulas of the Open-Meteo API, the last one also from the 10 m `u`/`v` wind and `shortwave_radiation`. A derived variable is only available where all of its sources are stored. Each of these is a derivation rule, matching the requested variable name and listing the variables it is read from. The defaults are exported as `defaultDerivationRules`; own rules are passed through `fileReaderConfig`:
+Some variables are not stored in the `.om` files but computed while reading them: wind speed and direction come from the `u`/`v` components, wave height is paired with the wave direction, and `vapour_pressure_deficit`, `wet_bulb_temperature_2m` and `apparent_temperature` are computed from the 2 m temperature and humidity with the formulas of the Open-Meteo API. Each of these is a derivation rule, matching the requested variable name and listing the variables it is read from.
+
+What a model stores differs: `snowfall` is stored by some models and derived from `snowfall_water_equivalent` on others, wind comes as `u`/`v` components or as speed and direction, and ECMWF stores the dew point where other models store the relative humidity. A rule therefore sees the variables of the file it reads from and decides whether it applies. The stored field wins over a derived one, and a derived field needs all of its sources in the file (the first file of a run has no accumulations yet). Where not stored, the defaults derive `snowfall`, `rain`, `dew_point_2m`, `relative_humidity_2m`, `shortwave_radiation`, `direct_radiation`, `diffuse_radiation` and `wind_speed_*`/`wind_direction_*` from the components, and the humidity-derived fields take the dew point, the wind speed or the direct and diffuse radiation where a model stores those instead. `precipitation_rate`, `rain_rate` and `showers_rate` are the stored per-step sums in mm/h, so a series of maps reads the same across a model's hourly, 3-hourly and 6-hourly steps; the step length comes from the model run's `meta.json` next to the file.
+
+The defaults are exported as `defaultDerivationRules`; own rules are passed through `fileReaderConfig`:
 
 ```ts
-// `snowfall` is not in the files: the models provide its water equivalent in
-// mm, which becomes cm of fresh snow with a fixed 0.7 factor.
+// Fresh snow from the water equivalent with a ratio that follows the
+// temperature, instead of the fixed 0.7 cm per mm of the default rule.
+// Listed first, this rule takes `variable=snowfall` over.
 const snowfallRule = {
 	pattern: /^snowfall$/,
 	provides: { directions: false, barbs: false },
-	// The water equivalent is stored in 0.1 mm steps, so snowfall lands on a
-	// 0.07 cm grid: colour and contour thresholds are offset by half of that.
-	scaleFactor: 1 / 0.07,
-	getSourceVars: () => ['snowfall_water_equivalent'],
-	process: ([waterEquivalent]) => ({
-		values: waterEquivalent.map((mm) => mm * 0.7),
+	scaleFactor: 'primary',
+	// A model storing snowfall itself keeps it; otherwise both sources are needed
+	getSourceVars: ({ variable, stored }) =>
+		!stored.has(variable) && stored.has('snowfall_water_equivalent') && stored.has('temperature_2m')
+			? ['snowfall_water_equivalent', 'temperature_2m']
+			: null,
+	process: ([waterEquivalent, temperature]) => ({
+		// 1 cm per mm near freezing, up to 2 cm per mm of cold, dry snow
+		values: waterEquivalent.map((mm, i) => mm * Math.min(2, Math.max(1, 1 - temperature[i] / 10))),
 		directions: undefined
 	})
 };
@@ -237,18 +245,18 @@ const snowfallRule = {
 const omProtocolOptions = OMWeatherMapLayer.defaultOmProtocolSettings;
 omProtocolOptions.fileReaderConfig = {
 	...omProtocolOptions.fileReaderConfig,
-	// The first matching rule wins, so own rules go in front of the defaults.
+	// The first rule claiming a name wins, so own rules go in front of the defaults.
 	derivationRules: [snowfallRule, ...OMWeatherMapLayer.defaultDerivationRules]
 };
 ```
 
-A layer can then request `variable=snowfall`, and the protocol reads `snowfall_water_equivalent` for it. A string pattern matches anywhere in the name, which is why the rule above anchors a RegExp: a plain `'snowfall'` would also claim `snowfall_water_equivalent`. A rule lists as many source variables as it needs: a single one to convert units, two for the `u`/`v` pairs, more to combine fields. They all have to live in the same file and share its dimensions, and `process` receives their data in the order `getSourceVars` returns.
+A string pattern matches anywhere in the name, which is why the rule above anchors a RegExp: a plain `'snowfall'` would also claim `snowfall_water_equivalent`. `getSourceVars` receives the requested name and the set of variables stored in the file; returning `null` passes the name on to the next matching rule, and when no rule claims it the variable is read as stored. A rule lists as many source variables as it needs: a single one to convert units, two for the `u`/`v` pairs, more to combine fields. They all have to live in the same file and share its dimensions, and `process` receives their data in the order `getSourceVars` returns, along with the same file context. A rule that turns accumulations into rates sets `usesTimeStep` and gets the length of the file's time step in hours; a file outside a model run has none.
 
-`provides` is declared up front because it is needed before any data is read: `directions: true` makes a variable eligible for arrows, and `barbs: true` additionally marks its values as a wind speed, since barbs encode knots. Both are also queried through `variableHasDirections(variable, rules)` and `variableSupportsBarbs(variable, rules)`, for a UI that offers arrow styles.
+`provides` is declared up front because it is needed before any data is read: `directions: true` makes a variable eligible for arrows, and `barbs: true` additionally marks its values as a wind speed, since barbs encode knots. Both are also queried through `variableHasDirections(variable, rules)` and `variableSupportsBarbs(variable, rules)`, for a UI that offers arrow styles. They are answered from the first rule matching the name, before any file is open, so rules matching the same name have to agree on them.
 
 Since the rules replace the defaults rather than extending them, leaving out `defaultDerivationRules` is how a default rule is dropped. The list is read once, when the protocol creates its shared file reader, so it has to be set before the first tile request.
 
-- `examples/custom-derivation-rules.html` – derives snowfall in cm from the stored water equivalent.
+- `examples/custom-derivation-rules.html` – snowfall from the water equivalent with a temperature-dependent ratio, in front of the default rule.
 
 ### Clipping
 

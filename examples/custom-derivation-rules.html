@@ -26,24 +26,30 @@
 					: 'https://unpkg.com/@openmeteo/weather-map-layer@0.2.1/dist/index.mjs' // x-release-please-version
 			);
 
-			// `snowfall` is not stored in the files; the models provide its water
-			// equivalent in mm, which the Open-Meteo API turns into cm of fresh snow
-			// with a fixed 0.7 factor. A derivation rule does the same for the map,
-			// so a layer can request `variable=snowfall`.
+			// Fresh snow from the water equivalent with a ratio that follows the
+			// temperature, instead of the fixed 0.7 cm per mm the default `snowfall`
+			// rule takes from the Open-Meteo API. Listed in front of the defaults,
+			// this rule takes `variable=snowfall` over.
 			const snowfallRule = {
 				pattern: /^snowfall$/,
 				provides: { directions: false, barbs: false },
-				// The water equivalent is stored in 0.1 mm steps, so snowfall lands on
-				// a 0.07 cm grid: colour and contour thresholds are offset by half of
-				// that.
-				scaleFactor: 1 / 0.07,
-				getSourceVars: () => ['snowfall_water_equivalent'],
-				process: ([waterEquivalent]) => ({
-					values: waterEquivalent.map((mm) => mm * 0.7),
+				scaleFactor: 'primary',
+				// A model storing snowfall itself keeps it; otherwise both sources are
+				// needed, which the first file of a run does not have yet.
+				getSourceVars: ({ variable, stored }) =>
+					!stored.has(variable) &&
+					stored.has('snowfall_water_equivalent') &&
+					stored.has('temperature_2m')
+						? ['snowfall_water_equivalent', 'temperature_2m']
+						: null,
+				process: ([waterEquivalent, temperature]) => ({
+					// 1 cm per mm near freezing, up to 2 cm per mm of cold, dry snow
+					values: waterEquivalent.map(
+						(mm, i) => mm * Math.min(2, Math.max(1, 1 - temperature[i] / 10))
+					),
 					directions: undefined
 				})
 			};
-
 			const settings = OMWeatherMapLayer.defaultOmProtocolSettings;
 			// Own rules first, the defaults behind them, so wind components and wave
 			// directions keep deriving as usual.
@@ -51,13 +57,6 @@
 				...settings.fileReaderConfig,
 				derivationRules: [snowfallRule, ...OMWeatherMapLayer.defaultDerivationRules]
 			};
-			// A derived variable has no colour scale of its own: reuse the one of the
-			// variable it comes from.
-			settings.colorScales = {
-				...settings.colorScales,
-				snowfall: { ...settings.colorScales['snowfall_water_equivalent'], unit: 'cm' }
-			};
-
 			maplibregl.addProtocol('om', (params, abortController) =>
 				OMWeatherMapLayer.omProtocol(params, abortController, settings)
 			);

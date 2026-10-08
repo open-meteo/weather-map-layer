@@ -14,6 +14,19 @@ export const dewPoint = (temperature: number, relativeHumidity: number): number 
 };
 
 /**
+ * Relative humidity from air temperature and dew point, the Magnus formula
+ * inverted, clamped to 0–100 %.
+ */
+export const relativeHumidity = (temperature: number, dewPoint: number): number => {
+	const beta = 17.625;
+	const lambda = 243.04;
+	const humidity =
+		(100 * Math.exp((beta * dewPoint) / (lambda + dewPoint))) /
+		Math.exp((beta * temperature) / (lambda + temperature));
+	return Math.max(Math.min(humidity, 100), 0);
+};
+
+/**
  * Vapour pressure deficit in kPa: saturation vapour pressure at the air
  * temperature minus the actual vapour pressure at the dew point (Tetens).
  * Clamped at zero, since a dew point above the air temperature is possible in
