@@ -55,6 +55,28 @@ map.on('load', () => {
 
 Two files ship next to the module and are referenced with `new URL(..., import.meta.url)`: the tile render worker (`dist/worker.js`) and the file reader's WebAssembly binary (`dist/om_file_format.web.wasm`). Bundlers that understand that pattern (Vite, webpack 5, Rollup, Parcel) copy them into their output as assets without configuration. The worker starts with the protocol; the binary is fetched on the first data read, not at import time.
 
+### Node / rendering server
+
+The tile pipeline also runs in Node without a browser or MapLibre, e.g. as a tile rendering server. The `@openmeteo/weather-map-layer/node` entry renders on a pool of `worker_threads` (`dist/node-worker.mjs` ships next to it) that starts with the first tile; its `omProtocol` has the same signature as the browser one, but an `image` request resolves to an `RgbaTile` (`{ width, height, rgba }`, straight-alpha RGBA) instead of an `ImageBitmap`. `createOmProtocol(new WorkerThreadPool({ size }))` sizes the pool, `createOmProtocol(new MainThreadRenderer())` renders on the calling thread instead. `encodePng` turns that into a PNG. A tile outside the domain resolves to an empty `ArrayBuffer` instead. `arrayBuffer` requests return the vector tile (PBF) as in the browser.
+
+```ts
+import { encodePng, omProtocol } from '@openmeteo/weather-map-layer/node';
+
+const omUrl = `https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon/latest.json?variable=temperature_2m`;
+
+const { data } = await omProtocol(
+	{ url: `om://${omUrl}/2/2/1`, type: 'image' },
+	new AbortController()
+);
+const png = encodePng(data); // Uint8Array
+```
+
+Polygon clipping (`clippingOptions.geojson`) is not supported by the Node renderer yet; bounds clipping is.
+
+#### Tile server
+
+The package also ships a tile server. `npx weather-map-tiles` starts it on port 8080 (`PORT`, `DATA_URL`, `MAX_VARIABLES`, `TILE_CACHE_SIZE` and `LATEST_MAX_AGE` configure it), and `createTileHandler({ protocol: omProtocol, ...options })` gives the same request handler for your own `node:http`, Express or Fastify server (`examples/node/server.mjs`). Its route `/tiles/{domain}/{run}/{time}/{variable}/{z}/{x}/{y}.png` (or `.pbf`) lets the client pick the data, and its query carries the render options of an om:// URL (`colorscale`, `interpolation`, `arrows`, `contours`, …). `run` is `latest` with a time step as `time` (`current_time_1H`), or a model run (`2026-10-07T0600Z`) with a valid time (`2026-10-07T1200`). Tiles of a model run never change, so the server keeps them in an in-memory cache and marks them `immutable` for browsers and CDNs; `latest` tiles are cached for a minute. Identical requests in flight render once, and `maxVariables` sizes how many variables keep their data loaded (`maxStatesWithData`). CORS is enabled, so any map library can use it as a tile endpoint: `examples/node/tileserver.html` shows the tiles in MapLibre as raster and vector sources, Cesium takes them with `new Cesium.UrlTemplateImageryProvider({ url: 'http://localhost:8080/tiles/dwd_icon/latest/current_time_1H/temperature_2m/{z}/{x}/{y}.png', tileWidth: 512, tileHeight: 512, maximumLevel: 12 })`.
+
 ### HTML / UNPKG
 
 The package ships as an ES module only, so load it from a `<script type="module">`. The render worker and the `.wasm` binary are fetched from the same directory; the worker is started through a same-origin blob when the module comes from another origin, as a worker script itself must be same-origin. For a standalone example, see `examples/temperature.html`.
