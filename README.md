@@ -39,8 +39,7 @@ const omUrl = `https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon/latest.j
 map.on('load', () => {
 	map.addSource('omFileSource', {
 		url: 'om://' + omUrl,
-		type: 'raster',
-		maxzoom: 12 // tiles look pretty much the same below zoom-level 12, even on the high res models
+		type: 'raster'
 	});
 
 	map.addLayer({
@@ -76,8 +75,7 @@ The package ships as an ES module only, so load it from a `<script type="module"
 	map.on('load', () => {
 		map.addSource('omFileSource', {
 			url: 'om://' + omUrl,
-			type: 'raster',
-			maxzoom: 12 // tiles look pretty much the same below zoom-level 12, even on the high res models
+			type: 'raster'
 		});
 
 		map.addLayer({
