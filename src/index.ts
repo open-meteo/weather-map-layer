@@ -29,6 +29,7 @@ export { BrowserBlockCache, LruBlockCache } from '@openmeteo/file-reader';
 
 export { currentBounds } from './utils/bounds';
 export { defaultOmProtocolSettings } from './om-protocol';
+export { defaultDerivationRules } from './om-file-reader';
 export { domainOptions, domainGroups } from './domains';
 export { getDomainBoundary } from './domain-footprints';
 export { variableOptions, levelGroupVariables } from './utils/variables';
@@ -73,5 +74,9 @@ export type {
 	SeamlessLayer
 } from './types';
 
-export type { VariableDerivationRule, WeatherMapLayerFileReader } from './om-file-reader';
+export type {
+	DerivationContext,
+	VariableDerivationRule,
+	WeatherMapLayerFileReader
+} from './om-file-reader';
 export type { BlockCache } from '@openmeteo/file-reader';

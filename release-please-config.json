@@ -19,6 +19,7 @@
 		"examples/interpolation.html",
 		"examples/partial-requests.html",
 		"examples/combined-variables.html",
+		"examples/custom-derivation-rules.html",
 
 		"examples/vector/grid-points.html",
 		"examples/vector/wind-arrows.html",

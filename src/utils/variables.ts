@@ -16,6 +16,7 @@ export const variableOptions = [
 	{ value: 'alder_pollen', label: 'Alder Pollen' },
 
 	{ value: 'ammonia', label: 'Ammonia' },
+	{ value: 'apparent_temperature', label: 'Apparent Temperature' },
 
 	{ value: 'birch_pollen', label: 'Birch Pollen' },
 
@@ -113,6 +114,7 @@ export const variableOptions = [
 	{ value: 'precipitation_efi', label: 'Precipitation Probability' },
 	{ value: 'precipitation_mean', label: 'Precipitation Mean' },
 	{ value: 'precipitation_probability', label: 'Precipitation Probability' },
+	{ value: 'precipitation_rate', label: 'Precipitation Rate' },
 	{ value: 'precipitation_sot90', label: 'Precipitation SOT90' },
 	{ value: 'precipitation_spread', label: 'Precipitation Spread' },
 	{ value: 'precipitation_type', label: 'Precipitation Type' },
@@ -127,6 +129,7 @@ export const variableOptions = [
 
 	{ value: 'rain', label: 'Rain' },
 	{ value: 'rain_probability', label: 'Rain Probability' },
+	{ value: 'rain_rate', label: 'Rain Rate' },
 
 	{ value: 'roughness_length', label: 'Roughness Length' },
 
@@ -152,6 +155,7 @@ export const variableOptions = [
 
 	{ value: 'showers', label: 'Showers' },
 	{ value: 'showers_mean', label: 'Showers Mean' },
+	{ value: 'showers_rate', label: 'Showers Rate' },
 	{ value: 'showers_spread', label: 'Showers Spread' },
 
 	{ value: 'shortwave_radiation', label: 'Shortwave Solar Radiation' },
@@ -228,6 +232,7 @@ export const variableOptions = [
 
 	{ value: 'uv_index', label: 'UV Index' },
 	{ value: 'uv_index_clear_sky', label: 'UV Index Clear Sky' },
+	{ value: 'vapour_pressure_deficit', label: 'Vapour Pressure Deficit' },
 
 	{ value: 'visibility', label: 'Visibility' },
 
@@ -241,6 +246,7 @@ export const variableOptions = [
 	{ value: 'wave_peak_period_spread', label: 'Wave Peak Period Spread' },
 
 	{ value: 'weather_code', label: 'Weather Codes' },
+	{ value: 'wet_bulb_temperature_2m', label: 'Wet Bulb Temperature (2m)' },
 
 	{ value: 'wind_direction', label: 'Wind Direction' },
 	{ value: 'wind_gusts', label: 'Wind Gusts' },

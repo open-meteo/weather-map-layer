@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Weather Map Layer - Custom Derivation Rules Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.css" />
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<script type="module">
+			import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.mjs';
+
+			const OMWeatherMapLayer = await import(
+				location.hostname === 'localhost'
+					? '../dist/index.mjs' // local development
+					: 'https://unpkg.com/@openmeteo/weather-map-layer@0.2.1/dist/index.mjs' // x-release-please-version
+			);
+
+			// Fresh snow from the water equivalent with a ratio that follows the
+			// temperature, instead of the fixed 0.7 cm per mm the default `snowfall`
+			// rule takes from the Open-Meteo API. Listed in front of the defaults,
+			// this rule takes `variable=snowfall` over.
+			const snowfallRule = {
+				pattern: /^snowfall$/,
+				provides: { directions: false, barbs: false },
+				scaleFactor: 'primary',
+				// A model storing snowfall itself keeps it; otherwise both sources are
+				// needed, which the first file of a run does not have yet.
+				getSourceVars: ({ variable, stored }) =>
+					!stored.has(variable) &&
+					stored.has('snowfall_water_equivalent') &&
+					stored.has('temperature_2m')
+						? ['snowfall_water_equivalent', 'temperature_2m']
+						: null,
+				process: ([waterEquivalent, temperature]) => ({
+					// 1 cm per mm near freezing, up to 2 cm per mm of cold, dry snow
+					values: waterEquivalent.map(
+						(mm, i) => mm * Math.min(2, Math.max(1, 1 - temperature[i] / 10))
+					),
+					directions: undefined
+				})
+			};
+			const settings = OMWeatherMapLayer.defaultOmProtocolSettings;
+			// Own rules first, the defaults behind them, so wind components and wave
+			// directions keep deriving as usual.
+			settings.fileReaderConfig = {
+				...settings.fileReaderConfig,
+				derivationRules: [snowfallRule, ...OMWeatherMapLayer.defaultDerivationRules]
+			};
+			maplibregl.addProtocol('om', (params, abortController) =>
+				OMWeatherMapLayer.omProtocol(params, abortController, settings)
+			);
+
+			const map = new maplibregl.Map({
+				container: 'map',
+				style: 'https://static-assets.open-meteo.com/map-assets/styles/minimal-planet-maps.json', // replace with your own style sheet
+				hash: true
+			});
+
+			const omUrl = `https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=snowfall`;
+
+			map.on('load', () => {
+				map.addSource('omFileSource', {
+					url: 'om://' + omUrl,
+					type: 'raster',
+					maxzoom: 12
+				});
+
+				map.addLayer(
+					{
+						id: 'omFileLayer',
+						type: 'raster',
+						source: 'omFileSource',
+						paint: {
+							'raster-opacity': 0.75
+						}
+					},
+					'waterway-tunnel'
+				);
+			});
+		</script>
+	</body>
+</html>
