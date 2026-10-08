@@ -3,7 +3,7 @@
 	"type": "module",
 	"types": "dist/index.d.ts",
 	"author": "Open-Meteo <info@open-meteo.com>",
-	"version": "0.2.2",
+	"version": "0.2.3",
 	"module": "dist/index.mjs",
 	"exports": {
 		".": {

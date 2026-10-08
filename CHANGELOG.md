@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.3](https://github.com/open-meteo/weather-map-layer/compare/v0.2.2...v0.2.3) (2026-10-08)
+
+
+### Features
+
+* cesium adapter ([#352](https://github.com/open-meteo/weather-map-layer/issues/352)) ([b650e2b](https://github.com/open-meteo/weather-map-layer/commit/b650e2be98694cb3fdb576b6efc6a01546858f27))
+
+
+### Bug Fixes
+
+* drop the max zoom from the examples ([#359](https://github.com/open-meteo/weather-map-layer/issues/359)) ([9934ede](https://github.com/open-meteo/weather-map-layer/commit/9934ede27207f3a6f84e4a69d00ec6b2d6bcfa6d))
+
 ## [0.2.2](https://github.com/open-meteo/weather-map-layer/compare/v0.2.1...v0.2.2) (2026-10-06)
 
 
