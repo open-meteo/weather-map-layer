@@ -54,6 +54,9 @@
 
 		"examples/mapbox/mapbox-raster.html",
 		"examples/mapbox/mapbox-vector.html",
-		"examples/mapbox/mapbox-contouring.html"
+		"examples/mapbox/mapbox-contouring.html",
+
+		"examples/cesium/cesium-raster.html",
+		"examples/cesium/cesium-vector.html"
 	]
 }

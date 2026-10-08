@@ -207,7 +207,7 @@ export const addOpenLayersProtocolSupport = (ol: OlLib): OpenLayersProtocolAdapt
 							throw new DOMException('Aborted', 'AbortError');
 						}
 
-						if (!data) {
+						if (!data || (data instanceof ArrayBuffer && data.byteLength === 0)) {
 							// Empty tile — return a transparent 1×1 pixel so OL marks it LOADED.
 							return new ImageData(1, 1);
 						}

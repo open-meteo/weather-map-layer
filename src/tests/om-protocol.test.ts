@@ -1,6 +1,6 @@
 import { defaultOmProtocolSettings } from '../om-protocol';
 import { parseRequest } from '../utils/parse-request';
-import { RequestParameters } from 'maplibre-gl';
+import { AddProtocolAction, RequestParameters } from 'maplibre-gl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -364,7 +364,7 @@ describe('omProtocol', () => {
 			).rejects.toThrow("Unsupported request type 'vector'");
 		});
 
-		it('returns { data: null } when the signal is already aborted', async () => {
+		it('returns an empty tile when the signal is already aborted', async () => {
 			const { omProtocol } = await import('../om-protocol');
 
 			const params: RequestParameters = {
@@ -375,7 +375,19 @@ describe('omProtocol', () => {
 			abortController.abort();
 			const result = await omProtocol(params, abortController, defaultOmProtocolSettings);
 
-			expect(result.data).toBeNull();
+			expect(result.data).toBeInstanceOf(ArrayBuffer);
+			expect((result.data as ArrayBuffer).byteLength).toBe(0);
+		});
+
+		it('fits the MapLibre protocol handler type', async () => {
+			const { omProtocol } = await import('../om-protocol');
+
+			// Checked at compile time: `AddProtocolAction` excludes `null` payloads
+			// since MapLibre 6.11.
+			const handler: AddProtocolAction = (params, abortController) =>
+				omProtocol(params, abortController, defaultOmProtocolSettings);
+
+			expect(handler).toBeTypeOf('function');
 		});
 
 		it('calls postReadCallback after data is loaded', async () => {

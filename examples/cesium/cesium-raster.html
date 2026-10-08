@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Weather Map Layer - CesiumJS Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link
+			rel="stylesheet"
+			href="https://unpkg.com/cesium@1.146.0/Build/Cesium/Widgets/widgets.css"
+		/>
+		<script src="https://unpkg.com/cesium@1.146.0/Build/Cesium/Cesium.js"></script>
+		<style>
+			html,
+			body,
+			#cesiumContainer {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="cesiumContainer"></div>
+		<script type="module">
+			const OMWeatherMapLayer = await import(
+				location.hostname === 'localhost'
+					? '../../dist/index.mjs' // local development
+					: 'https://unpkg.com/@openmeteo/weather-map-layer@0.2.2/dist/index.mjs' // x-release-please-version
+			);
+
+			// The adapter turns "om://" URLs into Cesium imagery providers whose tiles are rendered by omProtocol.
+			const cesiumAdapter = OMWeatherMapLayer.addCesiumProtocolSupport(Cesium);
+
+			// Register the 'om' protocol handler (same as MapLibre's addProtocol).
+			cesiumAdapter.addProtocol('om', OMWeatherMapLayer.omProtocol);
+
+			// Natural Earth II ships with Cesium, so no Cesium ion token is needed for the base map.
+			const viewer = new Cesium.Viewer('cesiumContainer', {
+				baseLayer: Cesium.ImageryLayer.fromProviderAsync(
+					Cesium.TileMapServiceImageryProvider.fromUrl(
+						Cesium.buildModuleUrl('Assets/Textures/NaturalEarthII')
+					)
+				),
+				baseLayerPicker: false,
+				geocoder: false,
+				timeline: false,
+				animation: false
+			});
+
+			// below url is used to request 'latest.json' and get the nearest timestep to "current local time" + 1 hour
+			const omUrl = `https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon/latest.json?time_step=current_time_1H&variable=temperature_2m`;
+			// example of an actual omUrl:
+			// const omUrl = `om://https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon/2025/06/06/1200Z/2025-06-06T1200.om?variable=temperature_2m`;
+
+			// The provider resolves once the TileJSON is known; fromProviderAsync adds the layer right away.
+			viewer.imageryLayers.add(
+				Cesium.ImageryLayer.fromProviderAsync(
+					cesiumAdapter.createImageryProvider('om://' + omUrl),
+					{ alpha: 0.75 }
+				)
+			);
+
+			viewer.camera.setView({
+				destination: Cesium.Cartesian3.fromDegrees(10, 50, 5_000_000)
+			});
+		</script>
+	</body>
+</html>

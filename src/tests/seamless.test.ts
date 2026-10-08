@@ -247,13 +247,37 @@ describe('SeamlessDomain – layers', () => {
 		expect(readDomains()).toEqual(['test_eu', 'test_global']);
 	});
 
-	it('returns { data: null } when no layer domain is in settings', async () => {
+	it('returns an empty tile when no layer domain is in settings', async () => {
 		const { omProtocol } = await import('../om-protocol');
 		const settings = makeSettings({ domainOptions: [SEAMLESS] });
 		const result = await omProtocol(tileParams(5), new AbortController(), settings);
 
-		expect(result.data).toBeNull();
+		expect(result.data).toBeInstanceOf(ArrayBuffer);
+		expect((result.data as ArrayBuffer).byteLength).toBe(0);
 		expect(mockReadVariableSpy.calls).toHaveLength(0);
+	});
+
+	it('returns a transparent bitmap for an empty raster tile where the platform can make one', async () => {
+		// Node has no createImageBitmap; the stubs stand in for the browser APIs.
+		const bitmap = { width: 1, height: 1 };
+		vi.stubGlobal('ImageData', class {});
+		vi.stubGlobal(
+			'createImageBitmap',
+			vi.fn(async () => bitmap)
+		);
+		try {
+			const { omProtocol } = await import('../om-protocol');
+			const settings = makeSettings({ domainOptions: [SEAMLESS] });
+			const result = await omProtocol(
+				{ ...tileParams(5), type: 'image' },
+				new AbortController(),
+				settings
+			);
+
+			expect(result.data).toBe(bitmap);
+		} finally {
+			vi.unstubAllGlobals();
+		}
 	});
 });
 
@@ -284,7 +308,8 @@ describe('SeamlessDomain – failures and aborts', () => {
 		const result = await omProtocol(tileParams(5), ac, makeSettings());
 
 		expect(readDomains()).toEqual(['test_d2']);
-		expect(result.data).toBeNull();
+		expect(result.data).toBeInstanceOf(ArrayBuffer);
+		expect((result.data as ArrayBuffer).byteLength).toBe(0);
 	});
 });
 
