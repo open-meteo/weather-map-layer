@@ -396,15 +396,20 @@ describe('ensureData – error state', () => {
 		const reader = new FakeReader();
 
 		const p = ensureData(state, asReader(reader), undefined);
-		reader.rejectCall(0, new Error('fetch failed'));
+		const failure = new Error('fetch failed');
+		reader.rejectCall(0, failure);
 		await expect(p).rejects.toThrow('fetch failed');
 
 		// The failed load must not leave the promise behind, or every later
 		// request would await the rejection instead of retrying
 		expect(state.data).toBeNull();
 		expect(state.dataPromise).toBeNull();
+		// getDataState reports 'error' from exactly this field
+		expect(state.lastError).toBe(failure);
 
+		// A retry clears the recorded error while the new load is in flight
 		const retry = ensureData(state, asReader(reader), undefined);
+		expect(state.lastError).toBeUndefined();
 		reader.resolveCall(1, { values: new Float32Array(1), directions: undefined });
 		await retry;
 		expect(state.data).not.toBeNull();
@@ -423,6 +428,9 @@ describe('ensureData – error state', () => {
 		reader.rejectCall(0, new DOMException('Aborted', 'AbortError'));
 		await expect(p).rejects.toMatchObject({ name: 'AbortError' });
 		expect(state.dataPromise).toBeNull();
+		// All subscribers cancelling is normal navigation, not a failed load,
+		// so getDataState must not report 'error' afterwards
+		expect(state.lastError).toBeUndefined();
 	});
 });
 
