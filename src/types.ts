@@ -157,12 +157,31 @@ export interface TileRequest {
 
 export type WorkerRequest = TileRequest;
 
-export type TileResponse = ImageBitmap | ArrayBuffer;
+/**
+ * A rendered raster tile as straight (non-premultiplied) alpha RGBA, row
+ * major, 4 bytes per pixel. Returned by the Node renderer, which has no
+ * canvas to turn pixels into an `ImageBitmap`.
+ */
+export interface RgbaTile {
+	width: number;
+	height: number;
+	rgba: Uint8ClampedArray;
+}
+
+export type TileResponse = ImageBitmap | ArrayBuffer | RgbaTile;
 export interface TileResult {
 	data?: TileResponse;
 	cancelled: boolean;
 }
 export type TilePromise = Promise<TileResult>;
+
+/**
+ * Renders tiles for the protocol handler. The browser build uses a pool of
+ * web workers; a Node process renders on the main thread.
+ */
+export interface TileRenderer {
+	requestTile(request: TileRequest): TilePromise;
+}
 
 export type WorkerResponse = {
 	type: 'returnImage' | 'returnArrayBuffer' | 'cancelled';
