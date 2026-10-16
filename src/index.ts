@@ -52,6 +52,10 @@ export {
 	BARB_LATTICE
 } from './utils/constants';
 
+// GPU tile renderer (`gpu: true` in the protocol settings)
+
+export { isGpuSupported } from './gpu/index';
+
 // Adapters
 
 export { addCesiumProtocolSupport } from './adapters/cesium';
