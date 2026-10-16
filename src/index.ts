@@ -64,6 +64,8 @@ export { addOpenLayersProtocolSupport } from './adapters/openlayers';
 export type { ActiveSeamlessLayer, SeamlessLayerFilter } from './domain-helpers';
 export type {
 	ArrowStyle,
+	RenderedTile,
+	TileRenderedCallback,
 	Bounds,
 	ClippingOptions,
 	Data,

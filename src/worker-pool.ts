@@ -1,7 +1,25 @@
+import { setPackageAssets } from './assets';
+import iconWarpR3Url from './grids/icon/icon-warp-r3.bin?url';
 // @ts-expect-error worker import
 import tileWorkerUrl from './worker?worker&url';
 
-import { TilePromise, TileRequest, TileResult, WorkerResponse } from './types';
+import {
+	PackageAssets,
+	TilePromise,
+	TileRequest,
+	TileResult,
+	WorkerBufferRequest,
+	WorkerInitRequest,
+	WorkerResponse
+} from './types';
+
+// Resolved like the worker URL below: relative to this module, so the assets
+// are found next to it in node_modules or on a CDN, and rewritten by bundlers
+// that consume the package to wherever they copy the files.
+const packageAssets: PackageAssets = {
+	iconWarpTables: { 3: new URL(iconWarpR3Url, import.meta.url).href }
+};
+setPackageAssets(packageAssets);
 
 /**
  * The tile worker ships as its own file next to the module, so it is cached
@@ -22,6 +40,7 @@ const createTileWorker = (): Worker => {
 export class WorkerPool {
 	private workers: Worker[] = [];
 	private nextWorker = 0;
+	private readonly sharedKeys = new Set<string>();
 	/** Stores pending tile requests by key to avoid duplicate requests for the same tile */
 	private pendingRequests = new Map<
 		string,
@@ -43,8 +62,23 @@ export class WorkerPool {
 			const worker = createTileWorker();
 			worker.onmessage = (message: MessageEvent) => this.handleMessage(message);
 			worker.onerror = (error: ErrorEvent) => this.handleError(error);
+			// Queued ahead of every tile request, so the worker knows the asset
+			// URLs (which only this thread can resolve) before it needs them.
+			const init: WorkerInitRequest = { type: 'init', assets: packageAssets };
+			worker.postMessage(init);
 			this.workers.push(worker);
 		}
+	}
+
+	/**
+	 * Hands a buffer to every worker once. Messages are delivered in order, so
+	 * a buffer shared before a tile request is available when the tile renders.
+	 */
+	public share(key: string, buffer: ArrayBufferLike): void {
+		if (this.sharedKeys.has(key)) return;
+		this.sharedKeys.add(key);
+		const message: WorkerBufferRequest = { type: 'buffer', key, buffer };
+		for (const worker of this.workers) worker.postMessage(message);
 	}
 
 	private handleMessage(message: MessageEvent): void {
@@ -67,7 +101,7 @@ export class WorkerPool {
 			if (subscribers.length > 0) {
 				// The first subscriber can receive the original (transferred) buffer.
 				const firstSubscriber = subscribers.shift()!;
-				firstSubscriber.resolve({ data: originalTile, cancelled: false });
+				firstSubscriber.resolve({ data: originalTile, cancelled: false, renderMs: data.renderMs });
 
 				// All other subscribers must receive a clone.
 				subscribers.forEach(({ resolve }) => {
@@ -75,7 +109,7 @@ export class WorkerPool {
 					// ImageBitmaps are safe to share without cloning.
 					// FIXES: DOMException: Worker.postMessage: attempting to access detached ArrayBuffer
 					const tile = originalTile instanceof ArrayBuffer ? originalTile.slice(0) : originalTile;
-					resolve({ data: tile, cancelled: false });
+					resolve({ data: tile, cancelled: false, renderMs: data.renderMs });
 				});
 			}
 			this.pendingRequests.delete(data.key);

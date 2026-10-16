@@ -42,7 +42,8 @@ export const defaultOmProtocolSettings: OmProtocolSettings = {
 	domainOptions: defaultDomainOptions,
 
 	resolveRequest: defaultResolveRequest,
-	postReadCallback: undefined
+	postReadCallback: undefined,
+	onTileRendered: undefined
 };
 
 export const omProtocol = async (
@@ -147,7 +148,7 @@ export const omProtocol = async (
 		throw (settled[0] as PromiseRejectedResult).reason;
 	}
 
-	const tileResult = await requestTile(url, request, loaded, params.type, signal);
+	const tileResult = await requestTile(url, request, loaded, params.type, settings, signal);
 
 	if (tileResult.cancelled || !tileResult.data) {
 		return makeEmptyTileResponse(params.type);
@@ -188,6 +189,7 @@ const requestTile = async (
 	request: ParsedRequest,
 	layers: LayerRenderData[],
 	type: 'image' | 'arrayBuffer',
+	settings: OmProtocolSettings,
 	signal?: AbortSignal
 ): TilePromise => {
 	if (!request.tileIndex) {
@@ -213,7 +215,16 @@ const requestTile = async (
 		}
 	}
 
-	return workerPool.requestTile({
+	// A grid whose geometry lives outside the bundle is fetched once here and
+	// handed to the workers before their first tile of it.
+	await Promise.all(layers.map((layer) => GridFactory.preload(layer.domain.grid)));
+	for (const layer of layers) {
+		for (const { key, buffer } of GridFactory.sharedBuffers(layer.domain.grid)) {
+			workerPool.share(key, buffer);
+		}
+	}
+
+	const result = await workerPool.requestTile({
 		type: tileType,
 		key,
 		layers,
@@ -222,6 +233,18 @@ const requestTile = async (
 		clippingOptions: request.clippingOptions,
 		signal
 	});
+	if (settings.onTileRendered && result.renderMs !== undefined) {
+		settings.onTileRendered({
+			domain: request.dataOptions.domain.value,
+			variable: request.dataOptions.variable,
+			tileIndex: request.tileIndex,
+			tileSize: request.renderOptions.tileSize,
+			interpolation: request.renderOptions.interpolation,
+			type,
+			renderMs: result.renderMs
+		});
+	}
+	return result;
 };
 
 const getTilejson = async (
@@ -230,6 +253,7 @@ const getTilejson = async (
 	clippingOptions?: ResolvedClippingOptions
 ): Promise<TileJSON> => {
 	// We initialize the grid with the ranges set to null, because we want to find out the maximum bounds of this grid
+	await GridFactory.preload(dataOptions.domain.grid);
 	const grid = GridFactory.create(dataOptions.domain.grid, null);
 	let bounds;
 	if (clippingOptions && clippingOptions.bounds) {
