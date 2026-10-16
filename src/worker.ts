@@ -5,14 +5,22 @@ import { checkAgainstBounds } from './utils/bounds';
 import { clipRasterToPolygons } from './utils/clipping';
 import { generateContours } from './utils/contours';
 import { generateGridPoints } from './utils/grid-points';
-import { tile2lat, tile2lon } from './utils/math';
+import { halfQuantum, tile2lat, tile2lon } from './utils/math';
 import { createSamplers } from './utils/samplers';
 import { makeColorSampler } from './utils/styling';
 import { generateWindBarbs } from './utils/wind-barbs';
 
+import { setPackageAssets } from './assets';
+import { GridFactory } from './grids/index';
+
 import type { WorkerRequest } from './types';
 
 self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => {
+	if (message.data.type === 'init') {
+		setPackageAssets(message.data.assets);
+		return;
+	}
+
 	const key = message.data.key;
 
 	// Handle cancellation messages
@@ -31,6 +39,9 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 	if (!layers.some((layer) => layer.data.values)) {
 		throw new Error('No values provided');
 	}
+	// A grid whose geometry lives outside the bundle must be fetched before the
+	// samplers can build it synchronously.
+	await Promise.all(layers.map((layer) => GridFactory.preload(layer.domain.grid)));
 	const { sampleThresholdValue, sampleVector, gridSources } = createSamplers(layers, interpolation);
 
 	if (message.data.type == 'getImage') {
@@ -44,6 +55,18 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 		// Specialise the colour lookup to this tile's scale once, hoisting the
 		// per-pixel `switch` and the rgba index division out of the inner loop.
 		const sampleColor = makeColorSampler(colorScale, colorBlend);
+
+		// Grids that rasterise their native cells forward (ICON) fill the whole
+		// tile in one call: far faster than the per-pixel search below, with
+		// exact cell boundaries. Only a plain request takes it; a composite's
+		// layers are merged point by point through the samplers. The raster holds
+		// raw values, so the threshold offset the samplers apply (see
+		// `sampleThresholdValue`) is added per pixel here.
+		const raster =
+			layers.length === 1
+				? gridSources[0].grid.renderTile?.(gridSources[0].values, x, y, z, tileSize, interpolation)
+				: undefined;
+		const rasterHalfQuantum = halfQuantum(layers[0].data.scaleFactor);
 
 		// Longitude depends only on the column (j), so resolve all tileSize values
 		// once up front instead of re-deriving them for every row — turns tileSize²
@@ -72,7 +95,7 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 
 				// Threshold-offset sample, so colour band edges stay off the
 				// quantization grid (see `sampleThresholdValue`).
-				const px = sampleThresholdValue(lat, lon);
+				const px = raster ? raster[ind] + rasterHalfQuantum : sampleThresholdValue(lat, lon);
 
 				if (isFinite(px)) {
 					const color = sampleColor(px, colorOut);
