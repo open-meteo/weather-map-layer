@@ -1,7 +1,7 @@
 // @ts-expect-error worker import
 import tileWorkerUrl from './worker?worker&url';
 
-import { TilePromise, TileRequest, TileResult, WorkerResponse } from './types';
+import { TilePromise, TileResult, WorkerRequest, WorkerResponse } from './types';
 
 /**
  * The tile worker ships as its own file next to the module, so it is cached
@@ -105,7 +105,7 @@ export class WorkerPool {
 		return worker;
 	}
 
-	public requestTile(request: TileRequest): TilePromise {
+	public requestTile(request: WorkerRequest): TilePromise {
 		if (request.signal?.aborted) {
 			return Promise.resolve({ cancelled: true });
 		}
@@ -176,3 +176,6 @@ export class WorkerPool {
 		});
 	}
 }
+
+// Shared pool so the om and sun protocols reuse the same workers
+export const workerPool = new WorkerPool();
