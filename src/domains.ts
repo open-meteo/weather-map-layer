@@ -725,7 +725,7 @@ export const domainOptions: Array<Domain> = [
 	},
 	{
 		value: 'ncep_hrrr_conus',
-		label: 'GFS HRRR Conus',
+		label: 'GFS HRRR CONUS',
 		grid: {
 			type: 'projectedFromBounds',
 			nx: 1799,
@@ -746,7 +746,7 @@ export const domainOptions: Array<Domain> = [
 	},
 	{
 		value: 'ncep_hrrr_conus_15min',
-		label: 'GFS HRRR Conus 15min',
+		label: 'GFS HRRR CONUS 15min',
 		grid: {
 			type: 'projectedFromBounds',
 			nx: 1799,
@@ -767,7 +767,7 @@ export const domainOptions: Array<Domain> = [
 	},
 	{
 		value: 'ncep_nbm_conus',
-		label: 'GFS NBM Conus',
+		label: 'GFS NBM CONUS',
 		grid: {
 			type: 'projectedFromGeographicOrigin',
 			nx: 2345,
@@ -791,7 +791,7 @@ export const domainOptions: Array<Domain> = [
 	},
 	{
 		value: 'ncep_nam_conus',
-		label: 'GFS NAM Conus',
+		label: 'GFS NAM CONUS',
 		grid: {
 			type: 'projectedFromBounds',
 			nx: 1799,
@@ -833,21 +833,21 @@ export const domainOptions: Array<Domain> = [
 	},
 	{
 		value: 'ncep_rrfs_conus',
-		label: 'GFS RRFS Conus',
+		label: 'GFS RRFS CONUS',
 		grid: NCEP_RRFS_CONUS_GRID,
 		time_interval: 'hourly',
 		model_interval: '6_hourly'
 	},
 	{
 		value: 'ncep_rrfs_conus_15min',
-		label: 'GFS RRFS Conus 15min',
+		label: 'GFS RRFS CONUS 15min',
 		grid: NCEP_RRFS_CONUS_GRID,
 		time_interval: '15_minute',
 		model_interval: 'hourly'
 	},
 	{
 		value: 'ncep_rrfs_conus_ensemble',
-		label: 'GFS RRFS Conus Ensemble',
+		label: 'GFS RRFS CONUS Ensemble',
 		grid: NCEP_RRFS_CONUS_GRID,
 		time_interval: 'hourly',
 		model_interval: '6_hourly'
