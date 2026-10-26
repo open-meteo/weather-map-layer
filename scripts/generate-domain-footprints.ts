@@ -34,6 +34,7 @@ const MIN_NAN_FRACTION = 0.02; // below this the data ~fills the box; the box is
 const ARCH_POLY_DEGREE = 4; // degree of the polynomial fitted to each north/south arch
 const ARCH_SAMPLES = 25; // points sampled along each fitted arch (smooth, high-resolution)
 const SIMPLIFY_TOLERANCE_DEG = 0.05; // Douglas–Peucker tolerance for projected-grid rings
+const BOUNDARY_SMOOTH_WINDOW = 11; // cells averaged along the ring to iron out the cell staircase
 const pad = (n: number) => String(n).padStart(2, '0');
 
 // The data server validates the Referer; the reader's internal range requests
@@ -364,13 +365,105 @@ interface ProjectedGridLike {
 }
 
 /**
+ * Ordered boundary cells of the valid (non-NaN) region, found with Moore
+ * neighbour tracing. One pass around the region yields every boundary cell
+ * exactly once in walking order — unlike stitching per-row/per-column extent
+ * scans, which cover the same boundary arc twice near corners and steep
+ * sections and so draw a doubled, slightly offset line.
+ */
+const traceMaskBoundary = (
+	values: Float32Array,
+	nx: number,
+	ny: number
+): Array<[number, number]> | undefined => {
+	const valid = (x: number, y: number): boolean =>
+		x >= 0 && y >= 0 && x < nx && y < ny && !Number.isNaN(values[y * nx + x]);
+
+	// Start on the outer boundary of the main region: the bottom-most valid cell
+	// of the column holding the most valid cells (immune to stray specks elsewhere).
+	let startX = -1;
+	let bestCount = 0;
+	for (let x = 0; x < nx; x++) {
+		let count = 0;
+		for (let y = 0; y < ny; y++) if (valid(x, y)) count++;
+		if (count > bestCount) {
+			bestCount = count;
+			startX = x;
+		}
+	}
+	if (startX < 0) return undefined;
+	let startY = 0;
+	while (!valid(startX, startY)) startY++;
+
+	// Moore neighbourhood in clockwise order, starting east.
+	const DIRS: Array<[number, number]> = [
+		[1, 0],
+		[1, -1],
+		[0, -1],
+		[-1, -1],
+		[-1, 0],
+		[-1, 1],
+		[0, 1],
+		[1, 1]
+	];
+	const boundary: Array<[number, number]> = [[startX, startY]];
+	let cx = startX;
+	let cy = startY;
+	// The backtrack neighbour (the invalid cell the search enters from); the cell
+	// below the bottom-most start cell is invalid by construction.
+	let backtrack = DIRS.findIndex(([dx, dy]) => dx === 0 && dy === -1);
+	const maxSteps = 8 * (nx + ny);
+	for (let step = 0; step < maxSteps; step++) {
+		// Scan clockwise from the neighbour after the backtrack direction.
+		let next = -1;
+		for (let i = 1; i <= 8; i++) {
+			const dir = (backtrack + i) % 8;
+			if (valid(cx + DIRS[dir][0], cy + DIRS[dir][1])) {
+				next = dir;
+				break;
+			}
+		}
+		if (next < 0) return boundary; // isolated cell
+		cx += DIRS[next][0];
+		cy += DIRS[next][1];
+		// Entering the next cell, the search came from the previous one.
+		backtrack = (next + 4) % 8;
+		if (cx === startX && cy === startY) return boundary;
+		boundary.push([cx, cy]);
+	}
+	return undefined; // did not close — malformed mask
+};
+
+/**
+ * Circular moving average over a closed ring of grid positions. The traced
+ * boundary is a cell staircase; averaging over a window along the ring runs the
+ * line through the middle of the stairs — the drawn outline stays smooth like a
+ * fitted curve while still following every real bend of the mask.
+ */
+const smoothRing = (ring: Array<[number, number]>, window: number): Array<[number, number]> => {
+	const half = window >> 1;
+	const n = ring.length;
+	return ring.map((_, i) => {
+		let sx = 0;
+		let sy = 0;
+		for (let j = -half; j <= half; j++) {
+			const [x, y] = ring[(((i + j) % n) + n) % n];
+			sx += x;
+			sy += y;
+		}
+		return [sx / (2 * half + 1), sy / (2 * half + 1)];
+	});
+};
+
+/**
  * Trace a closed [lon,lat] ring around the valid (non-NaN) cells of a projected
- * grid. The scan runs in the grid's own projected space, where it is regular; the
- * full median-filtered edge staircase is then reverse-projected point-by-point and
- * only afterwards simplified in geographic space. Fitted arches are deliberately
- * not used here: straight segments between sparse samples cut corners wherever the
- * projection curves (worst near the poles), while Douglas–Peucker applied after
- * reprojection keeps points exactly where the outline actually bends.
+ * grid. The boundary is walked in the grid's own index space, where it is
+ * regular, smoothed there (isotropic cells), then reverse-projected point-by-point
+ * and only afterwards simplified in geographic space. Fitted arches are
+ * deliberately not used here: straight segments between sparse samples cut
+ * corners wherever the projection curves (worst near the poles), while
+ * Douglas–Peucker applied after reprojection keeps points exactly where the
+ * outline actually bends.
  *
  * Longitudes are unwrapped relative to the previous vertex, exactly like
  * `getBoundaryPolygon`, so the ring stays continuous across the antimeridian; for
@@ -380,30 +473,16 @@ const traceProjectedFootprint = (
 	values: Float32Array,
 	grid: ProjectedGridLike
 ): Pt[] | undefined => {
-	const edges = scanValidEdges(
-		values,
-		grid.nx,
-		grid.ny,
-		grid.origin[0],
-		grid.origin[1],
-		grid.dx,
-		grid.dy
-	);
-	if (!edges) return undefined;
-	const { colX, bot, top, rowY, left, right } = edges;
-
-	// Walk the perimeter in projected space: south (W→E), east (S→N), north (E→W),
-	// west (N→S). The scans see the same mask, so the edges meet at the corners.
-	const perimeter: Pt[] = [];
-	for (let i = 0; i < colX.length; i++) perimeter.push([colX[i], bot[i]]);
-	for (let i = 0; i < rowY.length; i++) perimeter.push([right[i], rowY[i]]);
-	for (let i = colX.length - 1; i >= 0; i--) perimeter.push([colX[i], top[i]]);
-	for (let i = rowY.length - 1; i >= 0; i--) perimeter.push([left[i], rowY[i]]);
-	perimeter.push([colX[0], bot[0]]); // close in projected space
+	const traced = traceMaskBoundary(values, grid.nx, grid.ny);
+	if (!traced || traced.length < 8) return undefined;
+	const boundary = smoothRing(traced, BOUNDARY_SMOOTH_WINDOW);
+	boundary.push(boundary[0]); // close the ring
 
 	let prevLon: number | null = null;
 	const ring: Pt[] = [];
-	for (const [px, py] of perimeter) {
+	for (const [x, y] of boundary) {
+		const px = grid.origin[0] + x * grid.dx;
+		const py = grid.origin[1] + y * grid.dy;
 		const [lat, lonRaw] = grid.projection.reverse(px, py);
 		let lon = ((((lonRaw + 180) % 360) + 360) % 360) - 180; // normalize to [-180, 180]
 		if (prevLon !== null) {
