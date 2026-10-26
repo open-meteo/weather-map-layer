@@ -45,6 +45,24 @@ const NCEP_GFS025_GRID: GridData = {
 	zoom: 1
 };
 
+// RRFS v1 runs on the exact HRRR CONUS grid (1799×1059 Lambert conformal, 3 km),
+// shared by the hourly, 15-minutely and ensemble products.
+const NCEP_RRFS_CONUS_GRID: GridData = {
+	type: 'projectedFromBounds',
+	nx: 1799,
+	ny: 1059,
+	latitude: [21.138, 47.8424],
+	longitude: [-122.72, -60.918],
+	zoom: 3.5,
+	projection: {
+		λ0: -97.5,
+		ϕ0: 0,
+		ϕ1: 38.5,
+		ϕ2: 38.5,
+		name: 'LambertConformalConicProjection'
+	}
+};
+
 const METEOFRANCE_ARPEGE_WORLD025_GRID: GridData = {
 	type: 'regular',
 	nx: 1440,
@@ -707,7 +725,7 @@ export const domainOptions: Array<Domain> = [
 	},
 	{
 		value: 'ncep_hrrr_conus',
-		label: 'GFS HRRR Conus',
+		label: 'GFS HRRR CONUS',
 		grid: {
 			type: 'projectedFromBounds',
 			nx: 1799,
@@ -728,7 +746,7 @@ export const domainOptions: Array<Domain> = [
 	},
 	{
 		value: 'ncep_hrrr_conus_15min',
-		label: 'GFS HRRR Conus 15min',
+		label: 'GFS HRRR CONUS 15min',
 		grid: {
 			type: 'projectedFromBounds',
 			nx: 1799,
@@ -749,7 +767,7 @@ export const domainOptions: Array<Domain> = [
 	},
 	{
 		value: 'ncep_nbm_conus',
-		label: 'GFS NBM Conus',
+		label: 'GFS NBM CONUS',
 		grid: {
 			type: 'projectedFromGeographicOrigin',
 			nx: 2345,
@@ -773,7 +791,7 @@ export const domainOptions: Array<Domain> = [
 	},
 	{
 		value: 'ncep_nam_conus',
-		label: 'GFS NAM Conus',
+		label: 'GFS NAM CONUS',
 		grid: {
 			type: 'projectedFromBounds',
 			nx: 1799,
@@ -789,6 +807,48 @@ export const domainOptions: Array<Domain> = [
 				name: 'LambertConformalConicProjection'
 			}
 		},
+		time_interval: 'hourly',
+		model_interval: '6_hourly'
+	},
+	{
+		value: 'ncep_rrfs_north_america',
+		label: 'GFS RRFS North America',
+		grid: {
+			type: 'projectedFromProjectedOrigin',
+			nx: 1127,
+			ny: 683,
+			latitudeProjectionOrigin: -36.9303,
+			longitudeProjectionOrigin: -61,
+			dx: 0.1083,
+			dy: 0.1083,
+			zoom: 2.5,
+			projection: {
+				rotatedLat: 35,
+				rotatedLon: 67,
+				name: 'RotatedLatLonProjection'
+			}
+		},
+		time_interval: 'hourly',
+		model_interval: '6_hourly'
+	},
+	{
+		value: 'ncep_rrfs_conus',
+		label: 'GFS RRFS CONUS',
+		grid: NCEP_RRFS_CONUS_GRID,
+		time_interval: 'hourly',
+		model_interval: '6_hourly'
+	},
+	{
+		value: 'ncep_rrfs_conus_15min',
+		label: 'GFS RRFS CONUS 15min',
+		grid: NCEP_RRFS_CONUS_GRID,
+		time_interval: '15_minute',
+		model_interval: 'hourly'
+	},
+	{
+		value: 'ncep_rrfs_conus_ensemble',
+		label: 'GFS RRFS CONUS Ensemble',
+		grid: NCEP_RRFS_CONUS_GRID,
 		time_interval: 'hourly',
 		model_interval: '6_hourly'
 	},
