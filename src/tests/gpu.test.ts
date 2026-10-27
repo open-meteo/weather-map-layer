@@ -3,6 +3,7 @@ import { LUT_SIZE, buildColorLut } from '../gpu/color-lut';
 import { downsampleRegular } from '../gpu/downsample';
 import { computeGridUniforms } from '../gpu/grid-uniforms';
 import { updateFragmentSource, windComponentsOf } from '../gpu/particles';
+import { valueTextureLayout } from '../gpu/renderer';
 import { fragmentSource, vertexSource } from '../gpu/shader-source';
 import type { FragmentShaderSpec } from '../gpu/shader-source';
 import { getColor } from '../utils/styling';
@@ -390,5 +391,36 @@ describe('gpu contour downsampling', () => {
 		expect(downsampleRegular(values, nx, ny, 2, 0, 0)).not.toBe(ds);
 		// too few blocks for an isoline
 		expect(downsampleRegular(values, nx, ny, 4)).toBeUndefined();
+	});
+});
+
+describe('gpu value texture layout', () => {
+	it('keeps grids within MAX_TEXTURE_SIZE as one texel row per grid row', () => {
+		expect(valueTextureLayout(2879, 1441, 4096)).toEqual({
+			width: 2879,
+			height: 1441,
+			packed: false
+		});
+	});
+
+	it('packs grids exceeding MAX_TEXTURE_SIZE row-major into maxSize-wide rows', () => {
+		// meteofrance_wave at a world view on a 4096-texel GPU
+		expect(valueTextureLayout(4320, 2041, 4096)).toEqual({
+			width: 4096,
+			height: Math.ceil((4320 * 2041) / 4096),
+			packed: true
+		});
+		// a tall grid packs too
+		expect(valueTextureLayout(1796, 2321, 2048)?.packed).toBe(true);
+	});
+
+	it('gives up when even the packed texture is too tall', () => {
+		expect(valueTextureLayout(2879, 1441, 1024)).toBeUndefined();
+	});
+
+	it('unpacks through the GridMeta pack width in the shader', () => {
+		const source = fragmentSource({ layers: [{ gridKind: 'regular' }], interpolation: 'linear' });
+		expect(source).toContain('uniform int u_pack0;');
+		expect(source).toContain('m.pack = u_pack0;');
 	});
 });

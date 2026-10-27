@@ -60,6 +60,8 @@ export {
 
 export { WeatherGpuLayer } from './gpu/layer';
 export type { GpuAdvectionSource, WeatherGpuLayerOptions } from './gpu/layer';
+export { detectGpuSupport } from './gpu/support';
+export type { GpuSupport } from './gpu/support';
 export type { GpuArrowConfig } from './gpu/arrows';
 export type { GpuParticleConfig } from './gpu/particles';
 export type { GpuContourStyle } from './gpu/renderer';

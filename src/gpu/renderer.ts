@@ -113,9 +113,12 @@ interface ValueTextureEntry {
 	texture: WebGLTexture;
 	nx: number;
 	ny: number;
+	/** Texture extent (see valueTextureLayout); differs from nx/ny when packed. */
+	width: number;
+	height: number;
 	bytes: number;
 	label?: string;
-	/** Rows uploaded so far; below ny while a chunked warm is streaming. */
+	/** Texture rows uploaded so far; below height while a chunked warm is streaming. */
 	uploadedRows: number;
 	/** The streaming warm in flight, if any (see warmValueTexture). */
 	upload?: Promise<void>;
@@ -134,6 +137,36 @@ const nextFrame = (): Promise<void> =>
 			resolve();
 		});
 	});
+
+const maxTextureSizes = new WeakMap<WebGL2RenderingContext, number>();
+
+/** MAX_TEXTURE_SIZE of a context, queried once per context. */
+export const maxTextureSizeOf = (gl: WebGL2RenderingContext): number => {
+	let size = maxTextureSizes.get(gl);
+	if (size === undefined) {
+		size = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
+		maxTextureSizes.set(gl, size);
+	}
+	return size;
+};
+
+/**
+ * Texture extent for an nx×ny value grid. A grid that exceeds MAX_TEXTURE_SIZE
+ * on either axis (world views of fine grids on 4096-texel GPUs) is packed
+ * row-major into maxSize-wide texture rows, the layout gaussian grids already
+ * use; the shaders unpack it through the layer's `pack` uniform, so the field
+ * keeps its full resolution. Undefined when even the packed texture is too tall.
+ */
+export const valueTextureLayout = (
+	nx: number,
+	ny: number,
+	maxSize: number
+): { width: number; height: number; packed: boolean } | undefined => {
+	if (nx <= maxSize && ny <= maxSize) return { width: nx, height: ny, packed: false };
+	const height = Math.ceil((nx * ny) / maxSize);
+	if (height > maxSize) return undefined;
+	return { width: maxSize, height, packed: true };
+};
 
 export interface GpuLayerDraw {
 	gridUniforms: GpuGridUniforms;
@@ -219,10 +252,16 @@ export const uploadGridLayerUniforms = (
 	// float uniform defaults to 0, which would blank the layer entirely.
 	gl.uniform1f(u(names.reveal), layer.reveal ?? 1);
 
+	// Same layout decision as the value texture upload: a packed texture
+	// changes the gaussian texel row width and switches rect grids to the
+	// row-major unpacking in readValue.
+	const layout = valueTextureLayout(g.nx, g.ny, maxTextureSizeOf(gl));
+	const packWidth = layout?.packed ? layout.width : 0;
 	if (g.gridKind === 'gaussian') {
-		gl.uniform4i(u(names.gauss), g.gauss[0], g.gauss[1], g.gauss[2], g.gauss[3]);
+		gl.uniform4i(u(names.gauss), g.gauss[0], g.gauss[1], packWidth || g.gauss[2], g.gauss[3]);
 	} else {
 		gl.uniform2i(u(names.n), g.nx, g.ny);
+		gl.uniform1i(u(names.pack), packWidth);
 		gl.uniform2f(u(names.origin), g.originX, g.originY);
 		gl.uniform2f(u(names.delta), g.dx, g.dy);
 		if (g.gridKind === 'projected') {
@@ -329,20 +368,22 @@ export class WeatherGpuRenderer {
 			this.labelTexture(cached, values, label);
 			// A chunked warm may still be streaming this entry; the caller samples
 			// the texture this frame, so the rest goes up right now.
-			while (cached.uploadedRows < ny) this.uploadValueRows(cached, values);
+			while (cached.uploadedRows < cached.height) this.uploadValueRows(cached, values);
 			return cached.texture;
 		}
 
-		const gl = this.gl;
-		const maxSize = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
-		if (nx > maxSize || ny > maxSize) {
-			throw new Error(`gpu: grid ${nx}x${ny} exceeds MAX_TEXTURE_SIZE ${maxSize}`);
+		const maxSize = maxTextureSizeOf(this.gl);
+		const layout = valueTextureLayout(nx, ny, maxSize);
+		if (!layout) {
+			throw new Error(`gpu: grid ${nx}x${ny} exceeds MAX_TEXTURE_SIZE ${maxSize} even when packed`);
 		}
+		const { width, height } = layout;
 
 		// NaN behaviour in float textures varies per driver: encode missing values
 		// as a large finite sentinel instead. Also pads short arrays (gaussian
-		// packing, defensive elsewhere) so texImage2D never reads out of bounds.
-		const texels = nx * ny;
+		// packing, the tail of a packed texture) so texImage2D never reads out of
+		// bounds.
+		const texels = width * height;
 		const sanitized = new Float32Array(texels);
 		const n = Math.min(values.length, texels);
 		for (let i = 0; i < n; i++) {
@@ -357,16 +398,24 @@ export class WeatherGpuRenderer {
 		// frame, so those entries are the most recent).
 		this.evictValueTextures(this.valueTextureBudget - bytes);
 
-		let texture = this.uploadValueTexture(nx, ny, sanitized);
+		let texture = this.uploadValueTexture(width, height, sanitized);
 		if (!texture) {
 			// Allocation failed (VRAM exhausted): drop the whole cache and retry
 			// once — corrupt sampling from a failed allocation must never persist.
 			this.evictValueTextures(0);
-			texture = this.uploadValueTexture(nx, ny, sanitized);
-			if (!texture) throw new Error(`gpu: value texture allocation failed (${nx}x${ny})`);
+			texture = this.uploadValueTexture(width, height, sanitized);
+			if (!texture) throw new Error(`gpu: value texture allocation failed (${width}x${height})`);
 		}
 
-		const entry: ValueTextureEntry = { texture, nx, ny, bytes, uploadedRows: ny };
+		const entry: ValueTextureEntry = {
+			texture,
+			nx,
+			ny,
+			width,
+			height,
+			bytes,
+			uploadedRows: height
+		};
 		this.valueTextures.set(values, entry);
 		this.valueTextureBytes += bytes;
 		this.labelTexture(entry, values, label);
@@ -390,6 +439,8 @@ export class WeatherGpuRenderer {
 	 * warms and the later commit reuse it, and this resolves only once every
 	 * row is up. A warm of an entry another prepare is still streaming waits
 	 * for that stream; a getValueTexture meanwhile finishes it synchronously.
+	 * Best-effort: a texture that cannot be created here fails again in the
+	 * draw's getValueTexture, where the layer reports it.
 	 */
 	async warmValueTexture(
 		values: Float32Array,
@@ -405,42 +456,44 @@ export class WeatherGpuRenderer {
 			if (cached.upload) await cached.upload;
 			return;
 		}
-		const texels = nx * ny;
+		const layout = valueTextureLayout(nx, ny, maxTextureSizeOf(this.gl));
+		if (!layout) return;
+		const { width, height } = layout;
+		const texels = width * height;
 		if (
 			texels <= WeatherGpuRenderer.WARM_SYNC_TEXELS ||
 			typeof requestAnimationFrame === 'undefined'
 		) {
-			this.getValueTexture(values, nx, ny, label);
+			try {
+				this.getValueTexture(values, nx, ny, label);
+			} catch {
+				// Reported by the draw that needs it (see above).
+			}
 			return;
 		}
 
-		const gl = this.gl;
-		const maxSize = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
-		if (nx > maxSize || ny > maxSize) {
-			throw new Error(`gpu: grid ${nx}x${ny} exceeds MAX_TEXTURE_SIZE ${maxSize}`);
-		}
 		const bytes = texels * 4;
 		this.evictValueTextures(this.valueTextureBudget - bytes);
 
-		let texture = this.allocValueTextureStorage(nx, ny);
+		let texture = this.allocValueTextureStorage(width, height);
 		if (!texture) {
 			this.evictValueTextures(0);
-			texture = this.allocValueTextureStorage(nx, ny);
-			if (!texture) throw new Error(`gpu: value texture allocation failed (${nx}x${ny})`);
+			texture = this.allocValueTextureStorage(width, height);
+			if (!texture) return;
 		}
-		const entry: ValueTextureEntry = { texture, nx, ny, bytes, uploadedRows: 0 };
+		const entry: ValueTextureEntry = { texture, nx, ny, width, height, bytes, uploadedRows: 0 };
 		this.valueTextures.set(values, entry);
 		this.valueTextureBytes += bytes;
 		this.labelTexture(entry, values, label);
 
 		entry.upload = (async () => {
 			try {
-				while (entry.uploadedRows < ny) {
+				while (entry.uploadedRows < height) {
 					// Evicted mid-warm (budget pressure): the texture is gone; a later
 					// getValueTexture re-uploads it synchronously.
 					if (this.valueTextures.get(values) !== entry) return;
 					this.uploadValueRows(entry, values);
-					if (entry.uploadedRows < ny) await nextFrame();
+					if (entry.uploadedRows < height) await nextFrame();
 				}
 			} finally {
 				entry.upload = undefined;
@@ -452,16 +505,17 @@ export class WeatherGpuRenderer {
 	/** Upload the next row chunk of a streaming entry (see warmValueTexture). */
 	private uploadValueRows(entry: ValueTextureEntry, values: Float32Array): void {
 		const gl = this.gl;
-		const nx = entry.nx;
-		const rowsPerChunk = Math.max(1, Math.floor(WeatherGpuRenderer.WARM_CHUNK_TEXELS / nx));
-		if (this.warmScratch.length < rowsPerChunk * nx) {
-			this.warmScratch = new Float32Array(rowsPerChunk * nx);
+		// Texture rows: grid rows, or maxSize-wide runs of a packed grid.
+		const width = entry.width;
+		const rowsPerChunk = Math.max(1, Math.floor(WeatherGpuRenderer.WARM_CHUNK_TEXELS / width));
+		if (this.warmScratch.length < rowsPerChunk * width) {
+			this.warmScratch = new Float32Array(rowsPerChunk * width);
 		}
 		const scratch = this.warmScratch;
 		const row = entry.uploadedRows;
-		const rows = Math.min(rowsPerChunk, entry.ny - row);
-		const start = row * nx;
-		const count = rows * nx;
+		const rows = Math.min(rowsPerChunk, entry.height - row);
+		const start = row * width;
+		const count = rows * width;
 		for (let i = 0; i < count; i++) {
 			const v = values[start + i];
 			scratch[i] = Number.isFinite(v) ? v : MISSING_SENTINEL;
@@ -472,7 +526,7 @@ export class WeatherGpuRenderer {
 			0,
 			0,
 			row,
-			nx,
+			width,
 			rows,
 			gl.RED,
 			gl.FLOAT,

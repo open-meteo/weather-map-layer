@@ -106,7 +106,14 @@ grid's mercator bounds evaluates every visible screen pixel per frame. Hence:
 - **Texture residency**: value textures are cached in VRAM under a byte
   budget (`textureCacheMb`), shared by every layer on the same GL context,
   so animation loops replay without re-uploads; `hasTextureForUrl` tells a
-  host which timesteps are resident.
+  host which timesteps are resident. A grid wider or taller than
+  `MAX_TEXTURE_SIZE` is packed row-major into narrower texture rows at full
+  resolution.
+- **Capabilities and failures**: `detectGpuSupport()` probes once whether
+  WebGL2, float render targets (particles) and a hardware renderer are
+  available, so a host can pick the CPU tile path up front. A layer that
+  cannot draw (shader build failure, a grid too large even when packed,
+  VRAM exhausted) goes blank and calls `onFatalError` once.
 
 ## Known gaps
 
@@ -118,4 +125,6 @@ grid's mercator bounds evaluates every visible screen pixel per frame. Hence:
   fix (camera-relative coordinates) is a follow-up.
 - NaN cells are encoded as a large sentinel at upload (`MISSING_SENTINEL`)
   because NaN in float textures is driver-dependent.
-- WebGL context loss is not handled (recreate the layer / renderer).
+- WebGL context loss: MapLibre drops custom layers (calling `onRemove`, which
+  frees the shared renderer); the host re-adds them after
+  `webglcontextrestored`.

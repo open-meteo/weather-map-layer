@@ -130,7 +130,20 @@ bool isMissing(float v) {
 	return !(abs(v) < MISSING_THRESHOLD);
 }
 
-float readValue(sampler2D tex, int x, int y) {
+// Rectangular-grid metadata shared by the interpolators (regular + projected).
+struct GridMeta {
+	ivec2 n;
+	bool lonWrap;
+	// Row width of a value texture packed row-major (grid wider or taller than
+	// MAX_TEXTURE_SIZE, see valueTextureLayout); 0 = one texel row per grid row.
+	int pack;
+};
+
+float readValue(sampler2D tex, GridMeta m, int x, int y) {
+	if (m.pack > 0) {
+		int i = y * m.n.x + x;
+		return texelFetch(tex, ivec2(i % m.pack, i / m.pack), 0).r;
+	}
 	return texelFetch(tex, ivec2(x, y), 0).r;
 }
 
@@ -146,12 +159,6 @@ struct Cell {
 	float xf;
 	float yf;
 	bool ok;
-};
-
-// Rectangular-grid metadata shared by the interpolators (regular + projected).
-struct GridMeta {
-	ivec2 n;
-	bool lonWrap;
 };
 `;
 
@@ -235,10 +242,10 @@ float interpLinear(sampler2D tex, GridMeta m, Cell c) {
 	}
 	if (c.y + 1 >= m.n.y) return MISSING; // bottom border
 
-	float p0 = readValue(tex, c.x, c.y);
-	float p1 = readValue(tex, x1, c.y);
-	float p2 = readValue(tex, c.x, c.y + 1);
-	float p3 = readValue(tex, x1, c.y + 1);
+	float p0 = readValue(tex, m, c.x, c.y);
+	float p1 = readValue(tex, m, x1, c.y);
+	float p2 = readValue(tex, m, c.x, c.y + 1);
+	float p3 = readValue(tex, m, x1, c.y + 1);
 	return bilinearNaNAware(p0, p1, p2, p3, c.xf, c.xf, c.yf);
 }
 
@@ -248,7 +255,7 @@ float interpNearest(sampler2D tex, GridMeta m, Cell c) {
 	if (xi >= m.n.x) {
 		xi = m.lonWrap ? xi % m.n.x : m.n.x - 1;
 	}
-	return readValue(tex, xi, yi);
+	return readValue(tex, m, xi, yi);
 }
 
 // Returns false when the 4x4 stencil is unavailable and the caller must fall
@@ -288,10 +295,10 @@ float interpCubic(sampler2D tex, GridMeta m, Cell c) {
 	float hi = 0.0;
 	for (int r = 0; r < 4; r++) {
 		int yr = c.y - 1 + r;
-		float p0 = readValue(tex, c0, yr);
-		float p1 = readValue(tex, c1, yr);
-		float p2 = readValue(tex, c2, yr);
-		float p3 = readValue(tex, c3, yr);
+		float p0 = readValue(tex, m, c0, yr);
+		float p1 = readValue(tex, m, c1, yr);
+		float p2 = readValue(tex, m, c2, yr);
+		float p3 = readValue(tex, m, c3, yr);
 		if (isMissing(p0) || isMissing(p1) || isMissing(p2) || isMissing(p3)) {
 			return interpLinear(tex, m, c);
 		}
@@ -318,10 +325,10 @@ float interpMonotone(sampler2D tex, GridMeta m, Cell c) {
 	float rows[4];
 	for (int r = 0; r < 4; r++) {
 		int yr = c.y - 1 + r;
-		float p0 = readValue(tex, c0, yr);
-		float p1 = readValue(tex, c1, yr);
-		float p2 = readValue(tex, c2, yr);
-		float p3 = readValue(tex, c3, yr);
+		float p0 = readValue(tex, m, c0, yr);
+		float p1 = readValue(tex, m, c1, yr);
+		float p2 = readValue(tex, m, c2, yr);
+		float p3 = readValue(tex, m, c3, yr);
 		if (isMissing(p0) || isMissing(p1) || isMissing(p2) || isMissing(p3)) {
 			return interpLinear(tex, m, c);
 		}
@@ -519,6 +526,7 @@ export const layerUniformNames = (
 	projA: string;
 	projB: string;
 	gauss: string;
+	pack: string;
 	reveal: string;
 } => ({
 	values: `u_values${i}`,
@@ -529,6 +537,7 @@ export const layerUniformNames = (
 	projA: `u_projA${i}`,
 	projB: `u_projB${i}`,
 	gauss: `u_gauss${i}`,
+	pack: `u_pack${i}`,
 	reveal: `u_reveal${i}`
 });
 
@@ -559,6 +568,7 @@ float sampleValue${i}(sampler2D tex, float lat, float lon) {
 		parts.push(`uniform ivec2 ${u.n};`);
 		parts.push(`uniform vec2 ${u.origin};`);
 		parts.push(`uniform vec2 ${u.delta};`);
+		parts.push(`uniform int ${u.pack};`);
 
 		if (layer.gridKind === 'projected') {
 			const body = layer.projectionName && PROJECTION_BODIES[layer.projectionName];
@@ -595,7 +605,7 @@ Cell locate${i}(float lat, float lon) {
 	c.ok = true;
 	return c;
 }
-GridMeta meta${i}() { GridMeta m; m.n = ${u.n}; m.lonWrap = false; return m; }
+GridMeta meta${i}() { GridMeta m; m.n = ${u.n}; m.lonWrap = false; m.pack = ${u.pack}; return m; }
 `);
 		} else {
 			// Port of RegularGrid.locate() including the ICON "last cell double
@@ -632,7 +642,7 @@ Cell locate${i}(float lat, float lon) {
 	c.ok = true;
 	return c;
 }
-GridMeta meta${i}() { GridMeta m; m.n = ${u.n}; m.lonWrap = ${u.flags}.x == 1; return m; }
+GridMeta meta${i}() { GridMeta m; m.n = ${u.n}; m.lonWrap = ${u.flags}.x == 1; m.pack = ${u.pack}; return m; }
 `);
 		}
 

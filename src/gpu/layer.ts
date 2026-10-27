@@ -96,6 +96,13 @@ export interface WeatherGpuLayerOptions {
 	 * @default 256
 	 */
 	textureCacheMb?: number;
+	/**
+	 * Called once when the layer cannot draw on this GPU (shader compile/link
+	 * failure, a grid too large for MAX_TEXTURE_SIZE even when packed, VRAM
+	 * exhausted); the layer stays blank from then on. Runs after the current
+	 * render pass, so the handler may remove the layer or switch renderers.
+	 */
+	onFatalError?: (error: Error) => void;
 }
 
 /** One candidate wind for the advected temporal blend (see setAdvection). */
@@ -262,6 +269,9 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 	private renderer: WeatherGpuRenderer | undefined;
 	private rendererGl: WebGL2RenderingContext | undefined;
 	private arrowInstances: ArrowInstances | undefined;
+	private onFatalError: ((error: Error) => void) | undefined;
+	/** A draw failed for good (see WeatherGpuLayerOptions.onFatalError). */
+	private failed = false;
 
 	private current: PlainFrame | undefined;
 	private previous: Pick<PlainFrame, 'values' | 'gridUniforms'> | undefined;
@@ -342,6 +352,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		this.fadeMs = options.fadeMs ?? 250;
 		this.drawRaster = options.drawRaster ?? true;
 		this.textureCacheMb = options.textureCacheMb;
+		this.onFatalError = options.onFatalError;
 	}
 
 	/** VRAM used/budgeted by this layer's cached value textures. */
@@ -1122,8 +1133,23 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 	}
 
 	render(gl: WebGLRenderingContext | WebGL2RenderingContext, args: CustomRenderMethodInput): void {
+		if (!this.renderer || !this.map || this.failed) return;
+		// An exception escaping here would abort MapLibre's whole frame (every
+		// layer above this one) on every repaint; a failing GPU layer goes
+		// blank instead and reports once.
+		try {
+			this.renderFrame(gl as WebGL2RenderingContext, args);
+		} catch (error) {
+			this.failed = true;
+			const err = error instanceof Error ? error : new Error(String(error));
+			console.error(err);
+			// The handler may remove this layer: not from inside the render pass.
+			queueMicrotask(() => this.onFatalError?.(err));
+		}
+	}
+
+	private renderFrame(gl2: WebGL2RenderingContext, args: CustomRenderMethodInput): void {
 		if (!this.renderer || !this.map) return;
-		const gl2 = gl as WebGL2RenderingContext;
 
 		// The map's own projectTile prelude renders mercator, globe and the
 		// transition between them; the fragment shader is projection-agnostic.
