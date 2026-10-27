@@ -116,7 +116,11 @@ export const loadSeamlessLayer = async (
 	const concreteDataOptions: DataIdentityOptions = {
 		domain: concreteDomain,
 		variable: request.dataOptions.variable,
-		bounds: request.dataOptions.bounds
+		bounds: request.dataOptions.bounds,
+		// A rate's rule divides by the file's time step, which only the host
+		// knows (the om URL's delta_time_hours): the reader rejects the read
+		// without it, so the sub-layer inherits it from the composite request
+		deltaTimeHours: request.dataOptions.deltaTimeHours
 	};
 
 	const instance = getProtocolInstance(settings);
