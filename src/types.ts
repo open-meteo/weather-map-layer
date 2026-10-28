@@ -170,7 +170,22 @@ export interface TileRequest {
 	signal?: AbortSignal;
 }
 
-export type WorkerRequest = TileRequest;
+/**
+ * A buffer every worker needs (a grid's geometry), sent once per worker: a
+ * SharedArrayBuffer is passed by reference, anything else is cloned.
+ */
+export interface WorkerBufferRequest {
+	type: 'buffer';
+	key: string;
+	buffer: ArrayBufferLike;
+}
+
+export interface SharedBuffer {
+	key: string;
+	buffer: ArrayBufferLike;
+}
+
+export type WorkerRequest = TileRequest | WorkerBufferRequest;
 
 export type TileResponse = ImageBitmap | ArrayBuffer;
 export interface TileResult {
@@ -236,7 +251,17 @@ interface BaseGridData {
 }
 
 // Union type for all grid types
-export type GridData = RegularGridData | AnyProjectionGridData | GaussianGridData;
+export type GridData = RegularGridData | AnyProjectionGridData | GaussianGridData | LatBandGridData;
+
+// A point set located through the cell index the backend publishes as
+// data/<domain>/static/grid.bin (format LATBAND1, see grids/latband/latband.ts):
+// the native cells of a global or limited-area ICON mesh. nx is the cell count,
+// ny must be 1.
+export interface LatBandGridData extends BaseGridData {
+	type: 'latband';
+	/** URL of the LATBAND1 file, fetched once by GridFactory.preload */
+	geometry: string;
+}
 
 export interface GaussianGridData extends BaseGridData {
 	type: 'gaussian';

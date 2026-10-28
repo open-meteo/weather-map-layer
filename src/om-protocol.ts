@@ -213,6 +213,15 @@ const requestTile = async (
 		}
 	}
 
+	// A grid whose geometry lives outside the bundle is fetched once here and
+	// handed to the workers before their first tile of it.
+	await Promise.all(layers.map((layer) => GridFactory.preload(layer.domain.grid)));
+	for (const layer of layers) {
+		for (const { key, buffer } of GridFactory.sharedBuffers(layer.domain.grid)) {
+			workerPool.share(key, buffer);
+		}
+	}
+
 	return workerPool.requestTile({
 		type: tileType,
 		key,
@@ -230,6 +239,7 @@ const getTilejson = async (
 	clippingOptions?: ResolvedClippingOptions
 ): Promise<TileJSON> => {
 	// We initialize the grid with the ranges set to null, because we want to find out the maximum bounds of this grid
+	await GridFactory.preload(dataOptions.domain.grid);
 	const grid = GridFactory.create(dataOptions.domain.grid, null);
 	let bounds;
 	if (clippingOptions && clippingOptions.bounds) {

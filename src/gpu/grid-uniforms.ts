@@ -57,6 +57,9 @@ export const computeGridUniforms = (
 	grid: GridData,
 	ranges: DimensionRange[] | null
 ): GpuGridUniforms => {
+	if (grid.type === 'latband') {
+		throw new Error('gpu: native ICON (latband) grids are not drawn on the GPU yet');
+	}
 	const r = ranges ?? fullRanges(grid);
 	// Reuses the CPU grids for bounds so cropped (ranges) grids and projected
 	// perimeters are handled identically to the raster/vector tile paths.
