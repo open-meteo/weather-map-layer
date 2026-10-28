@@ -43,7 +43,7 @@ describe('gpu shader source', () => {
 	it('assembles the native ICON mesh shaders', () => {
 		for (const interpolation of INTERPOLATIONS) {
 			const source = fragmentSource({ layers: [{ gridKind: 'latband' }], interpolation });
-			expect(source).toContain('latbandValue(v_cells)');
+			expect(source).toContain('latbandValue(v_cells, v_cellsAcross)');
 			expect(source).not.toContain('blendedValue');
 			// Nearest picks a centre, the other methods interpolate on the triangle.
 			expect(source.includes('dot(v_bary, cells)')).toBe(interpolation !== 'nearest');
@@ -55,6 +55,7 @@ describe('gpu shader source', () => {
 		});
 		expect(vertex).toContain('gl_VertexID');
 		expect(vertex).toContain('u_meshTriangles');
+		expect(vertex).toContain('u_meshNeighbours');
 	});
 
 	it('assembles a multi-layer seamless shader', () => {

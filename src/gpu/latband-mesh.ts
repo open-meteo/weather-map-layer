@@ -34,6 +34,14 @@ export interface LatBandMesh {
 	pointCount: number;
 	/** Point indices, three per triangle. */
 	triangles: Uint32Array;
+	/**
+	 * Per triangle, the point across each edge (the far corner of the
+	 * neighbour; the triangle's own opposite corner on the hull): the nearest
+	 * centre is one of these six, not only the three corners. ICON's centres
+	 * lie in near-cocircular hexagons around the grid vertices, which the
+	 * Delaunay splits arbitrarily, so a third corner is often not the nearest.
+	 */
+	neighbours: Uint32Array;
 	triangleCount: number;
 	/**
 	 * Radius (radians) around a centre within which a coordinate belongs to
@@ -120,11 +128,19 @@ export const buildLatBandMesh = (
 		coords[2 * i] = xs[i];
 		coords[2 * i + 1] = ys[i];
 	}
-	const delaunay = new Delaunator(coords).triangles;
-	const triangleCount = delaunay.length / 3;
+	const delaunay = new Delaunator(coords);
+	const triangleCount = delaunay.triangles.length / 3;
 	if (triangleCount === 0) return undefined;
 	const triangles = new Uint32Array(3 * padToRows(triangleCount));
-	triangles.set(delaunay);
+	triangles.set(delaunay.triangles);
+	// Half-edge e runs from corner e to corner next(e); its twin's triangle
+	// has the far point at the twin's previous half-edge.
+	const neighbours = new Uint32Array(triangles.length);
+	const next = (e: number): number => (e % 3 === 2 ? e - 2 : e + 1);
+	for (let e = 0; e < 3 * triangleCount; e++) {
+		const twin = delaunay.halfedges[e];
+		neighbours[e] = delaunay.triangles[twin < 0 ? next(next(e)) : next(next(twin))];
+	}
 
 	const points = new Float32Array(4 * padToRows(count));
 	for (let i = 0; i < count; i++) {
@@ -137,6 +153,7 @@ export const buildLatBandMesh = (
 		points,
 		pointCount: count,
 		triangles,
+		neighbours,
 		triangleCount,
 		acceptRadius: 1.5 * grid.spacing * Math.sqrt(stride),
 		coverage: [

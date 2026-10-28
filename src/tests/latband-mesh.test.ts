@@ -5,23 +5,13 @@ import { describe, expect, it } from 'vitest';
 const D2R = Math.PI / 180;
 
 /**
- * A lattice of cell centres behind the two LatBandGrid members the mesh
- * builder reads: the box walk (exact box, where the real one visits whole
- * buckets) and the spacing.
+ * Cell centres behind the two LatBandGrid members the mesh builder reads: the
+ * box walk (exact box, where the real one visits whole buckets) and the
+ * spacing.
  */
-const latticeGrid = (
-	west: number,
-	south: number,
-	east: number,
-	north: number,
-	step: number
-): LatBandGrid => {
-	const centres: Array<[lat: number, lon: number, cell: number]> = [];
-	for (let lat = south; lat <= north + 1e-9; lat += step) {
-		for (let lon = west; lon <= east + 1e-9; lon += step) centres.push([lat, lon, centres.length]);
-	}
-	return {
-		spacing: step * D2R,
+const pointGrid = (centres: Array<[lat: number, lon: number]>, spacingDeg: number): LatBandGrid =>
+	({
+		spacing: spacingDeg * D2R,
 		forEachRecordInBox: (
 			s: number,
 			w: number,
@@ -29,9 +19,9 @@ const latticeGrid = (
 			e: number,
 			callback: (x: number, y: number, z: number, id: number) => void
 		) => {
-			for (const [lat, lon, cell] of centres) {
+			centres.forEach(([lat, lon], cell) => {
 				const offset = (((lon - w) % 360) + 360) % 360;
-				if (lat < s || lat > n || offset > e - w) continue;
+				if (lat < s || lat > n || offset > e - w) return;
 				const cosLat = Math.cos(lat * D2R);
 				callback(
 					cosLat * Math.cos(lon * D2R),
@@ -39,9 +29,23 @@ const latticeGrid = (
 					Math.sin(lat * D2R),
 					cell
 				);
-			}
+			});
 		}
-	} as unknown as LatBandGrid;
+	}) as unknown as LatBandGrid;
+
+/** A rectangular lat/lon lattice of centres. */
+const latticeGrid = (
+	west: number,
+	south: number,
+	east: number,
+	north: number,
+	step: number
+): LatBandGrid => {
+	const centres: Array<[number, number]> = [];
+	for (let lat = south; lat <= north + 1e-9; lat += step) {
+		for (let lon = west; lon <= east + 1e-9; lon += step) centres.push([lat, lon]);
+	}
+	return pointGrid(centres, step);
 };
 
 const xsOf = (mesh: NonNullable<ReturnType<typeof buildLatBandMesh>>): number[] =>
@@ -92,6 +96,60 @@ describe('latband mesh', () => {
 		const xs = xsOf(mesh);
 		expect(Math.min(...xs)).toBeLessThan(mesh.coverage[0]);
 		expect(Math.max(...xs)).toBeGreaterThan(mesh.coverage[2]);
+	});
+
+	it('finds the nearest centre among the corners and the points across the edges', () => {
+		// ICON-like: the centroids of a regular triangular tiling, which lie in
+		// cocircular hexagons around every vertex of the tiling.
+		const side = 0.2;
+		const height = (side * Math.sqrt(3)) / 2;
+		const centres: Array<[number, number]> = [];
+		for (let j = 0; j < 20; j++) {
+			for (let i = 0; i < 20; i++) {
+				const x = i * side + (j * side) / 2;
+				centres.push([j * height + height / 3, x + side / 2]);
+				centres.push([j * height + (2 * height) / 3, x + side]);
+			}
+		}
+		const mesh = buildLatBandMesh(
+			pointGrid(centres, side / Math.sqrt(3)),
+			[1.5, 1, 3.5, 2.5],
+			1e6
+		)!;
+		const px = (i: number) => mesh.points[4 * i];
+		const py = (i: number) => mesh.points[4 * i + 1];
+		const nearest = (points: number[], x: number, y: number) =>
+			Math.min(...points.map((i) => (px(i) - x) ** 2 + (py(i) - y) ** 2));
+		const all = Array.from({ length: mesh.pointCount }, (_, i) => i);
+		const inner = [(1.8 + 180) / 360, (3.2 + 180) / 360];
+		let samples = 0;
+		let cornerMisses = 0;
+		let candidateMisses = 0;
+		for (let t = 0; t < mesh.triangleCount; t++) {
+			const corners = [0, 1, 2].map((k) => mesh.triangles[3 * t + k]);
+			const across = [0, 1, 2].map((k) => mesh.neighbours[3 * t + k]);
+			const cx = corners.reduce((sum, i) => sum + px(i), 0) / 3;
+			if (cx < inner[0] || cx > inner[1]) continue;
+			for (const [a, b] of [
+				[0.2, 0.2],
+				[0.6, 0.1],
+				[0.1, 0.7],
+				[0.45, 0.45]
+			]) {
+				const [p0, p1, p2] = corners;
+				const x = px(p0) + a * (px(p1) - px(p0)) + b * (px(p2) - px(p0));
+				const y = py(p0) + a * (py(p1) - py(p0)) + b * (py(p2) - py(p0));
+				const best = nearest(all, x, y);
+				samples++;
+				if (nearest(corners, x, y) > best * (1 + 1e-6)) cornerMisses++;
+				if (nearest([...corners, ...across], x, y) > best * (1 + 1e-6)) candidateMisses++;
+			}
+		}
+		expect(samples).toBeGreaterThan(100);
+		// The corners alone miss on this lattice; with the points across the
+		// edges the nearest centre is always among the candidates.
+		expect(cornerMisses).toBeGreaterThan(0);
+		expect(candidateMisses).toBe(0);
 	});
 
 	it('needs three centres in view', () => {

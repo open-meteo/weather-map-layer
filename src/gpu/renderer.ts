@@ -198,6 +198,7 @@ export interface GpuLayerDraw {
 interface GpuLatBandMesh {
 	points: WebGLTexture;
 	triangles: WebGLTexture;
+	neighbours: WebGLTexture;
 	triangleCount: number;
 }
 
@@ -734,6 +735,7 @@ export class WeatherGpuRenderer {
 		const gpuMesh: GpuLatBandMesh = {
 			points: meshTexture(mesh.points, 4, gl.RGBA32F, gl.RGBA, gl.FLOAT),
 			triangles: meshTexture(mesh.triangles, 3, gl.RGB32UI, gl.RGB_INTEGER, gl.UNSIGNED_INT),
+			neighbours: meshTexture(mesh.neighbours, 3, gl.RGB32UI, gl.RGB_INTEGER, gl.UNSIGNED_INT),
 			triangleCount: mesh.triangleCount
 		};
 		this.latbandMeshes.set(mesh, gpuMesh);
@@ -741,6 +743,7 @@ export class WeatherGpuRenderer {
 			const [oldest, evicted] = this.latbandMeshes.entries().next().value!;
 			gl.deleteTexture(evicted.points);
 			gl.deleteTexture(evicted.triangles);
+			gl.deleteTexture(evicted.neighbours);
 			this.latbandMeshes.delete(oldest);
 		}
 		return gpuMesh;
@@ -834,6 +837,7 @@ export class WeatherGpuRenderer {
 		}
 		if (mesh && gpuMesh) {
 			bindTexture('u_meshTriangles', gpuMesh.triangles);
+			bindTexture('u_meshNeighbours', gpuMesh.neighbours);
 			bindTexture('u_meshPoints', gpuMesh.points);
 			gl.uniform1i(u('u_meshWidth'), MESH_TEX_WIDTH);
 			gl.uniform1i(u('u_valuesWidth'), layers[0].gridUniforms.nx);
@@ -1127,9 +1131,10 @@ ${VISIBILITY_VERTEX_BODY}`,
 			if (mask) gl.deleteTexture(mask.texture);
 		}
 		this.clipMasks.clear();
-		for (const { points, triangles } of this.latbandMeshes.values()) {
+		for (const { points, triangles, neighbours } of this.latbandMeshes.values()) {
 			gl.deleteTexture(points);
 			gl.deleteTexture(triangles);
+			gl.deleteTexture(neighbours);
 		}
 		this.latbandMeshes.clear();
 		if (this.emptyVao) {

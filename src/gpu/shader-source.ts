@@ -123,16 +123,19 @@ ${VERTEX_BODY}`;
 
 // A native ICON grid's mesh (latband-mesh.ts), drawn without attributes:
 // vertex gl_VertexID is corner (gl_VertexID % 3) of triangle gl_VertexID / 3,
-// and every corner reads all three cells of its triangle, so the fragment
-// shader gets them (flat) next to its barycentric position.
+// and every corner reads the triangle's three cells and the three across its
+// edges, so the fragment shader gets all six (flat) next to its barycentric
+// position.
 const LATBAND_VERTEX_BODY = `
 precision highp int;
 precision highp usampler2D;
-// Point indices of each triangle, (a, b, c).
+// Point indices of each triangle, (a, b, c), and of the points across its
+// edges (the nearest-centre candidates beyond the corners).
 uniform usampler2D u_meshTriangles;
+uniform usampler2D u_meshNeighbours;
 // Per point: mercator x, mercator y, cell index.
 uniform sampler2D u_meshPoints;
-// Texels per row of both mesh textures.
+// Texels per row of the mesh textures.
 uniform int u_meshWidth;
 // Cell values in model order, rows of u_valuesWidth texels: the current and
 // the previous timestep (same cells, so the temporal blend needs no lookup).
@@ -142,36 +145,49 @@ uniform int u_valuesWidth;
 
 out vec2 v_mercator;
 out vec3 v_bary;
+// Corners first, then the points across the edges; positions packed in pairs.
 flat out vec3 v_cells;
 flat out vec3 v_cellsPrev;
-flat out vec2 v_p0;
-flat out vec2 v_p1;
-flat out vec2 v_p2;
+flat out vec3 v_cellsAcross;
+flat out vec3 v_cellsAcrossPrev;
+flat out vec4 v_p01;
+flat out vec4 v_p2q0;
+flat out vec4 v_q12;
 
 ivec2 texelOf(int i, int width) {
 	return ivec2(i % width, i / width);
 }
 
-float cellValue(sampler2D tex, float cell) {
-	return texelFetch(tex, texelOf(int(cell), u_valuesWidth), 0).r;
+vec3 pointOf(uint i) {
+	return texelFetch(u_meshPoints, texelOf(int(i), u_meshWidth), 0).xyz;
+}
+
+vec3 cellValues(sampler2D tex, vec3 a, vec3 b, vec3 c) {
+	return vec3(
+		texelFetch(tex, texelOf(int(a.z), u_valuesWidth), 0).r,
+		texelFetch(tex, texelOf(int(b.z), u_valuesWidth), 0).r,
+		texelFetch(tex, texelOf(int(c.z), u_valuesWidth), 0).r
+	);
 }
 
 void main() {
 	int triangle = gl_VertexID / 3;
 	int corner = gl_VertexID - 3 * triangle;
 	uvec3 t = texelFetch(u_meshTriangles, texelOf(triangle, u_meshWidth), 0).xyz;
-	vec3 a = texelFetch(u_meshPoints, texelOf(int(t.x), u_meshWidth), 0).xyz;
-	vec3 b = texelFetch(u_meshPoints, texelOf(int(t.y), u_meshWidth), 0).xyz;
-	vec3 c = texelFetch(u_meshPoints, texelOf(int(t.z), u_meshWidth), 0).xyz;
-	v_cells = vec3(cellValue(u_values0, a.z), cellValue(u_values0, b.z), cellValue(u_values0, c.z));
-	v_cellsPrev = vec3(
-		cellValue(u_valuesPrev, a.z),
-		cellValue(u_valuesPrev, b.z),
-		cellValue(u_valuesPrev, c.z)
-	);
-	v_p0 = a.xy;
-	v_p1 = b.xy;
-	v_p2 = c.xy;
+	uvec3 n = texelFetch(u_meshNeighbours, texelOf(triangle, u_meshWidth), 0).xyz;
+	vec3 a = pointOf(t.x);
+	vec3 b = pointOf(t.y);
+	vec3 c = pointOf(t.z);
+	vec3 d = pointOf(n.x);
+	vec3 e = pointOf(n.y);
+	vec3 f = pointOf(n.z);
+	v_cells = cellValues(u_values0, a, b, c);
+	v_cellsPrev = cellValues(u_valuesPrev, a, b, c);
+	v_cellsAcross = cellValues(u_values0, d, e, f);
+	v_cellsAcrossPrev = cellValues(u_valuesPrev, d, e, f);
+	v_p01 = vec4(a.xy, b.xy);
+	v_p2q0 = vec4(c.xy, d.xy);
+	v_q12 = vec4(e.xy, f.xy);
 	v_bary = vec3(corner == 0 ? 1.0 : 0.0, corner == 1 ? 1.0 : 0.0, corner == 2 ? 1.0 : 0.0);
 	vec2 pos = corner == 0 ? a.xy : (corner == 1 ? b.xy : c.xy);
 	v_mercator = pos;
@@ -191,11 +207,13 @@ ${LATBAND_VERTEX_BODY}`;
 
 /**
  * The fragment side of a native ICON grid's mesh: the value at the fragment
- * from its triangle's three cells, with the CPU tile path's rules
- * (LatBandGrid): 'nearest' is the closest centre, the other methods
- * interpolate barycentrically (the dual mesh) and fall back to the closest
- * centre where a cell is missing. Farther than u_acceptRadius from all three
- * centres belongs to no cell.
+ * with the CPU tile path's rules (LatBandGrid). 'nearest' is the closest
+ * centre — among the triangle's corners and the points across its edges: the
+ * Delaunay splits ICON's near-cocircular centre hexagons arbitrarily, and the
+ * closest centre to a point in such a triangle is often a neighbour's corner.
+ * The other methods interpolate barycentrically over the corners (the dual
+ * mesh) and fall back to the closest centre where a cell is missing. Farther
+ * than u_acceptRadius from every candidate belongs to no cell.
  */
 const latbandValueSource = (interpolation: InterpolationMethod): string => `
 uniform float u_acceptRadius; // radians
@@ -205,20 +223,28 @@ uniform vec2 u_meshClipX;
 in vec3 v_bary;
 flat in vec3 v_cells;
 flat in vec3 v_cellsPrev;
-flat in vec2 v_p0;
-flat in vec2 v_p1;
-flat in vec2 v_p2;
+flat in vec3 v_cellsAcross;
+flat in vec3 v_cellsAcrossPrev;
+flat in vec4 v_p01;
+flat in vec4 v_p2q0;
+flat in vec4 v_q12;
 
-float latbandValue(vec3 cells) {
-	vec2 d0 = v_mercator - v_p0;
-	vec2 d1 = v_mercator - v_p1;
-	vec2 d2 = v_mercator - v_p2;
-	float q0 = dot(d0, d0);
-	float q1 = dot(d1, d1);
-	float q2 = dot(d2, d2);
-	float q = min(q0, min(q1, q2));
+float latbandValue(vec3 cells, vec3 across) {
+	vec2 m = v_mercator;
+	float best = dot(m - v_p01.xy, m - v_p01.xy);
+	float nearest = cells.x;
+	float q = dot(m - v_p01.zw, m - v_p01.zw);
+	if (q < best) { best = q; nearest = cells.y; }
+	q = dot(m - v_p2q0.xy, m - v_p2q0.xy);
+	if (q < best) { best = q; nearest = cells.z; }
+	q = dot(m - v_p2q0.zw, m - v_p2q0.zw);
+	if (q < best) { best = q; nearest = across.x; }
+	q = dot(m - v_q12.xy, m - v_q12.xy);
+	if (q < best) { best = q; nearest = across.y; }
+	q = dot(m - v_q12.zw, m - v_q12.zw);
+	if (q < best) { best = q; nearest = across.z; }
 	// Mercator is conformal: one scale factor turns the distance into radians.
-	if (sqrt(q) * 2.0 * PI * cos(radians(mercToLat(v_mercator.y))) > u_acceptRadius) {
+	if (sqrt(best) * 2.0 * PI * cos(radians(mercToLat(m.y))) > u_acceptRadius) {
 		return MISSING;
 	}${
 		interpolation === 'nearest'
@@ -228,7 +254,7 @@ float latbandValue(vec3 cells) {
 		return dot(v_bary, cells);
 	}`
 	}
-	return q == q0 ? cells.x : (q == q1 ? cells.y : cells.z);
+	return nearest;
 }
 `;
 
@@ -862,8 +888,12 @@ export const fragmentSource = (spec: FragmentShaderSpec): string => {
 	const multiTemporal = !single && spec.temporal === true;
 	const currentArgs = layers.map((_, i) => `, u_values${i}`).join('');
 	const prevArgs = single ? ', u_valuesPrev' : layers.map((_, i) => `, u_valuesPrev${i}`).join('');
-	const currentValue = latband ? 'latbandValue(v_cells)' : `blendedValue(lat, lon${currentArgs})`;
-	const prevValue = latband ? 'latbandValue(v_cellsPrev)' : `blendedValue(lat, lon${prevArgs})`;
+	const currentValue = latband
+		? 'latbandValue(v_cells, v_cellsAcross)'
+		: `blendedValue(lat, lon${currentArgs})`;
+	const prevValue = latband
+		? 'latbandValue(v_cellsPrev, v_cellsAcrossPrev)'
+		: `blendedValue(lat, lon${prevArgs})`;
 	const advect = single && spec.advect === true && !latband;
 	// Semi-Lagrangian frame interpolation: with wind textures bound, sample the
 	// previous field upstream and the next downstream of the displacement, so
