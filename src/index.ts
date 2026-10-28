@@ -28,6 +28,7 @@ export { getColor, getColorScale } from './utils/styling';
 // Classes
 
 export { GridFactory } from './grids/index';
+export { onGridLoadProgress } from './grids/latband/geometry';
 // The block caches for `fileReaderConfig.cache`. Re-exported because the file
 // reader is bundled into this module: importing them from
 // `@openmeteo/file-reader` directly would give a consumer a second copy of it.
@@ -62,6 +63,7 @@ export { addOpenLayersProtocolSupport } from './adapters/openlayers';
 // Types
 
 export type { ActiveSeamlessLayer, SeamlessLayerFilter } from './domain-helpers';
+export type { GridLoadProgress } from './grids/latband/geometry';
 export type {
 	ArrowStyle,
 	Bounds,
