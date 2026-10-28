@@ -328,6 +328,10 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 	private surface: SurfaceTarget | undefined;
 	/** Last particle-update timestamp; 0 restarts the step clock. */
 	private particleLastTime = 0;
+	/** Resumes the particle animation, which pauses while the page has no focus. */
+	private onFocus = (): void => {
+		if (this.particles) this.map?.triggerRepaint();
+	};
 	/** Identity of the field the particles advect through (seamless sub-layer
 	 *  set); a change reseeds the population. undefined = nothing drawn yet. */
 	private particleDataKey: string | undefined;
@@ -838,7 +842,8 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 	/**
 	 * Configure (or remove) the animated wind-particle pass: particles advect
 	 * through the wind field and leave fading trails. Requires data with
-	 * directions (wind variables); renders continuously while configured.
+	 * directions (wind variables); renders continuously while configured and
+	 * the page has focus.
 	 */
 	setParticles(config: GpuParticleConfig | undefined): void {
 		this.particles = config;
@@ -1109,9 +1114,11 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		this.map = map;
 		this.rendererGl = gl;
 		this.renderer = acquireSharedRenderer(gl, this.textureCacheMb);
+		window.addEventListener('focus', this.onFocus);
 	}
 
 	onRemove(): void {
+		window.removeEventListener('focus', this.onFocus);
 		this.particleSystem?.dispose();
 		this.particleSystem = undefined;
 		this.elevationBuilder?.dispose();
@@ -1854,7 +1861,9 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 	/**
 	 * The animated wind-particle pass: advance the GPU particle state by one
 	 * step and composite the fading trail image. Requests a repaint every frame
-	 * while active — the animation is the reason the map keeps rendering.
+	 * while active — the animation is the reason the map keeps rendering —
+	 * unless the page has no focus (another window in front): then the map
+	 * idles instead of redrawing for nobody, and focus resumes it.
 	 */
 	private drawParticlePass(
 		projection: GpuDrawOptions['projection'],
@@ -1946,7 +1955,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			});
 		if (surface) surface.withoutDepth(render);
 		else render();
-		map.triggerRepaint();
+		if (document.hasFocus()) map.triggerRepaint();
 	}
 
 	/**
