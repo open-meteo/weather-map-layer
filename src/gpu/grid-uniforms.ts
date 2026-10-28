@@ -6,6 +6,7 @@
  * their precomputed fields, so both paths share one source of truth.
  */
 import { GridFactory } from '../grids/index';
+import type { LatBandGrid } from '../grids/latband/latband';
 import {
 	LambertAzimuthalEqualAreaProjection,
 	LambertConformalConicProjection,
@@ -25,16 +26,22 @@ const MERCATOR_LAT_LIMIT = 85.051129;
 /** Width of the 2D texture the flat gaussian value array is packed into. */
 const GAUSSIAN_TEX_WIDTH = 4096;
 
+/** Width of the 2D texture a native ICON grid's cell values are packed into. */
+export const LATBAND_TEX_WIDTH = 4096;
+
 export interface GpuGridUniforms {
 	gridKind: LayerShaderSpec['gridKind'];
 	projectionName?: LayerShaderSpec['projectionName'];
-	/** Dimensions of the value texture (grid nx/ny; packed rows for gaussian). */
+	/** Dimensions of the value texture (grid nx/ny; packed rows for gaussian and latband). */
 	nx: number;
 	ny: number;
 	/** Regular: lon/lat of grid index [0,0]. Projected: minX/minY in projection space. */
 	originX: number;
 	originY: number;
-	/** Regular: degrees per step (signed). Projected: projection units per step (signed). */
+	/**
+	 * Regular: degrees per step (signed). Projected: projection units per step
+	 * (signed). Latband: mean cell spacing in degrees.
+	 */
 	dx: number;
 	dy: number;
 	lonWrap: boolean;
@@ -57,16 +64,15 @@ export const computeGridUniforms = (
 	grid: GridData,
 	ranges: DimensionRange[] | null
 ): GpuGridUniforms => {
-	if (grid.type === 'latband') {
-		throw new Error('gpu: native ICON (latband) grids are not drawn on the GPU yet');
-	}
 	const r = ranges ?? fullRanges(grid);
 	// Reuses the CPU grids for bounds so cropped (ranges) grids and projected
 	// perimeters are handled identically to the raster/vector tile paths.
-	const bounds = GridFactory.create(grid, r).getBounds();
-	const quad = boundsToMercatorQuad(bounds);
+	const cpuGrid = GridFactory.create(grid, r);
+	const quad = boundsToMercatorQuad(cpuGrid.getBounds());
 
 	switch (grid.type) {
+		case 'latband':
+			return latbandUniforms(grid, (cpuGrid as LatBandGrid).spacing, quad);
 		case 'regular':
 			return regularUniforms(grid, r, quad);
 		case 'projectedFromBounds':
@@ -255,5 +261,29 @@ const gaussianUniforms = (
 		dx: 0,
 		dy: 0,
 		gauss: [grid.gaussianGridLatitudeLines, nxStart, texWidth, texWidth * texHeight]
+	};
+};
+
+const latbandUniforms = (
+	grid: Extract<GridData, { type: 'latband' }>,
+	/** Mean centre spacing in radians (LatBandGrid.spacing). */
+	spacing: number,
+	quad: [number, number, number, number]
+): GpuGridUniforms => {
+	// A native ICON grid draws as a mesh of its cell centres (latband-mesh.ts),
+	// with no grid lookup: the texture only holds the cell values, packed
+	// row-major like the gaussian flat array. dx/dy carry the mean centre
+	// spacing in degrees, the resolution the contour fade needs.
+	const texHeight = Math.max(1, Math.ceil(grid.nx / LATBAND_TEX_WIDTH));
+	const spacingDeg = (spacing * 180) / Math.PI;
+	return {
+		...baseUniforms(quad),
+		gridKind: 'latband',
+		nx: LATBAND_TEX_WIDTH,
+		ny: texHeight,
+		originX: 0,
+		originY: 0,
+		dx: spacingDeg,
+		dy: spacingDeg
 	};
 };

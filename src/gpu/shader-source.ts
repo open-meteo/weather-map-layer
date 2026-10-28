@@ -27,7 +27,11 @@ import type { InterpolationMethod } from '../types';
 export const MISSING_SENTINEL = 3.0e38;
 
 export interface LayerShaderSpec {
-	gridKind: 'regular' | 'projected' | 'gaussian';
+	/**
+	 * 'latband' (a native ICON grid) is not looked up per pixel but drawn as a
+	 * mesh of its cell centres (latbandVertexSource); single layer only.
+	 */
+	gridKind: 'regular' | 'projected' | 'gaussian' | 'latband';
 	projectionName?:
 		| 'StereographicProjection'
 		| 'RotatedLatLonProjection'
@@ -116,6 +120,117 @@ ${shaderData.vertexShaderPrelude}
 ${shaderData.define}
 ${projectPointSource(elevated)}
 ${VERTEX_BODY}`;
+
+// A native ICON grid's mesh (latband-mesh.ts), drawn without attributes:
+// vertex gl_VertexID is corner (gl_VertexID % 3) of triangle gl_VertexID / 3,
+// and every corner reads all three cells of its triangle, so the fragment
+// shader gets them (flat) next to its barycentric position.
+const LATBAND_VERTEX_BODY = `
+precision highp int;
+precision highp usampler2D;
+// Point indices of each triangle, (a, b, c).
+uniform usampler2D u_meshTriangles;
+// Per point: mercator x, mercator y, cell index.
+uniform sampler2D u_meshPoints;
+// Texels per row of both mesh textures.
+uniform int u_meshWidth;
+// Cell values in model order, rows of u_valuesWidth texels: the current and
+// the previous timestep (same cells, so the temporal blend needs no lookup).
+uniform sampler2D u_values0;
+uniform sampler2D u_valuesPrev;
+uniform int u_valuesWidth;
+
+out vec2 v_mercator;
+out vec3 v_bary;
+flat out vec3 v_cells;
+flat out vec3 v_cellsPrev;
+flat out vec2 v_p0;
+flat out vec2 v_p1;
+flat out vec2 v_p2;
+
+ivec2 texelOf(int i, int width) {
+	return ivec2(i % width, i / width);
+}
+
+float cellValue(sampler2D tex, float cell) {
+	return texelFetch(tex, texelOf(int(cell), u_valuesWidth), 0).r;
+}
+
+void main() {
+	int triangle = gl_VertexID / 3;
+	int corner = gl_VertexID - 3 * triangle;
+	uvec3 t = texelFetch(u_meshTriangles, texelOf(triangle, u_meshWidth), 0).xyz;
+	vec3 a = texelFetch(u_meshPoints, texelOf(int(t.x), u_meshWidth), 0).xyz;
+	vec3 b = texelFetch(u_meshPoints, texelOf(int(t.y), u_meshWidth), 0).xyz;
+	vec3 c = texelFetch(u_meshPoints, texelOf(int(t.z), u_meshWidth), 0).xyz;
+	v_cells = vec3(cellValue(u_values0, a.z), cellValue(u_values0, b.z), cellValue(u_values0, c.z));
+	v_cellsPrev = vec3(
+		cellValue(u_valuesPrev, a.z),
+		cellValue(u_valuesPrev, b.z),
+		cellValue(u_valuesPrev, c.z)
+	);
+	v_p0 = a.xy;
+	v_p1 = b.xy;
+	v_p2 = c.xy;
+	v_bary = vec3(corner == 0 ? 1.0 : 0.0, corner == 1 ? 1.0 : 0.0, corner == 2 ? 1.0 : 0.0);
+	vec2 pos = corner == 0 ? a.xy : (corner == 1 ? b.xy : c.xy);
+	v_mercator = pos;
+	// Over terrain the corners sit on the drawn surface (the depth pre-pass),
+	// depth-tested against it like the arrows; flat maps just project.
+	gl_Position = projectSurfacePoint(vec2(pos.x + u_worldOffset, pos.y));
+}
+`;
+
+/** Vertex shader of a native ICON grid's mesh (see LATBAND_VERTEX_BODY). */
+export const latbandVertexSource = (shaderData: ProjectionShaderData, elevated = false): string =>
+	`#version 300 es
+${shaderData.vertexShaderPrelude}
+${shaderData.define}
+${projectPointSource(elevated)}
+${LATBAND_VERTEX_BODY}`;
+
+/**
+ * The fragment side of a native ICON grid's mesh: the value at the fragment
+ * from its triangle's three cells, with the CPU tile path's rules
+ * (LatBandGrid): 'nearest' is the closest centre, the other methods
+ * interpolate barycentrically (the dual mesh) and fall back to the closest
+ * centre where a cell is missing. Farther than u_acceptRadius from all three
+ * centres belongs to no cell.
+ */
+const latbandValueSource = (interpolation: InterpolationMethod): string => `
+uniform float u_acceptRadius; // radians
+// Mercator x range this draw covers; a whole-world mesh overlaps its copies.
+uniform vec2 u_meshClipX;
+
+in vec3 v_bary;
+flat in vec3 v_cells;
+flat in vec3 v_cellsPrev;
+flat in vec2 v_p0;
+flat in vec2 v_p1;
+flat in vec2 v_p2;
+
+float latbandValue(vec3 cells) {
+	vec2 d0 = v_mercator - v_p0;
+	vec2 d1 = v_mercator - v_p1;
+	vec2 d2 = v_mercator - v_p2;
+	float q0 = dot(d0, d0);
+	float q1 = dot(d1, d1);
+	float q2 = dot(d2, d2);
+	float q = min(q0, min(q1, q2));
+	// Mercator is conformal: one scale factor turns the distance into radians.
+	if (sqrt(q) * 2.0 * PI * cos(radians(mercToLat(v_mercator.y))) > u_acceptRadius) {
+		return MISSING;
+	}${
+		interpolation === 'nearest'
+			? ''
+			: `
+	if (!isMissing(cells.x) && !isMissing(cells.y) && !isMissing(cells.z)) {
+		return dot(v_bary, cells);
+	}`
+	}
+	return q == q0 ? cells.x : (q == q1 ? cells.y : cells.z);
+}
+`;
 
 // ─── Shared building blocks ──────────────────────────────────────────────────
 
@@ -729,6 +844,8 @@ ${blendLines.join('\n')}
 export const fragmentSource = (spec: FragmentShaderSpec): string => {
 	const layers = spec.layers;
 	const single = layers.length === 1;
+	// A native ICON grid's value comes from its mesh triangle, not a lookup.
+	const latband = layers[0].gridKind === 'latband';
 
 	const parts: string[] = [
 		'#version 300 es',
@@ -739,13 +856,15 @@ export const fragmentSource = (spec: FragmentShaderSpec): string => {
 		// from R32F textures to a finite value that then colours as scale min/max.
 		'precision highp sampler2D;'
 	];
-	parts.push(samplingSource(spec));
+	parts.push(latband ? COMMON : samplingSource(spec));
 
 	// In-shader temporal blend between two timesteps on the same grids.
 	const multiTemporal = !single && spec.temporal === true;
 	const currentArgs = layers.map((_, i) => `, u_values${i}`).join('');
 	const prevArgs = single ? ', u_valuesPrev' : layers.map((_, i) => `, u_valuesPrev${i}`).join('');
-	const advect = single && spec.advect === true;
+	const currentValue = latband ? 'latbandValue(v_cells)' : `blendedValue(lat, lon${currentArgs})`;
+	const prevValue = latband ? 'latbandValue(v_cellsPrev)' : `blendedValue(lat, lon${prevArgs})`;
+	const advect = single && spec.advect === true && !latband;
 	// Semi-Lagrangian frame interpolation: with wind textures bound, sample the
 	// previous field upstream and the next downstream of the displacement, so
 	// features drift with the flow instead of cross-fading in place. Falls back
@@ -768,7 +887,7 @@ export const fragmentSource = (spec: FragmentShaderSpec): string => {
 		single || multiTemporal
 			? `
 	if (u_mix < 1.0) {
-		float vPrev = blendedValue(lat, lon${prevArgs});${advectChunk}
+		float vPrev = ${prevValue};${advectChunk}
 		if (!isMissing(value) && !isMissing(vPrev)) {
 			value = mix(vPrev, value, u_mix);
 		} else if (isMissing(value)) {
@@ -784,7 +903,9 @@ uniform sampler2D u_windV;
 uniform vec2 u_advect;`
 		: '';
 	const prevUniforms = single
-		? 'uniform sampler2D u_valuesPrev;\nuniform float u_mix; // 0 = previous, 1 = current'
+		? // A mesh reads its previous values in the vertex stage.
+			(latband ? '' : 'uniform sampler2D u_valuesPrev;\n') +
+			'uniform float u_mix; // 0 = previous, 1 = current'
 		: multiTemporal
 			? layers.map((_, i) => `uniform sampler2D u_valuesPrev${i};`).join('\n') +
 				'\nuniform float u_mix; // 0 = previous, 1 = current'
@@ -893,7 +1014,7 @@ uniform vec4 u_clipBounds;
 
 in vec2 v_mercator;
 out vec4 fragColor;
-
+${latband ? latbandValueSource(spec.interpolation) : ''}
 void main() {
 	float lat = mercToLat(v_mercator.y);
 	// The quad carries natural-direction longitudes, so antimeridian-crossing
@@ -910,8 +1031,16 @@ void main() {
 		fragColor = vec4(0.0);
 		return;
 	}
-${clipMaskCheck}
-	float value = blendedValue(lat, lon${currentArgs});
+${clipMaskCheck}${
+		latband
+			? `
+	if (v_mercator.x < u_meshClipX.x || v_mercator.x >= u_meshClipX.y) {
+		fragColor = vec4(0.0);
+		return;
+	}`
+			: ''
+	}
+	float value = ${currentValue};
 ${temporal}
 ${spec.contours ? '	// Sampled before the divergent return below, so quad derivatives are valid\n	float contourVW = fwidth(value);' : ''}
 	if (isMissing(value)) {

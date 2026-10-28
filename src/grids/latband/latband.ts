@@ -191,6 +191,11 @@ export class LatBandGrid implements GridInterface {
 		return this.bounds;
 	}
 
+	/** Mean centre spacing in radians (see LatBandIndex.spacing). */
+	get spacing(): number {
+		return this.index.spacing;
+	}
+
 	getCenter(): { lng: number; lat: number } {
 		const [west, south, east, north] = this.bounds;
 		return { lng: (west + east) / 2, lat: (south + north) / 2 };
@@ -459,8 +464,12 @@ export class LatBandGrid implements GridInterface {
 		return this.interpolate(values, lat, lon, false);
 	}
 
-	/** Visits the records of every stored bucket touching the lat/lon box. */
-	private forEachRecordInBox(
+	/**
+	 * Visits the records of every stored bucket touching the lat/lon box: the
+	 * cell centres as unit vectors with their cell index. Used by the GPU layer
+	 * to mesh the centres in view.
+	 */
+	forEachRecordInBox(
 		south: number,
 		west: number,
 		north: number,
