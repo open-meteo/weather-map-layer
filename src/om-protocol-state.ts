@@ -352,7 +352,12 @@ export const getCellFromLatLong = async (
 	zoom?: number
 ): Promise<Array<[number, number]> | undefined> => {
 	const lookup = await lookupSamplers(omUrl, zoom);
-	return lookup?.samplers.sampleCell(lat, normalizeLon(lon));
+	const normalized = normalizeLon(lon);
+	const cell = lookup?.samplers.sampleCell(lat, normalized);
+	// Sampled on the normalized longitude, drawn on the caller's world copy: a
+	// click east of the antimeridian can come in as e.g. lon 181
+	const shift = lon - normalized;
+	return shift === 0 ? cell : cell?.map(([cellLon, cellLat]) => [cellLon + shift, cellLat]);
 };
 
 /** Parse the `interpolation` URL param, falling back to the default on absent or invalid values. */

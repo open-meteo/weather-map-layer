@@ -280,6 +280,13 @@ export class ProjectionGrid implements GridInterface {
 		at(xHi, yHi);
 		at(xLo, yHi);
 		at(xLo, yLo);
+		// A cell containing a pole: going round it, the unwrapped longitudes
+		// return a whole turn off where they started, so the ring closes over
+		// the pole instead
+		if (Math.abs(ring[4][0] - ring[0][0]) > 180) {
+			const poleLat = ring[0][1] > 0 ? 90 : -90;
+			ring.push([ring[4][0], poleLat], [ring[0][0], poleLat], ring[0]);
+		}
 		return ring;
 	}
 

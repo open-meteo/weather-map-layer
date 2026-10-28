@@ -603,8 +603,10 @@ describe('getCellPolygon', () => {
 			const [bx, by] = corners[(i + 1) % 4];
 			const mx = (ax + bx) / 2;
 			const my = (ay + by) / 2;
-			// Just outside the edge
-			const outside = nearest(my + (my - centre[1]) * 0.02, mx + (mx - centre[0]) * 0.02);
+			// Just outside the edge, unless that is past a pole
+			const outsideLat = my + (my - centre[1]) * 0.02;
+			if (Math.abs(outsideLat) > 90) continue;
+			const outside = nearest(outsideLat, mx + (mx - centre[0]) * 0.02);
 			if (isFinite(outside)) expect(outside).not.toBe(node);
 		}
 		return ring;
@@ -772,5 +774,64 @@ describe('getCellPolygon', () => {
 			174.375, 185.625, 185.625, 174.375, 174.375
 		]);
 		expect(expectNearestCell(grid, values, 5, -179)[0][0]).toBe(-185.625);
+	});
+
+	test('gaussian grid: past the outermost rows, the nearest row is the outermost one up to the pole', () => {
+		const data: GaussianGridData = {
+			type: 'gaussian',
+			nx: 208,
+			ny: 1,
+			gaussianGridLatitudeLines: 4
+		};
+		const grid = new GaussianGrid(data);
+		const values = indexValues(208);
+		// 20 nodes in each outermost row: indices 0-19 in the north, 188-207 in the south
+		for (const [lat, first] of [
+			[88, 0],
+			[-88, 188]
+		]) {
+			const node = grid.getInterpolatedValue(values, lat, 12, 'nearest');
+			expect(node).toBeGreaterThanOrEqual(first);
+			expect(node).toBeLessThan(first + 20);
+
+			const ring = grid.getCellPolygon(lat, 12);
+			if (!ring) throw new Error('no cell');
+			expect(ring[0]).toEqual(ring[4]);
+			expect(ringContains(ring, 12, lat)).toBe(true);
+			const lats = ring.map(([, cellLat]) => cellLat);
+			expect(Math.max(...lats.map(Math.abs))).toBe(90);
+		}
+	});
+
+	test('regular grid: a node row on a pole ends at the pole', () => {
+		const grid = new RegularGrid({
+			type: 'regular',
+			nx: 36,
+			ny: 19,
+			lonMin: -180,
+			latMin: -90,
+			dx: 10,
+			dy: 10
+		});
+		const lats = (lat: number): number[] =>
+			(grid.getCellPolygon(lat, 5) ?? []).map(([, cellLat]) => cellLat);
+		expect(Math.min(...lats(89))).toBe(85);
+		expect(Math.max(...lats(89))).toBe(90);
+		expect(Math.min(...lats(-89))).toBe(-90);
+	});
+
+	test('projected grid: a cell containing the pole closes over it', () => {
+		const rdps = domainOptions.find((d) => d.value === 'cmc_gem_rdps_10km');
+		const grid = new ProjectionGrid(rdps?.grid as AnyProjectionGridData);
+		const ring = grid.getCellPolygon(89.999, 0);
+		if (!ring) throw new Error('no cell');
+		expect(ring[0]).toEqual(ring.at(-1));
+		expect(Math.max(...ring.map(([, lat]) => lat))).toBe(90);
+		// The ring spans one turn round the pole; on that turn it holds the point
+		const lons = ring.map(([lon]) => lon);
+		const lon = Math.min(...lons) + normalizeLon(0 - Math.min(...lons) - 180) + 180;
+		expect(ringContains(ring, lon, 89.999)).toBe(true);
+		// Cells off the pole stay plain four-corner rings
+		expect(grid.getCellPolygon(85, 0)).toHaveLength(5);
 	});
 });

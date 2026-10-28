@@ -287,8 +287,9 @@ export class RegularGrid implements GridInterface {
 		const latB = this.originLat + yHi * this.dy;
 		const west = Math.min(lonA, lonB);
 		const east = Math.max(lonA, lonB);
-		const south = Math.min(latA, latB);
-		const north = Math.max(latA, latB);
+		// The cells of a node row on a pole would otherwise reach past it
+		const south = Math.max(Math.min(latA, latB), -90);
+		const north = Math.min(Math.max(latA, latB), 90);
 		return [
 			[west, south],
 			[east, south],
