@@ -1,14 +1,17 @@
 import {
 	degreesToRadians,
-	lat2tile,
-	lon2tile,
 	normalizeLon,
 	radiansToDegrees,
 	tile2lat,
 	tile2lon
 } from '../../utils/math';
 import { GridInterface, GridPoint } from '../interface';
-import Delaunator from 'delaunator';
+
+import {
+	type BufferConstructor,
+	type LatBandTriangulation,
+	triangulateLatBand
+} from './triangulation';
 
 import { Bounds, DimensionRange, InterpolationMethod, LatBandGridData } from '../../types';
 
@@ -27,8 +30,10 @@ import { Bounds, DimensionRange, InterpolationMethod, LatBandGridData } from '..
 //     (a few percent of a cell on ICON grids), so the triangles are reproduced
 //     up to that shift.
 //   - 'linear' (also used for cubic/monotone) is barycentric interpolation on
-//     the Delaunay triangulation of the centres in view, i.e. the dual mesh,
-//     so it is exact at every cell centre and linear in between.
+//     the Delaunay triangulation of the centres, i.e. the dual mesh, so it is
+//     exact at every cell centre and linear in between. The triangulation is
+//     computed once per grid (triangulation.ts) and shared with the GPU layer,
+//     so tiles and GPU interpolate on the same triangles, at every zoom.
 // A coordinate more than 1.5 cell spacings from any centre belongs to no cell
 // (the API's acceptance radius for ICON), which bounds a limited-area grid
 // half a cell beyond its outermost centres.
@@ -67,13 +72,11 @@ const MAGIC = 'LATBAND1';
 const HEADER_BYTES = 64;
 const BAND_BYTES = 16;
 const RECORD_BYTES = 16;
-// nearest-neighbour candidates kept per query, enough for the ring of cells
-// around the containing dual triangle
+// nearest-neighbour candidates kept per query for the inverse-distance fallback
 const CANDIDATES = 16;
-// above this many centres in a tile the mesh is decimated before triangulating:
-// the cells are sub-pixel anyway and a Delaunay of the full set would dominate
-const MAX_TRIANGULATED = 50000;
-const MERCATOR_LAT_LIMIT = 85.0511;
+// the acceptance radius, and the longest triangle edge kept (see triangulation.ts)
+const ACCEPT_SPACINGS = 1.5;
+const MAX_EDGE_SPACINGS = Math.sqrt(3) * ACCEPT_SPACINGS;
 
 export const parseLatBand = (buffer: ArrayBufferLike): LatBandIndex => {
 	if (buffer.byteLength < HEADER_BYTES) throw new Error('LATBAND1 grid file is truncated');
@@ -140,19 +143,22 @@ export class LatBandGrid implements GridInterface {
 	private readonly acceptChord2: number;
 	private readonly gatherChord2: number;
 	private readonly bounds: Bounds;
+	// the longest triangle edge (radians)
+	private readonly triangleReach: number;
+	/** The Delaunay triangulation of the centres, shared with the GPU layer. */
+	readonly triangulation: LatBandTriangulation;
 
 	// neighbourhood of the last query, nearest first (see search)
 	private readonly candId = new Int32Array(CANDIDATES);
 	private readonly candDist = new Float64Array(CANDIDATES);
-	private readonly candX = new Float64Array(CANDIDATES);
-	private readonly candY = new Float64Array(CANDIDATES);
-	private readonly candZ = new Float64Array(CANDIDATES);
 	private candCount = 0;
 
 	constructor(
 		data: LatBandGridData,
 		geometry: ArrayBufferLike,
-		ranges: DimensionRange[] | null = null
+		ranges: DimensionRange[] | null = null,
+		/** The geometry's triangulation (see triangulate), computed here if absent. */
+		triangulation?: LatBandTriangulation
 	) {
 		this.index = parseLatBand(geometry);
 		if (data.nx !== this.index.count) {
@@ -164,11 +170,23 @@ export class LatBandGrid implements GridInterface {
 		this.ny = data.ny;
 		this.nxStart = ranges ? ranges[1].start : 0;
 		this.bandHeight = Math.PI / this.index.bandCount;
-		this.acceptRadius = 1.5 * this.index.spacing;
+		this.acceptRadius = ACCEPT_SPACINGS * this.index.spacing;
 		this.gatherRadius = 2.5 * this.index.spacing;
 		this.acceptChord2 = 4 * Math.sin(this.acceptRadius / 2) ** 2;
 		this.gatherChord2 = 4 * Math.sin(this.gatherRadius / 2) ** 2;
+		this.triangleReach = MAX_EDGE_SPACINGS * this.index.spacing;
 		this.bounds = this.computeBounds();
+		this.triangulation = triangulation ?? LatBandGrid.triangulate(geometry);
+	}
+
+	/**
+	 * The triangulation of a LATBAND1 file's centres (see triangulation.ts):
+	 * seconds for a global grid, so computed once per grid in a worker and
+	 * passed to every LatBandGrid of it.
+	 */
+	static triangulate(geometry: ArrayBufferLike, Buffer?: BufferConstructor): LatBandTriangulation {
+		const index = parseLatBand(geometry);
+		return triangulateLatBand(index, MAX_EDGE_SPACINGS * index.spacing, Buffer);
 	}
 
 	private computeBounds(): Bounds {
@@ -302,7 +320,7 @@ export class LatBandGrid implements GridInterface {
 						bestDist = dist;
 						best = index.ids[o + 3];
 					}
-					if (gather && dist < limit) this.addCandidate(index.ids[o + 3], dist, x, y, z);
+					if (gather && dist < limit) this.addCandidate(index.ids[o + 3], dist);
 				}
 			}
 		}
@@ -310,7 +328,7 @@ export class LatBandGrid implements GridInterface {
 	}
 
 	// sorted insertion, dropping the farthest once the arrays are full
-	private addCandidate(id: number, dist: number, x: number, y: number, z: number): void {
+	private addCandidate(id: number, dist: number): void {
 		let i = this.candCount;
 		if (i === CANDIDATES) {
 			if (dist >= this.candDist[i - 1]) return;
@@ -319,16 +337,10 @@ export class LatBandGrid implements GridInterface {
 		while (i > 0 && this.candDist[i - 1] > dist) {
 			this.candId[i] = this.candId[i - 1];
 			this.candDist[i] = this.candDist[i - 1];
-			this.candX[i] = this.candX[i - 1];
-			this.candY[i] = this.candY[i - 1];
-			this.candZ[i] = this.candZ[i - 1];
 			i--;
 		}
 		this.candId[i] = id;
 		this.candDist[i] = dist;
-		this.candX[i] = x;
-		this.candY[i] = y;
-		this.candZ[i] = z;
 		if (this.candCount < CANDIDATES) this.candCount++;
 	}
 
@@ -343,77 +355,21 @@ export class LatBandGrid implements GridInterface {
 	}
 
 	/**
-	 * Barycentric interpolation on the dual-mesh triangle containing the point:
-	 * among the triangles of the nearest centres that contain it, the one with
-	 * the smallest circumradius (the Delaunay choice for a well-shaped mesh).
-	 * Falls back to inverse-distance weighting when no such triangle exists
-	 * (edge of a limited-area grid, missing values).
+	 * Barycentric interpolation on the triangle of the grid triangulation (the
+	 * dual mesh) containing the point, the same triangle the tiles and the GPU
+	 * layer fill. Falls back to inverse-distance weighting when no such triangle
+	 * exists (edge of a limited-area grid, missing values).
 	 */
 	private interpolate(values: Float32Array, lat: number, lon: number, angular: boolean): number {
 		if (this.search(lat, lon, true) < 0) return NaN;
-		const n = this.candCount;
-		const latR = degreesToRadians(lat);
-		const lonR = degreesToRadians(lon);
-		// orthographic coordinates in the tangent plane at the query point
-		const ex = -Math.sin(lonR);
-		const ey = Math.cos(lonR);
-		const nxv = -Math.sin(latR) * Math.cos(lonR);
-		const nyv = -Math.sin(latR) * Math.sin(lonR);
-		const nzv = Math.cos(latR);
-		const u = new Float64Array(n);
-		const v = new Float64Array(n);
-		for (let i = 0; i < n; i++) {
-			u[i] = this.candX[i] * ex + this.candY[i] * ey;
-			v[i] = this.candX[i] * nxv + this.candY[i] * nyv + this.candZ[i] * nzv;
-		}
-		const k = Math.min(n, 8);
-		let bi = -1;
-		let bj = -1;
-		let bk = -1;
-		let bestRadius = Infinity;
-		for (let i = 0; i < k; i++) {
-			for (let j = i + 1; j < k; j++) {
-				for (let m = j + 1; m < k; m++) {
-					// the origin is inside when it lies on the same side of all edges
-					const s0 = u[i] * v[j] - u[j] * v[i];
-					const s1 = u[j] * v[m] - u[m] * v[j];
-					const s2 = u[m] * v[i] - u[i] * v[m];
-					if (!((s0 >= 0 && s1 >= 0 && s2 >= 0) || (s0 <= 0 && s1 <= 0 && s2 <= 0))) continue;
-					const area2 = s0 + s1 + s2;
-					if (area2 === 0) continue;
-					const a2 = (u[i] - u[j]) ** 2 + (v[i] - v[j]) ** 2;
-					const b2 = (u[j] - u[m]) ** 2 + (v[j] - v[m]) ** 2;
-					const c2 = (u[m] - u[i]) ** 2 + (v[m] - v[i]) ** 2;
-					const radius2 = (a2 * b2 * c2) / (4 * area2 * area2);
-					if (radius2 < bestRadius) {
-						bestRadius = radius2;
-						bi = i;
-						bj = j;
-						bk = m;
-					}
-				}
-			}
-		}
-		let ids: number[];
-		let weights: number[];
-		if (bi >= 0) {
-			const s0 = u[bi] * v[bj] - u[bj] * v[bi];
-			const s1 = u[bj] * v[bk] - u[bk] * v[bj];
-			const s2 = u[bk] * v[bi] - u[bi] * v[bk];
-			const total = s0 + s1 + s2;
-			ids = [this.candId[bi], this.candId[bj], this.candId[bk]];
-			weights = [s1 / total, s2 / total, s0 / total];
-		} else {
-			ids = [];
-			weights = [];
-		}
+		let [ids, weights] = this.locate(lat, lon) ?? [[], []];
 		if (ids.some((id) => !isFinite(values[id - this.nxStart]))) {
 			ids = [];
 			weights = [];
 		}
 		if (ids.length === 0) {
 			// inverse-distance weighting over the nearest finite values
-			for (let i = 0; i < n && ids.length < 4; i++) {
+			for (let i = 0; i < this.candCount && ids.length < 4; i++) {
 				const id = this.candId[i];
 				if (!isFinite(values[id - this.nxStart])) continue;
 				if (this.candDist[i] === 0) return this.finish(values[id - this.nxStart], angular);
@@ -442,6 +398,46 @@ export class LatBandGrid implements GridInterface {
 		return sum / wsum;
 	}
 
+	/**
+	 * The cells and barycentric weights of the triangle containing a
+	 * coordinate, in Web Mercator like the tiles, or undefined off the
+	 * triangulation (and past the mercator limit, where triangles are flat).
+	 */
+	private locate(lat: number, lon: number): [number[], number[]] | undefined {
+		const { triangles, mercator } = this.triangulation;
+		const qx = normalizeLon(lon) / 360 + 0.5;
+		const sinLat = Math.sin(degreesToRadians(lat));
+		const qy = 0.5 - Math.max(-Math.PI, Math.min(Math.PI, Math.atanh(sinLat))) / (2 * Math.PI);
+		// on an edge, float32 positions may leave both sides slightly negative
+		const tolerance = -1e-6;
+		let found: [number[], number[]] | undefined;
+		this.forEachTriangleRange(lat, lon, lat, lon, (first, end) => {
+			for (let t = first; t < end; t++) {
+				const a = triangles[3 * t];
+				const b = triangles[3 * t + 1];
+				const c = triangles[3 * t + 2];
+				const ax = mercator[2 * a] - Math.round(mercator[2 * a] - qx);
+				const bx = mercator[2 * b] - Math.round(mercator[2 * b] - qx);
+				const cx = mercator[2 * c] - Math.round(mercator[2 * c] - qx);
+				const ay = mercator[2 * a + 1];
+				const by = mercator[2 * b + 1];
+				const cy = mercator[2 * c + 1];
+				const d = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
+				if (d === 0) continue;
+				const l0 = ((by - cy) * (qx - cx) + (cx - bx) * (qy - cy)) / d;
+				const l1 = ((cy - ay) * (qx - cx) + (ax - cx) * (qy - cy)) / d;
+				const l2 = 1 - l0 - l1;
+				if (l0 < tolerance || l1 < tolerance || l2 < tolerance) continue;
+				found = [
+					[a, b, c],
+					[l0, l1, l2]
+				];
+				return false;
+			}
+		});
+		return found;
+	}
+
 	private finish(value: number, angular: boolean): number {
 		return angular ? normalizeDegrees(value) : value;
 	}
@@ -465,47 +461,108 @@ export class LatBandGrid implements GridInterface {
 	}
 
 	/**
-	 * Visits the records of every stored bucket touching the lat/lon box: the
-	 * cell centres as unit vectors with their cell index. Used by the GPU layer
-	 * to mesh the centres in view.
+	 * Visits the stored buckets touching the lat/lon box as runs [first, end)
+	 * of consecutive buckets (whole bands merge), until the callback returns
+	 * false.
 	 */
-	forEachRecordInBox(
+	private forEachBucketRun(
 		south: number,
 		west: number,
 		north: number,
 		east: number,
-		callback: (x: number, y: number, z: number, id: number) => void
+		callback: (first: number, end: number) => void | false
 	): void {
 		const index = this.index;
 		const b0 = Math.floor((degreesToRadians(Math.max(-90, south)) + Math.PI / 2) / this.bandHeight);
 		const b1 = Math.floor((degreesToRadians(Math.min(90, north)) + Math.PI / 2) / this.bandHeight);
 		const lonW = degreesToRadians(west);
 		const lonE = degreesToRadians(east);
-		for (let b = b0; b <= b1; b++) {
-			const bi = b - index.firstBand;
-			if (bi < 0 || bi >= index.bands.length) continue;
-			const stored = index.bands[bi];
-			const scale = stored.columns / (2 * Math.PI);
-			let c0 = Math.floor((lonW + Math.PI) * scale);
-			let c1 = Math.floor((lonE + Math.PI) * scale);
-			if (c1 - c0 + 1 >= stored.columns) {
-				c0 = 0;
-				c1 = stored.columns - 1;
+		// the pending run
+		let runStart = 0;
+		let runEnd = 0;
+		let stopped = false;
+		const add = (first: number, end: number): void => {
+			if (first >= end || stopped) return;
+			if (first === runEnd && runEnd > runStart) {
+				runEnd = end;
+				return;
 			}
-			for (let c = c0; c <= c1; c++) {
-				let column = c % stored.columns;
-				if (column < 0) column += stored.columns;
-				let local = column - stored.startColumn;
-				if (local < 0) local += stored.columns;
-				if (local >= stored.storedColumns) continue;
-				const bucket = stored.firstBucket + local;
-				const end = index.directory[bucket + 1];
-				for (let r = index.directory[bucket]; r < end; r++) {
-					const o = r * 4;
-					callback(index.records[o], index.records[o + 1], index.records[o + 2], index.ids[o + 3]);
-				}
+			if (runEnd > runStart && callback(runStart, runEnd) === false) stopped = true;
+			runStart = first;
+			runEnd = end;
+		};
+		for (let b = Math.max(b0, index.firstBand); b <= b1 && !stopped; b++) {
+			const bi = b - index.firstBand;
+			if (bi >= index.bands.length) break;
+			const { columns, startColumn, storedColumns, firstBucket } = index.bands[bi];
+			const scale = columns / (2 * Math.PI);
+			const c0 = Math.floor((lonW + Math.PI) * scale);
+			const length = Math.floor((lonE + Math.PI) * scale) - c0 + 1;
+			if (length >= columns) {
+				add(firstBucket, firstBucket + storedColumns);
+				continue;
+			}
+			// The span's band-local columns [l0, l0 + length), wrapping past the
+			// last column; the stored ones are [0, storedColumns).
+			const l0 = (((c0 - startColumn) % columns) + columns) % columns;
+			const wrapped = l0 + length - columns;
+			if (wrapped > 0) add(firstBucket, firstBucket + Math.min(wrapped, storedColumns));
+			if (l0 < storedColumns) {
+				add(firstBucket + l0, firstBucket + Math.min(l0 + length, storedColumns));
 			}
 		}
+		if (!stopped && runEnd > runStart) callback(runStart, runEnd);
+	}
+
+	/**
+	 * Visits the records of every stored bucket touching the lat/lon box: the
+	 * cell centres as unit vectors with their cell index.
+	 */
+	private forEachRecordInBox(
+		south: number,
+		west: number,
+		north: number,
+		east: number,
+		callback: (x: number, y: number, z: number, id: number) => void
+	): void {
+		const { directory, records, ids } = this.index;
+		this.forEachBucketRun(south, west, north, east, (first, end) => {
+			for (let r = directory[first]; r < directory[end]; r++) {
+				callback(records[4 * r], records[4 * r + 1], records[4 * r + 2], ids[4 * r + 3]);
+			}
+		});
+	}
+
+	/**
+	 * Visits every triangle that may overlap the lat/lon box, as ranges
+	 * [first, end) of the triangulation, until the callback returns false.
+	 * Triangles are sorted by their lowest record and records are stored bucket
+	 * by bucket, so the buckets within one longest edge of the box hold the
+	 * lowest corner of every such triangle, and a run of buckets is one range.
+	 */
+	forEachTriangleRange(
+		south: number,
+		west: number,
+		north: number,
+		east: number,
+		callback: (first: number, end: number) => void | false
+	): void {
+		const { triangleStart } = this.triangulation;
+		const { directory } = this.index;
+		const margin = radiansToDegrees(this.triangleReach);
+		const poleward = Math.max(Math.abs(south), Math.abs(north)) + margin;
+		const marginLon = poleward >= 90 ? 360 : margin / Math.cos(degreesToRadians(poleward));
+		this.forEachBucketRun(
+			south - margin,
+			west - marginLon,
+			north + margin,
+			east + marginLon,
+			(first, end) => {
+				const firstTriangle = triangleStart[directory[first]];
+				const endTriangle = triangleStart[directory[end]];
+				if (endTriangle > firstTriangle) return callback(firstTriangle, endTriangle);
+			}
+		);
 	}
 
 	forEachPoint(callback: (point: GridPoint) => void | false, bounds?: Bounds): void {
@@ -556,7 +613,7 @@ export class LatBandGrid implements GridInterface {
 		return out;
 	}
 
-	// Delaunay of the centres in and around the tile, Gouraud-filled in pixel space
+	// The grid's triangles over the tile, Gouraud-filled in pixel space
 	private rasteriseLinear(
 		values: Float32Array,
 		x: number,
@@ -565,68 +622,21 @@ export class LatBandGrid implements GridInterface {
 		tileSize: number,
 		out: Float32Array
 	): void {
+		const { triangles, mercator } = this.triangulation;
 		const worldPx = 2 ** z * tileSize;
-		const lonL = tile2lon(x, z);
-		// tile2lon normalises to [-180, 180), so the east edge of the last column wraps
-		let lonR = tile2lon(x + 1, z);
-		if (lonR <= lonL) lonR += 360;
-		const latT = tile2lat(y, z);
-		const latB = tile2lat(y + 1, z);
-		// one gather radius of margin so triangles straddling the tile edge exist
-		const marginLat = radiansToDegrees(this.gatherRadius);
-		const marginLon = marginLat / Math.max(0.05, Math.cos(degreesToRadians((latT + latB) / 2)));
-		const coords: number[] = [];
-		const cells: number[] = [];
-		this.forEachRecordInBox(
-			latB - marginLat,
-			lonL - marginLon,
-			latT + marginLat,
-			lonR + marginLon,
-			(cx, cy, cz, id) => {
-				const lat = Math.max(
-					-MERCATOR_LAT_LIMIT,
-					Math.min(MERCATOR_LAT_LIMIT, radiansToDegrees(Math.asin(Math.max(-1, Math.min(1, cz)))))
-				);
-				const lon = radiansToDegrees(Math.atan2(cy, cx));
-				let px = (lon2tile(lon, z) - x) * tileSize;
-				// unwrap so centres across the antimeridian stay contiguous with the tile
-				px -= Math.round((px - tileSize / 2) / worldPx) * worldPx;
-				coords.push(px, (lat2tile(lat, z) - y) * tileSize);
-				cells.push(id);
-			}
-		);
-		let n = cells.length;
-		if (n < 3) return;
-		if (n > MAX_TRIANGULATED) {
-			const stride = Math.ceil(n / MAX_TRIANGULATED);
-			let kept = 0;
-			for (let i = 0; i < n; i += stride) {
-				coords[2 * kept] = coords[2 * i];
-				coords[2 * kept + 1] = coords[2 * i + 1];
-				cells[kept] = cells[i];
-				kept++;
-			}
-			coords.length = 2 * kept;
-			cells.length = kept;
-			n = kept;
-		}
-		const triangles = new Delaunator(coords).triangles;
-		for (let t = 0; t < triangles.length; t += 3) {
-			const a = triangles[t];
-			const b = triangles[t + 1];
-			const c = triangles[t + 2];
-			const va = values[cells[a] - this.nxStart];
-			const vb = values[cells[b] - this.nxStart];
-			const vc = values[cells[c] - this.nxStart];
-			if (!isFinite(va) || !isFinite(vb) || !isFinite(vc)) continue;
-			const ax = coords[2 * a];
-			const ay = coords[2 * a + 1];
-			const bx = coords[2 * b];
-			const by = coords[2 * b + 1];
-			const cx = coords[2 * c];
-			const cy = coords[2 * c + 1];
+		const fill = (
+			ax: number,
+			ay: number,
+			bx: number,
+			by: number,
+			cx: number,
+			cy: number,
+			va: number,
+			vb: number,
+			vc: number
+		) => {
 			const d = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
-			if (d === 0) continue;
+			if (d === 0) return;
 			const inv = 1 / d;
 			const minX = Math.max(0, Math.floor(Math.min(ax, bx, cx)));
 			const maxX = Math.min(tileSize - 1, Math.ceil(Math.max(ax, bx, cx)));
@@ -643,6 +653,38 @@ export class LatBandGrid implements GridInterface {
 					if (l0 >= 0 && l1 >= 0 && l2 >= 0) out[row + px] = l0 * va + l1 * vb + l2 * vc;
 				}
 			}
-		}
+		};
+		const lonL = tile2lon(x, z);
+		// tile2lon normalises to [-180, 180), so the east edge of the last column wraps
+		let lonR = tile2lon(x + 1, z);
+		if (lonR <= lonL) lonR += 360;
+		this.forEachTriangleRange(tile2lat(y + 1, z), lonL, tile2lat(y, z), lonR, (first, end) => {
+			for (let t = first; t < end; t++) {
+				const a = triangles[3 * t];
+				const b = triangles[3 * t + 1];
+				const c = triangles[3 * t + 2];
+				const va = values[a - this.nxStart];
+				const vb = values[b - this.nxStart];
+				const vc = values[c - this.nxStart];
+				if (!isFinite(va) || !isFinite(vb) || !isFinite(vc)) continue;
+				const ay = mercator[2 * a + 1] * worldPx - y * tileSize;
+				const by = mercator[2 * b + 1] * worldPx - y * tileSize;
+				const cy = mercator[2 * c + 1] * worldPx - y * tileSize;
+				if (Math.max(ay, by, cy) < 0 || Math.min(ay, by, cy) > tileSize) continue;
+				// the copy of the first corner nearest the tile, the others next to it
+				let ax = mercator[2 * a] * worldPx - x * tileSize;
+				ax -= Math.round((ax - tileSize / 2) / worldPx) * worldPx;
+				let bx = mercator[2 * b] * worldPx - x * tileSize;
+				bx -= Math.round((bx - ax) / worldPx) * worldPx;
+				let cx = mercator[2 * c] * worldPx - x * tileSize;
+				cx -= Math.round((cx - ax) / worldPx) * worldPx;
+				// a triangle across the antimeridian also shows on the far side of a
+				// zoom-0 tile
+				for (let shift = -worldPx; shift <= worldPx; shift += worldPx) {
+					if (Math.max(ax, bx, cx) + shift < 0 || Math.min(ax, bx, cx) + shift > tileSize) continue;
+					fill(ax + shift, ay, bx + shift, by, cx + shift, cy, va, vb, vc);
+				}
+			}
+		});
 	}
 }

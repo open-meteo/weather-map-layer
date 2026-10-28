@@ -121,22 +121,23 @@ ${shaderData.define}
 ${projectPointSource(elevated)}
 ${VERTEX_BODY}`;
 
-// A native ICON grid's mesh (latband-mesh.ts), drawn without attributes:
-// vertex gl_VertexID is corner (gl_VertexID % 3) of triangle gl_VertexID / 3,
-// and every corner reads the triangle's three cells and the three across its
-// edges, so the fragment shader gets all six (flat) next to its barycentric
-// position.
+// A native ICON grid's mesh (latband-mesh.ts), drawn without attributes in
+// ranges of triangles: vertex gl_VertexID is corner (gl_VertexID % 3) of
+// triangle u_triangleOffset + gl_VertexID / 3, and every corner reads the
+// triangle's three cells and the three across its edges, so the fragment
+// shader gets all six (flat) next to its barycentric position.
 const LATBAND_VERTEX_BODY = `
 precision highp int;
 precision highp usampler2D;
-// Point indices of each triangle, (a, b, c), and of the points across its
+// Cell indices of each triangle, (a, b, c), and of the cells across its
 // edges (the nearest-centre candidates beyond the corners).
 uniform usampler2D u_meshTriangles;
 uniform usampler2D u_meshNeighbours;
-// Per point: mercator x, mercator y, cell index.
+// Per cell: mercator x, mercator y.
 uniform sampler2D u_meshPoints;
 // Texels per row of the mesh textures.
 uniform int u_meshWidth;
+uniform int u_triangleOffset;
 // Cell values in model order, rows of u_valuesWidth texels: the current and
 // the previous timestep (same cells, so the temporal blend needs no lookup).
 uniform sampler2D u_values0;
@@ -145,7 +146,7 @@ uniform int u_valuesWidth;
 
 out vec2 v_mercator;
 out vec3 v_bary;
-// Corners first, then the points across the edges; positions packed in pairs.
+// Corners first, then the cells across the edges; positions packed in pairs.
 flat out vec3 v_cells;
 flat out vec3 v_cellsPrev;
 flat out vec3 v_cellsAcross;
@@ -158,38 +159,41 @@ ivec2 texelOf(int i, int width) {
 	return ivec2(i % width, i / width);
 }
 
-vec3 pointOf(uint i) {
-	return texelFetch(u_meshPoints, texelOf(int(i), u_meshWidth), 0).xyz;
+// The copy of a cell's position nearest mercator x: a triangle across the
+// antimeridian stays whole.
+vec2 pointNear(uint cell, float x) {
+	vec2 p = texelFetch(u_meshPoints, texelOf(int(cell), u_meshWidth), 0).xy;
+	return vec2(p.x - floor(p.x - x + 0.5), p.y);
 }
 
-vec3 cellValues(sampler2D tex, vec3 a, vec3 b, vec3 c) {
+vec3 cellValues(sampler2D tex, uvec3 cells) {
 	return vec3(
-		texelFetch(tex, texelOf(int(a.z), u_valuesWidth), 0).r,
-		texelFetch(tex, texelOf(int(b.z), u_valuesWidth), 0).r,
-		texelFetch(tex, texelOf(int(c.z), u_valuesWidth), 0).r
+		texelFetch(tex, texelOf(int(cells.x), u_valuesWidth), 0).r,
+		texelFetch(tex, texelOf(int(cells.y), u_valuesWidth), 0).r,
+		texelFetch(tex, texelOf(int(cells.z), u_valuesWidth), 0).r
 	);
 }
 
 void main() {
-	int triangle = gl_VertexID / 3;
-	int corner = gl_VertexID - 3 * triangle;
+	int triangle = u_triangleOffset + gl_VertexID / 3;
+	int corner = gl_VertexID % 3;
 	uvec3 t = texelFetch(u_meshTriangles, texelOf(triangle, u_meshWidth), 0).xyz;
 	uvec3 n = texelFetch(u_meshNeighbours, texelOf(triangle, u_meshWidth), 0).xyz;
-	vec3 a = pointOf(t.x);
-	vec3 b = pointOf(t.y);
-	vec3 c = pointOf(t.z);
-	vec3 d = pointOf(n.x);
-	vec3 e = pointOf(n.y);
-	vec3 f = pointOf(n.z);
-	v_cells = cellValues(u_values0, a, b, c);
-	v_cellsPrev = cellValues(u_valuesPrev, a, b, c);
-	v_cellsAcross = cellValues(u_values0, d, e, f);
-	v_cellsAcrossPrev = cellValues(u_valuesPrev, d, e, f);
-	v_p01 = vec4(a.xy, b.xy);
-	v_p2q0 = vec4(c.xy, d.xy);
-	v_q12 = vec4(e.xy, f.xy);
+	vec2 a = texelFetch(u_meshPoints, texelOf(int(t.x), u_meshWidth), 0).xy;
+	vec2 b = pointNear(t.y, a.x);
+	vec2 c = pointNear(t.z, a.x);
+	vec2 d = pointNear(n.x, a.x);
+	vec2 e = pointNear(n.y, a.x);
+	vec2 f = pointNear(n.z, a.x);
+	v_cells = cellValues(u_values0, t);
+	v_cellsPrev = cellValues(u_valuesPrev, t);
+	v_cellsAcross = cellValues(u_values0, n);
+	v_cellsAcrossPrev = cellValues(u_valuesPrev, n);
+	v_p01 = vec4(a, b);
+	v_p2q0 = vec4(c, d);
+	v_q12 = vec4(e, f);
 	v_bary = vec3(corner == 0 ? 1.0 : 0.0, corner == 1 ? 1.0 : 0.0, corner == 2 ? 1.0 : 0.0);
-	vec2 pos = corner == 0 ? a.xy : (corner == 1 ? b.xy : c.xy);
+	vec2 pos = corner == 0 ? a : (corner == 1 ? b : c);
 	v_mercator = pos;
 	// Over terrain the corners sit on the drawn surface (the depth pre-pass),
 	// depth-tested against it like the arrows; flat maps just project.
@@ -212,14 +216,11 @@ ${LATBAND_VERTEX_BODY}`;
  * Delaunay splits ICON's near-cocircular centre hexagons arbitrarily, and the
  * closest centre to a point in such a triangle is often a neighbour's corner.
  * The other methods interpolate barycentrically over the corners (the dual
- * mesh) and fall back to the closest centre where a cell is missing. Farther
- * than u_acceptRadius from every candidate belongs to no cell.
+ * mesh) and fall back to the closest centre where a cell is missing. Every
+ * point of a mesh triangle lies within the acceptance radius of a corner
+ * (see triangulation.ts), so no distance check is needed.
  */
 const latbandValueSource = (interpolation: InterpolationMethod): string => `
-uniform float u_acceptRadius; // radians
-// Mercator x range this draw covers; a whole-world mesh overlaps its copies.
-uniform vec2 u_meshClipX;
-
 in vec3 v_bary;
 flat in vec3 v_cells;
 flat in vec3 v_cellsPrev;
@@ -242,11 +243,7 @@ float latbandValue(vec3 cells, vec3 across) {
 	q = dot(m - v_q12.xy, m - v_q12.xy);
 	if (q < best) { best = q; nearest = across.y; }
 	q = dot(m - v_q12.zw, m - v_q12.zw);
-	if (q < best) { best = q; nearest = across.z; }
-	// Mercator is conformal: one scale factor turns the distance into radians.
-	if (sqrt(best) * 2.0 * PI * cos(radians(mercToLat(m.y))) > u_acceptRadius) {
-		return MISSING;
-	}${
+	if (q < best) { best = q; nearest = across.z; }${
 		interpolation === 'nearest'
 			? ''
 			: `
@@ -1061,15 +1058,7 @@ void main() {
 		fragColor = vec4(0.0);
 		return;
 	}
-${clipMaskCheck}${
-		latband
-			? `
-	if (v_mercator.x < u_meshClipX.x || v_mercator.x >= u_meshClipX.y) {
-		fragColor = vec4(0.0);
-		return;
-	}`
-			: ''
-	}
+${clipMaskCheck}
 	float value = ${currentValue};
 ${temporal}
 ${spec.contours ? '	// Sampled before the divergent return below, so quad derivatives are valid\n	float contourVW = fwidth(value);' : ''}

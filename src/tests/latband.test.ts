@@ -1,8 +1,9 @@
+import { latbandRanges } from '../gpu/latband-mesh';
 import { GridFactory } from '../grids/factory';
-import { registerGeometry } from '../grids/latband/geometry';
+import { registerGeometry, setTriangulator } from '../grids/latband/geometry';
 import { LatBandGrid, parseLatBand } from '../grids/latband/latband';
 import { lat2tile, lon2tile, tile2lat, tile2lon } from '../utils/math';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 
 import type { LatBandGridData } from '../types';
 
@@ -236,6 +237,26 @@ describe('LatBandGrid', () => {
 		expect(grid.getLinearInterpolatedDirection(directions, 45, 3)).toBeCloseTo(350, 5);
 	});
 
+	test('renderTile: linear matches the point interpolation per pixel', () => {
+		const grid = new LatBandGrid(latticeData, latticeFile);
+		const z = 7;
+		const size = 64;
+		const x = Math.floor(lon2tile(7.5, z));
+		const y = Math.floor(lat2tile(45, z));
+		const linear = grid.renderTile(linearField, x, y, z, size, 'linear');
+		let compared = 0;
+		for (let i = 0; i < size; i++) {
+			const lat = tile2lat(y + (i + 0.5) / size, z);
+			for (let j = 0; j < size; j++) {
+				const lon = tile2lon(x + (j + 0.5) / size, z);
+				const value = grid.getLinearInterpolatedValue(linearField, lat, lon);
+				expect(linear[i * size + j]).toBeCloseTo(value, 3);
+				compared++;
+			}
+		}
+		expect(compared).toBe(size * size);
+	});
+
 	test('renderTile: nearest matches findCell per pixel, linear covers the interior', () => {
 		const grid = new LatBandGrid(latticeData, latticeFile);
 		const z = 6;
@@ -296,16 +317,211 @@ describe('LatBandGrid', () => {
 	});
 });
 
+// Every directed edge of a triangulation with the far corner across it, and
+// the triangle's own corner opposite it.
+const edgesOf = (triangles: Uint32Array, neighbours: Uint32Array) => {
+	const edges = new Map<string, Array<{ opposite: number; across: number }>>();
+	for (let t = 0; t < triangles.length / 3; t++) {
+		for (let k = 0; k < 3; k++) {
+			const a = triangles[3 * t + k];
+			const b = triangles[3 * t + ((k + 1) % 3)];
+			const key = a < b ? `${a},${b}` : `${b},${a}`;
+			const entry = { opposite: triangles[3 * t + ((k + 2) % 3)], across: neighbours[3 * t + k] };
+			edges.set(key, [...(edges.get(key) ?? []), entry]);
+		}
+	}
+	return edges;
+};
+
+// The centroids of a regular triangular tiling, like ICON's cell centres:
+// cocircular hexagons around every vertex of the tiling.
+const honeycombPoints: Array<[number, number]> = [];
+for (let j = 0; j < 20; j++) {
+	const side = 0.2;
+	const height = (side * Math.sqrt(3)) / 2;
+	for (let i = 0; i < 20; i++) {
+		const x = i * side + (j * side) / 2;
+		honeycombPoints.push([j * height + height / 3, x + side / 2]);
+		honeycombPoints.push([j * height + (2 * height) / 3, x + side]);
+	}
+}
+const honeycombFile = writeLatBand(honeycombPoints, 3600, false);
+
+describe('triangulation', () => {
+	test('closes a global grid into 2N - 4 triangles, sorted by their lowest record', () => {
+		const index = parseLatBand(globalFile);
+		const { triangles, neighbours, triangleStart } = LatBandGrid.triangulate(globalFile);
+		expect(triangles.length / 3).toBe(2 * index.count - 4);
+		expect(triangleStart.length).toBe(index.count + 1);
+		expect(triangleStart[index.count]).toBe(triangles.length / 3);
+		const recordOf = new Uint32Array(index.count);
+		for (let r = 0; r < index.count; r++) recordOf[index.ids[4 * r + 3]] = r;
+		for (let t = 0; t < triangles.length / 3; t++) {
+			const lowest = Math.min(...[0, 1, 2].map((k) => recordOf[triangles[3 * t + k]]));
+			expect(t).toBeGreaterThanOrEqual(triangleStart[lowest]);
+			expect(t).toBeLessThan(triangleStart[lowest + 1]);
+		}
+		// Closed: every edge has two sides, each seeing the other's far corner.
+		for (const [, sides] of edgesOf(triangles, neighbours)) {
+			expect(sides.length).toBe(2);
+			expect(sides[0].across).toBe(sides[1].opposite);
+			expect(sides[1].across).toBe(sides[0].opposite);
+		}
+	});
+
+	test('keeps the centres in Web Mercator', () => {
+		const { mercator } = LatBandGrid.triangulate(latticeFile);
+		latticePoints.forEach(([lat, lon], id) => {
+			expect(mercator[2 * id]).toBeCloseTo(lon2tile(lon, 0), 6);
+			expect(mercator[2 * id + 1]).toBeCloseTo(lat2tile(lat, 0), 6);
+		});
+	});
+
+	test('drops the slivers bridging the bays of a limited-area outline', () => {
+		// The lattice without a bay cut into its east side
+		const points = latticePoints.filter(([lat, lon]) => !(lat > 43 && lat < 47 && lon > 9));
+		const file = writeLatBand(points, 720, false);
+		const spacing = parseLatBand(file).spacing;
+		const { triangles, neighbours } = LatBandGrid.triangulate(file);
+		const maxChord2 = 4 * Math.sin((Math.sqrt(3) * 1.5 * spacing) / 2) ** 2;
+		for (let t = 0; t < triangles.length / 3; t++) {
+			for (let k = 0; k < 3; k++) {
+				const [aLat, aLon] = points[triangles[3 * t + k]];
+				const [bLat, bLon] = points[triangles[3 * t + ((k + 1) % 3)]];
+				expect(chord2(aLat, aLon, bLat, bLon)).toBeLessThanOrEqual(maxChord2 * (1 + 1e-6));
+			}
+		}
+		// The outline's edges see their own opposite corner.
+		const sides = [...edgesOf(triangles, neighbours).values()];
+		const outline = sides.filter((edge) => edge.length === 1);
+		expect(outline.length).toBeGreaterThan(50);
+		for (const [side] of outline) expect(side.across).toBe(side.opposite);
+		// Inside the bay, far from any centre, there is no cell to interpolate.
+		const grid = new LatBandGrid({ ...latticeData, nx: points.length }, file);
+		const field = new Float32Array(points.map(([lat, lon]) => 2 * lat + 3 * lon));
+		expect(grid.getLinearInterpolatedValue(field, 45, 13)).toBeNaN();
+		expect(grid.getLinearInterpolatedValue(field, 45, 5)).toBeCloseTo(105, 2);
+	});
+
+	test('the nearest centre is a corner or across an edge of the triangle', () => {
+		const { triangles, neighbours, mercator } = LatBandGrid.triangulate(honeycombFile);
+		const px = (i: number) => mercator[2 * i];
+		const py = (i: number) => mercator[2 * i + 1];
+		const nearest = (points: number[], x: number, y: number) =>
+			Math.min(...points.map((i) => (px(i) - x) ** 2 + (py(i) - y) ** 2));
+		const all = honeycombPoints.map((_, i) => i);
+		const inner = [lon2tile(1.8, 0), lon2tile(3.2, 0)];
+		let samples = 0;
+		let cornerMisses = 0;
+		let candidateMisses = 0;
+		for (let t = 0; t < triangles.length / 3; t++) {
+			const corners = [0, 1, 2].map((k) => triangles[3 * t + k]);
+			const across = [0, 1, 2].map((k) => neighbours[3 * t + k]);
+			const cx = corners.reduce((sum, i) => sum + px(i), 0) / 3;
+			const cy = corners.reduce((sum, i) => sum + py(i), 0) / 3;
+			if (cx < inner[0] || cx > inner[1] || cy < lat2tile(2.5, 0) || cy > lat2tile(1, 0)) continue;
+			for (const [a, b] of [
+				[0.2, 0.2],
+				[0.6, 0.1],
+				[0.1, 0.7],
+				[0.45, 0.45]
+			]) {
+				const [p0, p1, p2] = corners;
+				const x = px(p0) + a * (px(p1) - px(p0)) + b * (px(p2) - px(p0));
+				const y = py(p0) + a * (py(p1) - py(p0)) + b * (py(p2) - py(p0));
+				const best = nearest(all, x, y);
+				samples++;
+				if (nearest(corners, x, y) > best * (1 + 1e-6)) cornerMisses++;
+				if (nearest([...corners, ...across], x, y) > best * (1 + 1e-6)) candidateMisses++;
+			}
+		}
+		expect(samples).toBeGreaterThan(100);
+		// The corners alone miss on this lattice; with the centres across the
+		// edges the nearest one is always among the candidates.
+		expect(cornerMisses).toBeGreaterThan(0);
+		expect(candidateMisses).toBe(0);
+	});
+});
+
+describe('triangle ranges', () => {
+	test('cover every triangle with a corner in the box, once', () => {
+		const grid = new LatBandGrid(globalData, globalFile);
+		const { triangles } = grid.triangulation;
+		for (const [west, south, east, north] of [
+			[-20, 30, 40, 60],
+			[170, -10, 200, 10],
+			[-180, 70, 180, 90],
+			[0, -89, 30, -60],
+			[-400, -90, 400, 90]
+		]) {
+			const visited = new Set<number>();
+			grid.forEachTriangleRange(south, west, north, east, (first, end) => {
+				for (let t = first; t < end; t++) {
+					expect(visited.has(t)).toBe(false);
+					visited.add(t);
+				}
+			});
+			for (let t = 0; t < triangles.length / 3; t++) {
+				const inside = [0, 1, 2].some((k) => {
+					const [lat, lon] = globalPoints[triangles[3 * t + k]];
+					return lat >= south && lat <= north && (((lon - west) % 360) + 360) % 360 <= east - west;
+				});
+				if (inside) expect(visited.has(t)).toBe(true);
+			}
+		}
+	});
+
+	test('merge for the GPU when the gaps are short', () => {
+		const grid = new LatBandGrid(globalData, globalFile);
+		const exact: number[] = [];
+		grid.forEachTriangleRange(-60, -30, 60, 150, (first, end) => {
+			exact.push(first, end);
+		});
+		const merged = latbandRanges(grid, [-30, -60, 150, 60]);
+		expect(merged.length).toBeLessThan(exact.length);
+		// Every exact range lies within a merged one.
+		for (let i = 0; i < exact.length; i += 2) {
+			const covered = merged.some(
+				(_, j) => j % 2 === 0 && merged[j] <= exact[i] && merged[j] + merged[j + 1] >= exact[i + 1]
+			);
+			expect(covered).toBe(true);
+		}
+		// The whole world is a single range.
+		expect(latbandRanges(grid, [-180, -90, 180, 90])).toEqual([
+			0,
+			grid.triangulation.triangles.length / 3
+		]);
+	});
+});
+
 describe('GridFactory', () => {
 	test('needs the geometry preloaded, then builds and caches the grid', () => {
 		expect(() => GridFactory.create(latticeData)).toThrow(/preload/);
-		expect(GridFactory.sharedBuffers(latticeData)).toEqual([]);
-		registerGeometry(latticeData.geometry, latticeFile);
+		expect(GridFactory.sharedGeometry(latticeData)).toEqual([]);
+		const geometry = { buffer: latticeFile, triangulation: LatBandGrid.triangulate(latticeFile) };
+		registerGeometry(latticeData.geometry, geometry);
 		const grid = GridFactory.create(latticeData);
 		expect(grid).toBeInstanceOf(LatBandGrid);
+		expect((grid as LatBandGrid).triangulation).toBe(geometry.triangulation);
 		expect(GridFactory.create(latticeData)).toBe(grid);
-		expect(GridFactory.sharedBuffers(latticeData)).toEqual([
-			{ key: latticeData.geometry, buffer: latticeFile }
+		expect(GridFactory.sharedGeometry(latticeData)).toEqual([
+			{ key: latticeData.geometry, geometry }
 		]);
+	});
+
+	test('preload fetches and triangulates a geometry once', async () => {
+		const fetch = vi.fn(async () => new Response(globalFile.slice(0)));
+		const triangulate = vi.fn(async (buffer: ArrayBufferLike) => LatBandGrid.triangulate(buffer));
+		vi.stubGlobal('fetch', fetch);
+		setTriangulator(triangulate);
+		const data = { ...globalData, geometry: 'test://preload' };
+		await Promise.all([GridFactory.preload(data), GridFactory.preload(data)]);
+		await GridFactory.preload(data);
+		expect(fetch).toHaveBeenCalledTimes(1);
+		expect(triangulate).toHaveBeenCalledTimes(1);
+		const [{ geometry }] = GridFactory.sharedGeometry(data);
+		expect(new Uint8Array(geometry.buffer)).toEqual(new Uint8Array(globalFile));
+		expect(geometry.triangulation.triangles.length / 3).toBe(2 * 4000 - 4);
+		vi.unstubAllGlobals();
 	});
 });

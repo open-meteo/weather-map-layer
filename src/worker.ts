@@ -13,12 +13,34 @@ import { generateWindPoints } from './utils/wind-points';
 
 import { GridFactory } from './grids/index';
 import { registerGeometry } from './grids/latband/geometry';
+import { LatBandGrid } from './grids/latband/latband';
 
-import type { WorkerRequest } from './types';
+import type { WorkerRequest, WorkerTriangulateResponse } from './types';
 
 self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => {
-	if (message.data.type === 'buffer') {
-		registerGeometry(message.data.key, message.data.buffer);
+	if (message.data.type === 'geometry') {
+		registerGeometry(message.data.key, message.data.geometry);
+		return;
+	}
+
+	if (message.data.type === 'triangulate') {
+		const { key, buffer } = message.data;
+		let response: WorkerTriangulateResponse;
+		const transfer: ArrayBuffer[] = [];
+		try {
+			const shared = typeof SharedArrayBuffer !== 'undefined';
+			const triangulation = LatBandGrid.triangulate(
+				buffer,
+				shared ? SharedArrayBuffer : ArrayBuffer
+			);
+			response = { type: 'triangulated', key, triangulation };
+			if (!shared) {
+				for (const array of Object.values(triangulation)) transfer.push(array.buffer);
+			}
+		} catch (error) {
+			response = { type: 'triangulated', key, error: String(error) };
+		}
+		postMessage(response, { transfer });
 		return;
 	}
 

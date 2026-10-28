@@ -48,13 +48,13 @@ grid's mercator bounds evaluates every visible screen pixel per frame. Hence:
   (the flat value array is packed into a 2D texture; the per-row longitude
   count / index arithmetic of `grids/gaussian.ts` runs in the shader).
 - **Native ICON grids** (`latband`, latband-mesh.ts): no per-pixel lookup
-  exists for the model's cell order, so the cell centres in view are
-  Delaunay-triangulated (thinned to the screen's resolution) and drawn as a
-  mesh whose triangles pull their three cells' values from the value
-  texture. Per fragment, 'nearest' takes the closest centre and the other
-  methods interpolate barycentrically — the rules of the CPU tiles
-  (`LatBandGrid`). The mesh follows the view like a data crop: the moveend
-  refresh re-meshes once the view leaves it or the zoom changes.
+  exists for the model's cell order, so the grid is drawn as the Delaunay
+  mesh of its cell centres, whose triangles pull their three cells' values
+  from the value texture. Per fragment, 'nearest' takes the closest centre
+  and the other methods interpolate barycentrically — the rules of the CPU
+  tiles (`LatBandGrid`), on the very same triangles: the grid is triangulated
+  once, in a worker, and the mesh uploaded once; each view draws the triangle
+  ranges around it, at full resolution.
 - **Seamless composite domains** render as one multi-layer pass: per-layer
   sampling functions are generated into a single shader and at every pixel
   the finest sub-domain with data wins (hard winner-takes-all, finest-first,
