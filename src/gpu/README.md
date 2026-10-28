@@ -47,6 +47,14 @@ grid's mercator bounds evaluates every visible screen pixel per frame. Hence:
 - Grids: `regular`, all `projected*` types and the **reduced gaussian** grid
   (the flat value array is packed into a 2D texture; the per-row longitude
   count / index arithmetic of `grids/gaussian.ts` runs in the shader).
+- **Native ICON grids** (`latband`, latband-mesh.ts): no per-pixel lookup
+  exists for the model's cell order, so the grid is drawn as the Delaunay
+  mesh of its cell centres, whose triangles pull their three cells' values
+  from the value texture. Per fragment, 'nearest' takes the closest centre
+  and the other methods interpolate barycentrically — the rules of the CPU
+  tiles (`LatBandGrid`), on the very same triangles: the grid is triangulated
+  once, in a worker, and the mesh uploaded once; each view draws the triangle
+  ranges around it, at full resolution.
 - **Seamless composite domains** render as one multi-layer pass: per-layer
   sampling functions are generated into a single shader and at every pixel
   the finest sub-domain with data wins (hard winner-takes-all, finest-first,
@@ -132,3 +140,8 @@ grid's mercator bounds evaluates every visible screen pixel per frame. Hence:
 - WebGL context loss: MapLibre drops custom layers (calling `onRemove`, which
   frees the shared renderer); the host re-adds them after
   `webglcontextrestored`.
+- Native ICON grids draw the raster, contours and arrows, but no particles
+  and no advected blend (both sample the field at arbitrary points, which
+  the mesh draw cannot), and their contours fade out below a few pixels per
+  cell (no downsampled pass, like the gaussian grid). The view's Delaunay
+  runs on the main thread, up to ~100 ms for the densest views.

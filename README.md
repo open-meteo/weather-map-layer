@@ -339,6 +339,18 @@ The modifier suffix on `current_time_` controls the rounding granularity when sn
 | d        | Days       |
 | m        | Months     |
 
+## Native ICON Grids
+
+The `*_native` ICON domains draw the model's own triangular cells instead of regridded data. Their cell index is a separate file (`data/<domain>/static/grid.bin`, 7–65 MB), downloaded and triangulated once per page the first time such a domain is shown; the triangulation runs in a worker and takes a few seconds for the global grid. Tiles, the GPU layer and point values then all interpolate on the same triangles, at full resolution. `onGridLoadProgress` reports both phases, e.g. for a progress display:
+
+```ts
+const unsubscribe = OMWeatherMapLayer.onGridLoadProgress(({ url, phase, loaded, total }) => {
+	// phase: 'download' (loaded of total bytes), 'triangulate', then 'ready' or 'error'
+});
+```
+
+On a cross-origin isolated page every worker shares one copy of the grid and its mesh; elsewhere each worker receives its own.
+
 ## Seamless Composite Domains
 
 Several domains support a **seamless mode**: a composite of a base model and one or more finer regional ones. At every point the finest model that is active at the current zoom level and has data there is shown, so the map switches to a finer model over its area and falls back to the coarser one elsewhere.

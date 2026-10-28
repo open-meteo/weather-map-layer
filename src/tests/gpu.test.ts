@@ -4,7 +4,7 @@ import { downsampleGrid, downsampleRegular } from '../gpu/downsample';
 import { computeGridUniforms } from '../gpu/grid-uniforms';
 import { updateFragmentSource, windComponentsOf } from '../gpu/particles';
 import { valueTextureLayout } from '../gpu/renderer';
-import { fragmentSource, vertexSource } from '../gpu/shader-source';
+import { fragmentSource, latbandVertexSource, vertexSource } from '../gpu/shader-source';
 import type { FragmentShaderSpec } from '../gpu/shader-source';
 import { getColor } from '../utils/styling';
 import { describe, expect, it } from 'vitest';
@@ -38,6 +38,24 @@ describe('gpu shader source', () => {
 				expect(projected).toContain('projForward');
 			}
 		}
+	});
+
+	it('assembles the native ICON mesh shaders', () => {
+		for (const interpolation of INTERPOLATIONS) {
+			const source = fragmentSource({ layers: [{ gridKind: 'latband' }], interpolation });
+			expect(source).toContain('latbandValue(v_cells, v_cellsAcross)');
+			expect(source).not.toContain('blendedValue');
+			// Nearest picks a centre, the other methods interpolate on the triangle.
+			expect(source.includes('dot(v_bary, cells)')).toBe(interpolation !== 'nearest');
+		}
+		const vertex = latbandVertexSource({
+			variantName: 'mercator',
+			vertexShaderPrelude: '',
+			define: ''
+		});
+		expect(vertex).toContain('gl_VertexID');
+		expect(vertex).toContain('u_meshTriangles');
+		expect(vertex).toContain('u_meshNeighbours');
 	});
 
 	it('assembles a multi-layer seamless shader', () => {

@@ -27,7 +27,11 @@ import type { InterpolationMethod } from '../types';
 export const MISSING_SENTINEL = 3.0e38;
 
 export interface LayerShaderSpec {
-	gridKind: 'regular' | 'projected' | 'gaussian';
+	/**
+	 * 'latband' (a native ICON grid) is not looked up per pixel but drawn as a
+	 * mesh of its cell centres (latbandVertexSource); single layer only.
+	 */
+	gridKind: 'regular' | 'projected' | 'gaussian' | 'latband';
 	projectionName?:
 		| 'StereographicProjection'
 		| 'RotatedLatLonProjection'
@@ -116,6 +120,140 @@ ${shaderData.vertexShaderPrelude}
 ${shaderData.define}
 ${projectPointSource(elevated)}
 ${VERTEX_BODY}`;
+
+// A native ICON grid's mesh (latband-mesh.ts), drawn without attributes in
+// ranges of triangles: vertex gl_VertexID is corner (gl_VertexID % 3) of
+// triangle u_triangleOffset + gl_VertexID / 3, and every corner reads the
+// triangle's three cells and the three across its edges, so the fragment
+// shader gets all six (flat) next to its barycentric position.
+const LATBAND_VERTEX_BODY = `
+precision highp int;
+precision highp usampler2D;
+// Cell indices of each triangle, (a, b, c), and of the cells across its
+// edges (the nearest-centre candidates beyond the corners).
+uniform usampler2D u_meshTriangles;
+uniform usampler2D u_meshNeighbours;
+// Per cell: mercator x, mercator y.
+uniform sampler2D u_meshPoints;
+// Texels per row of the mesh textures.
+uniform int u_meshWidth;
+uniform int u_triangleOffset;
+// Cell values in model order, rows of u_valuesWidth texels: the current and
+// the previous timestep (same cells, so the temporal blend needs no lookup).
+uniform sampler2D u_values0;
+uniform sampler2D u_valuesPrev;
+uniform int u_valuesWidth;
+
+out vec2 v_mercator;
+out vec3 v_bary;
+// Corners first, then the cells across the edges; positions packed in pairs.
+flat out vec3 v_cells;
+flat out vec3 v_cellsPrev;
+flat out vec3 v_cellsAcross;
+flat out vec3 v_cellsAcrossPrev;
+flat out vec4 v_p01;
+flat out vec4 v_p2q0;
+flat out vec4 v_q12;
+
+ivec2 texelOf(int i, int width) {
+	return ivec2(i % width, i / width);
+}
+
+// The copy of a cell's position nearest mercator x: a triangle across the
+// antimeridian stays whole.
+vec2 pointNear(uint cell, float x) {
+	vec2 p = texelFetch(u_meshPoints, texelOf(int(cell), u_meshWidth), 0).xy;
+	return vec2(p.x - floor(p.x - x + 0.5), p.y);
+}
+
+vec3 cellValues(sampler2D tex, uvec3 cells) {
+	return vec3(
+		texelFetch(tex, texelOf(int(cells.x), u_valuesWidth), 0).r,
+		texelFetch(tex, texelOf(int(cells.y), u_valuesWidth), 0).r,
+		texelFetch(tex, texelOf(int(cells.z), u_valuesWidth), 0).r
+	);
+}
+
+void main() {
+	int triangle = u_triangleOffset + gl_VertexID / 3;
+	int corner = gl_VertexID % 3;
+	uvec3 t = texelFetch(u_meshTriangles, texelOf(triangle, u_meshWidth), 0).xyz;
+	uvec3 n = texelFetch(u_meshNeighbours, texelOf(triangle, u_meshWidth), 0).xyz;
+	vec2 a = texelFetch(u_meshPoints, texelOf(int(t.x), u_meshWidth), 0).xy;
+	vec2 b = pointNear(t.y, a.x);
+	vec2 c = pointNear(t.z, a.x);
+	vec2 d = pointNear(n.x, a.x);
+	vec2 e = pointNear(n.y, a.x);
+	vec2 f = pointNear(n.z, a.x);
+	v_cells = cellValues(u_values0, t);
+	v_cellsPrev = cellValues(u_valuesPrev, t);
+	v_cellsAcross = cellValues(u_values0, n);
+	v_cellsAcrossPrev = cellValues(u_valuesPrev, n);
+	v_p01 = vec4(a, b);
+	v_p2q0 = vec4(c, d);
+	v_q12 = vec4(e, f);
+	v_bary = vec3(corner == 0 ? 1.0 : 0.0, corner == 1 ? 1.0 : 0.0, corner == 2 ? 1.0 : 0.0);
+	vec2 pos = corner == 0 ? a : (corner == 1 ? b : c);
+	v_mercator = pos;
+	// Over terrain the corners sit on the drawn surface (the depth pre-pass),
+	// depth-tested against it like the arrows; flat maps just project.
+	gl_Position = projectSurfacePoint(vec2(pos.x + u_worldOffset, pos.y));
+}
+`;
+
+/** Vertex shader of a native ICON grid's mesh (see LATBAND_VERTEX_BODY). */
+export const latbandVertexSource = (shaderData: ProjectionShaderData, elevated = false): string =>
+	`#version 300 es
+${shaderData.vertexShaderPrelude}
+${shaderData.define}
+${projectPointSource(elevated)}
+${LATBAND_VERTEX_BODY}`;
+
+/**
+ * The fragment side of a native ICON grid's mesh: the value at the fragment
+ * with the CPU tile path's rules (LatBandGrid). 'nearest' is the closest
+ * centre — among the triangle's corners and the points across its edges: the
+ * Delaunay splits ICON's near-cocircular centre hexagons arbitrarily, and the
+ * closest centre to a point in such a triangle is often a neighbour's corner.
+ * The other methods interpolate barycentrically over the corners (the dual
+ * mesh) and fall back to the closest centre where a cell is missing. Every
+ * point of a mesh triangle lies within the acceptance radius of a corner
+ * (see triangulation.ts), so no distance check is needed.
+ */
+const latbandValueSource = (interpolation: InterpolationMethod): string => `
+in vec3 v_bary;
+flat in vec3 v_cells;
+flat in vec3 v_cellsPrev;
+flat in vec3 v_cellsAcross;
+flat in vec3 v_cellsAcrossPrev;
+flat in vec4 v_p01;
+flat in vec4 v_p2q0;
+flat in vec4 v_q12;
+
+float latbandValue(vec3 cells, vec3 across) {
+	vec2 m = v_mercator;
+	float best = dot(m - v_p01.xy, m - v_p01.xy);
+	float nearest = cells.x;
+	float q = dot(m - v_p01.zw, m - v_p01.zw);
+	if (q < best) { best = q; nearest = cells.y; }
+	q = dot(m - v_p2q0.xy, m - v_p2q0.xy);
+	if (q < best) { best = q; nearest = cells.z; }
+	q = dot(m - v_p2q0.zw, m - v_p2q0.zw);
+	if (q < best) { best = q; nearest = across.x; }
+	q = dot(m - v_q12.xy, m - v_q12.xy);
+	if (q < best) { best = q; nearest = across.y; }
+	q = dot(m - v_q12.zw, m - v_q12.zw);
+	if (q < best) { best = q; nearest = across.z; }${
+		interpolation === 'nearest'
+			? ''
+			: `
+	if (!isMissing(cells.x) && !isMissing(cells.y) && !isMissing(cells.z)) {
+		return dot(v_bary, cells);
+	}`
+	}
+	return nearest;
+}
+`;
 
 // ─── Shared building blocks ──────────────────────────────────────────────────
 
@@ -729,6 +867,8 @@ ${blendLines.join('\n')}
 export const fragmentSource = (spec: FragmentShaderSpec): string => {
 	const layers = spec.layers;
 	const single = layers.length === 1;
+	// A native ICON grid's value comes from its mesh triangle, not a lookup.
+	const latband = layers[0].gridKind === 'latband';
 
 	const parts: string[] = [
 		'#version 300 es',
@@ -739,13 +879,19 @@ export const fragmentSource = (spec: FragmentShaderSpec): string => {
 		// from R32F textures to a finite value that then colours as scale min/max.
 		'precision highp sampler2D;'
 	];
-	parts.push(samplingSource(spec));
+	parts.push(latband ? COMMON : samplingSource(spec));
 
 	// In-shader temporal blend between two timesteps on the same grids.
 	const multiTemporal = !single && spec.temporal === true;
 	const currentArgs = layers.map((_, i) => `, u_values${i}`).join('');
 	const prevArgs = single ? ', u_valuesPrev' : layers.map((_, i) => `, u_valuesPrev${i}`).join('');
-	const advect = single && spec.advect === true;
+	const currentValue = latband
+		? 'latbandValue(v_cells, v_cellsAcross)'
+		: `blendedValue(lat, lon${currentArgs})`;
+	const prevValue = latband
+		? 'latbandValue(v_cellsPrev, v_cellsAcrossPrev)'
+		: `blendedValue(lat, lon${prevArgs})`;
+	const advect = single && spec.advect === true && !latband;
 	// Semi-Lagrangian frame interpolation: with wind textures bound, sample the
 	// previous field upstream and the next downstream of the displacement, so
 	// features drift with the flow instead of cross-fading in place. Falls back
@@ -768,7 +914,7 @@ export const fragmentSource = (spec: FragmentShaderSpec): string => {
 		single || multiTemporal
 			? `
 	if (u_mix < 1.0) {
-		float vPrev = blendedValue(lat, lon${prevArgs});${advectChunk}
+		float vPrev = ${prevValue};${advectChunk}
 		if (!isMissing(value) && !isMissing(vPrev)) {
 			value = mix(vPrev, value, u_mix);
 		} else if (isMissing(value)) {
@@ -784,7 +930,9 @@ uniform sampler2D u_windV;
 uniform vec2 u_advect;`
 		: '';
 	const prevUniforms = single
-		? 'uniform sampler2D u_valuesPrev;\nuniform float u_mix; // 0 = previous, 1 = current'
+		? // A mesh reads its previous values in the vertex stage.
+			(latband ? '' : 'uniform sampler2D u_valuesPrev;\n') +
+			'uniform float u_mix; // 0 = previous, 1 = current'
 		: multiTemporal
 			? layers.map((_, i) => `uniform sampler2D u_valuesPrev${i};`).join('\n') +
 				'\nuniform float u_mix; // 0 = previous, 1 = current'
@@ -893,7 +1041,7 @@ uniform vec4 u_clipBounds;
 
 in vec2 v_mercator;
 out vec4 fragColor;
-
+${latband ? latbandValueSource(spec.interpolation) : ''}
 void main() {
 	float lat = mercToLat(v_mercator.y);
 	// The quad carries natural-direction longitudes, so antimeridian-crossing
@@ -911,7 +1059,7 @@ void main() {
 		return;
 	}
 ${clipMaskCheck}
-	float value = blendedValue(lat, lon${currentArgs});
+	float value = ${currentValue};
 ${temporal}
 ${spec.contours ? '	// Sampled before the divergent return below, so quad derivatives are valid\n	float contourVW = fwidth(value);' : ''}
 	if (isMissing(value)) {

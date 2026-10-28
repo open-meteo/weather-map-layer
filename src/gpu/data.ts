@@ -5,6 +5,7 @@
  * fetch and one in-memory copy of the variable data.
  */
 import { isSeamlessDomain } from '../domain-helpers';
+import { GridFactory } from '../grids/index';
 import { defaultOmProtocolSettings } from '../om-protocol';
 import { ensureData, getOrCreateState, getProtocolInstance } from '../om-protocol-state';
 import { parseRequest } from '../utils/parse-request';
@@ -39,6 +40,9 @@ export const loadOmUrl = async (
 		throw new Error('gpu: seamless domains load through loadSeamlessLayer');
 	}
 
+	// A file-backed grid (native ICON) fetches its cell index before the GPU
+	// layer can build it (uniforms, arrow sampler, bounds).
+	await GridFactory.preload(request.dataOptions.domain.grid);
 	const instance = getProtocolInstance(settings);
 	const state = getOrCreateState(
 		instance.stateByKey,

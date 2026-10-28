@@ -5,6 +5,7 @@
  * A draw takes 1..N layers (finest-first); a plain domain is the single-layer
  * case, a seamless composite passes one entry per active sub-domain.
  */
+import type { LatBandTriangulation } from '../grids/latband/triangulation';
 import type { ResolvedClippingOptions } from '../utils/clipping';
 
 import {
@@ -16,10 +17,13 @@ import {
 import { rasterizeClipMask } from './clip-mask';
 import { LUT_SIZE, buildColorLut, colorLutKey } from './color-lut';
 import type { GpuGridUniforms } from './grid-uniforms';
+import { MESH_TEX_WIDTH } from './latband-mesh';
+import type { LatBandMeshDraw } from './latband-mesh';
 import { buildProgram, uploadProjectionUniforms, variantKey } from './program';
 import {
 	MISSING_SENTINEL,
 	fragmentSource,
+	latbandVertexSource,
 	layerUniformNames,
 	shaderKey,
 	vertexSource
@@ -187,6 +191,15 @@ export interface GpuLayerDraw {
 	 * Ignored on the coarsest layer (it seeds the composite).
 	 */
 	reveal?: number;
+	/** A native ICON grid's mesh and the part of it in view (gridKind 'latband'; single layer). */
+	mesh?: LatBandMeshDraw;
+}
+
+/** A mesh's point and triangle textures (see latbandVertexSource). */
+interface GpuLatBandMesh {
+	points: WebGLTexture;
+	triangles: WebGLTexture;
+	neighbours: WebGLTexture;
 }
 
 export interface GpuDrawOptions {
@@ -341,6 +354,14 @@ export class WeatherGpuRenderer {
 	// one resolution per options object, so identity is stable across frames).
 	private clipMasks = new Map<ResolvedClippingOptions, GpuClipMask | undefined>();
 	private static readonly CLIP_MASK_CACHE_MAX = 2;
+
+	// Native ICON meshes keyed by the grid's triangulation (one per grid):
+	// uploaded once, every view draws its part. A global grid's mesh is over
+	// 100 MB, hence only two.
+	private latbandMeshes = new Map<LatBandTriangulation, GpuLatBandMesh>();
+	private static readonly LATBAND_MESH_CACHE_MAX = 2;
+	/** Bound for the attribute-less mesh draws (the vertices are pulled). */
+	private emptyVao: WebGLVertexArrayObject | null = null;
 
 	private contourLevelScratch = new Float32Array(48);
 
@@ -674,6 +695,61 @@ export class WeatherGpuRenderer {
 		return mask;
 	}
 
+	/** Upload (or reuse) a native ICON mesh's point and triangle textures. */
+	private getLatBandMesh(triangulation: LatBandTriangulation): GpuLatBandMesh {
+		const cached = this.latbandMeshes.get(triangulation);
+		if (cached) {
+			this.latbandMeshes.delete(triangulation);
+			this.latbandMeshes.set(triangulation, cached);
+			return cached;
+		}
+		const gl = this.gl;
+		const meshTexture = (
+			data: Float32Array | Uint32Array,
+			channels: number,
+			internalFormat: number,
+			format: number,
+			type: number
+		): WebGLTexture => {
+			const texture = gl.createTexture();
+			if (!texture) throw new Error('gpu: could not create mesh texture');
+			gl.bindTexture(gl.TEXTURE_2D, texture);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+			// Whole rows, then the rest of the last one: straight from the
+			// (shared) arrays, no padded copy.
+			const texels = data.length / channels;
+			const rows = Math.floor(texels / MESH_TEX_WIDTH);
+			const rest = texels - rows * MESH_TEX_WIDTH;
+			gl.texStorage2D(gl.TEXTURE_2D, 1, internalFormat, MESH_TEX_WIDTH, rows + (rest > 0 ? 1 : 0));
+			if (rows > 0) {
+				gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, MESH_TEX_WIDTH, rows, format, type, data, 0);
+			}
+			if (rest > 0) {
+				const offset = rows * MESH_TEX_WIDTH * channels;
+				gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, rows, rest, 1, format, type, data, offset);
+			}
+			return texture;
+		};
+		const { mercator, triangles, neighbours } = triangulation;
+		const gpuMesh: GpuLatBandMesh = {
+			points: meshTexture(mercator, 2, gl.RG32F, gl.RG, gl.FLOAT),
+			triangles: meshTexture(triangles, 3, gl.RGB32UI, gl.RGB_INTEGER, gl.UNSIGNED_INT),
+			neighbours: meshTexture(neighbours, 3, gl.RGB32UI, gl.RGB_INTEGER, gl.UNSIGNED_INT)
+		};
+		this.latbandMeshes.set(triangulation, gpuMesh);
+		while (this.latbandMeshes.size > WeatherGpuRenderer.LATBAND_MESH_CACHE_MAX) {
+			const [oldest, evicted] = this.latbandMeshes.entries().next().value!;
+			gl.deleteTexture(evicted.points);
+			gl.deleteTexture(evicted.triangles);
+			gl.deleteTexture(evicted.neighbours);
+			this.latbandMeshes.delete(oldest);
+		}
+		return gpuMesh;
+	}
+
 	/** Bake (or reuse) the colour LUT texture for a scale. */
 	getLut(scale: RenderableColorScale, blend: boolean): LutHandle {
 		const key = colorLutKey(scale, blend);
@@ -733,11 +809,18 @@ export class WeatherGpuRenderer {
 		const elevation = projection.elevation;
 		const info = this.getProgram(spec, projection.shaderData, elevation !== undefined);
 		const u = (name: string): WebGLUniformLocation | null => info.uniforms.get(name) ?? null;
-		const meshN = elevation?.meshN ?? WeatherGpuRenderer.MESH_N;
-		const geometry = this.getGeometry(info, meshN);
+		// A native ICON grid draws its mesh's triangles in view, pulling the
+		// vertices from textures; every other grid draws the subdivided quad.
+		const mesh = layers[0].mesh;
+		const geometry = mesh
+			? undefined
+			: this.getGeometry(info, elevation?.meshN ?? WeatherGpuRenderer.MESH_N);
+		// Before the units are assigned: a first upload rebinds the active one.
+		const gpuMesh = mesh ? this.getLatBandMesh(mesh.triangulation) : undefined;
 
 		gl.useProgram(info.program);
-		gl.bindVertexArray(geometry.vao);
+		this.emptyVao ??= gl.createVertexArray();
+		gl.bindVertexArray(geometry ? geometry.vao : this.emptyVao);
 
 		// Texture unit assignment: per-layer values, then the LUT and the
 		// single-layer temporal-blend texture.
@@ -751,7 +834,14 @@ export class WeatherGpuRenderer {
 
 		for (let i = 0; i < layers.length; i++) {
 			bindTexture(layerUniformNames(i).values, layers[i].valuesTexture);
-			uploadGridLayerUniforms(gl, u, i, layers[i]);
+			if (!mesh) uploadGridLayerUniforms(gl, u, i, layers[i]);
+		}
+		if (mesh && gpuMesh) {
+			bindTexture('u_meshTriangles', gpuMesh.triangles);
+			bindTexture('u_meshNeighbours', gpuMesh.neighbours);
+			bindTexture('u_meshPoints', gpuMesh.points);
+			gl.uniform1i(u('u_meshWidth'), MESH_TEX_WIDTH);
+			gl.uniform1i(u('u_valuesWidth'), layers[0].gridUniforms.nx);
 		}
 
 		bindTexture('u_lut', opts.lut.texture);
@@ -814,6 +904,21 @@ export class WeatherGpuRenderer {
 			gl.uniform4f(u('u_clipMaskRect'), ...opts.clipMask.rect);
 		}
 
+		if (mesh && gpuMesh) {
+			for (const offset of opts.worldOffsets ?? [0]) {
+				gl.uniform1f(u('u_worldOffset'), offset);
+				if (elevation) uploadSurfaceQuad(gl, u, elevation, offset);
+				// The first triangle as a uniform rather than drawArrays' first:
+				// gl_VertexID then counts from zero on every implementation.
+				for (let i = 0; i < mesh.ranges.length; i += 2) {
+					gl.uniform1i(u('u_triangleOffset'), mesh.ranges[i]);
+					gl.drawArrays(gl.TRIANGLES, 0, 3 * mesh.ranges[i + 1]);
+				}
+			}
+			gl.bindVertexArray(null);
+			return;
+		}
+
 		for (const offset of opts.worldOffsets ?? [0]) {
 			// Over terrain the mesh spans exactly the elevation map's rectangle
 			// (the view's terrain), whatever the data crop: a crop far larger
@@ -831,7 +936,7 @@ export class WeatherGpuRenderer {
 			}
 			gl.uniform4f(u('u_quad'), q[0], q[1], q[2], q[3]);
 			gl.uniform1f(u('u_worldOffset'), offset);
-			gl.drawElements(gl.TRIANGLES, geometry.indexCount, gl.UNSIGNED_INT, 0);
+			gl.drawElements(gl.TRIANGLES, geometry!.indexCount, gl.UNSIGNED_INT, 0);
 		}
 
 		gl.bindVertexArray(null);
@@ -1025,6 +1130,16 @@ ${VISIBILITY_VERTEX_BODY}`,
 			if (mask) gl.deleteTexture(mask.texture);
 		}
 		this.clipMasks.clear();
+		for (const { points, triangles, neighbours } of this.latbandMeshes.values()) {
+			gl.deleteTexture(points);
+			gl.deleteTexture(triangles);
+			gl.deleteTexture(neighbours);
+		}
+		this.latbandMeshes.clear();
+		if (this.emptyVao) {
+			gl.deleteVertexArray(this.emptyVao);
+			this.emptyVao = null;
+		}
 		for (const { program, vaos } of [
 			...this.programs.values(),
 			...this.depthPrograms.values(),
@@ -1122,8 +1237,12 @@ ${VISIBILITY_VERTEX_BODY}`,
 
 		// Active uniforms are enumerated by buildProgram: the per-layer uniform
 		// set varies per shader variant, so a fixed name list would not fit.
+		const vertex =
+			spec.layers[0].gridKind === 'latband'
+				? latbandVertexSource(shaderData, elevated)
+				: vertexSource(shaderData, elevated);
 		const info: ProgramInfo = {
-			...buildProgram(this.gl, vertexSource(shaderData, elevated), fragmentSource(spec)),
+			...buildProgram(this.gl, vertex, fragmentSource(spec)),
 			vaos: new Map()
 		};
 		this.programs.set(key, info);

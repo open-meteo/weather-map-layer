@@ -1,6 +1,10 @@
 import type { ResolvedClippingOptions } from './utils/clipping';
 
+import type { GridGeometry } from './grids/latband/geometry';
+import type { LatBandTriangulation } from './grids/latband/triangulation';
 import { FileReaderConfig, WeatherMapLayerFileReader } from './om-file-reader';
+
+export type { GridGeometry, LatBandTriangulation };
 
 export interface OmProtocolInstance {
 	omFileReader: WeatherMapLayerFileReader;
@@ -170,7 +174,37 @@ export interface TileRequest {
 	signal?: AbortSignal;
 }
 
-export type WorkerRequest = TileRequest;
+/**
+ * What every worker needs of a file-backed grid (its cell index and
+ * triangulation), sent once per worker: SharedArrayBuffers are passed by
+ * reference, anything else is cloned.
+ */
+export interface WorkerGeometryRequest {
+	type: 'geometry';
+	key: string;
+	geometry: GridGeometry;
+}
+
+export interface SharedGeometry {
+	key: string;
+	geometry: GridGeometry;
+}
+
+/** Triangulate a grid file (see WorkerPool.triangulate). */
+export interface WorkerTriangulateRequest {
+	type: 'triangulate';
+	key: string;
+	buffer: ArrayBufferLike;
+}
+
+export interface WorkerTriangulateResponse {
+	type: 'triangulated';
+	key: string;
+	triangulation?: LatBandTriangulation;
+	error?: string;
+}
+
+export type WorkerRequest = TileRequest | WorkerGeometryRequest | WorkerTriangulateRequest;
 
 export type TileResponse = ImageBitmap | ArrayBuffer;
 export interface TileResult {
@@ -236,7 +270,17 @@ interface BaseGridData {
 }
 
 // Union type for all grid types
-export type GridData = RegularGridData | AnyProjectionGridData | GaussianGridData;
+export type GridData = RegularGridData | AnyProjectionGridData | GaussianGridData | LatBandGridData;
+
+// A point set located through the cell index the backend publishes as
+// data/<domain>/static/grid.bin (format LATBAND1, see grids/latband/latband.ts):
+// the native cells of a global or limited-area ICON mesh. nx is the cell count,
+// ny must be 1.
+export interface LatBandGridData extends BaseGridData {
+	type: 'latband';
+	/** URL of the LATBAND1 file, fetched once by GridFactory.preload */
+	geometry: string;
+}
 
 export interface GaussianGridData extends BaseGridData {
 	type: 'gaussian';

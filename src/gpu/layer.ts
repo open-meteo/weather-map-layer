@@ -29,6 +29,7 @@
  */
 import { isSeamlessDomain } from '../domain-helpers';
 import { GridFactory } from '../grids/index';
+import type { LatBandGrid } from '../grids/latband/latband';
 import { defaultOmProtocolSettings } from '../om-protocol';
 import { boundsIncluded } from '../utils/bounds';
 import { createClippingTester, resolveClippingOptions } from '../utils/clipping';
@@ -49,6 +50,8 @@ import { loadOmUrl } from './data';
 import { downsampleGrid, downsampleRegular } from './downsample';
 import { computeGridUniforms } from './grid-uniforms';
 import type { GpuGridUniforms } from './grid-uniforms';
+import { latbandRanges } from './latband-mesh';
+import type { LatBandMeshDraw } from './latband-mesh';
 import { ParticleSystem, ZOOM_SPEED_FROM, getCachedWindUV, windComponentsOf } from './particles';
 import type { GpuParticleConfig, ParticleFieldLayer } from './particles';
 import { WeatherGpuRenderer } from './renderer';
@@ -143,6 +146,8 @@ interface PlainFrame extends RenderStyle {
 	/** Valid time parsed from the URL, for the advection displacement scale. */
 	timeMs?: number;
 	gridUniforms: GpuGridUniforms;
+	/** A native ICON grid, drawn as its mesh (gridKind 'latband'). */
+	latband?: LatBandGrid;
 	/** Identity of the grid geometry; temporal blending requires equal signatures. */
 	gridSignature: string;
 	halfQuantum: number;
@@ -533,6 +538,12 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		}
 
 		const gridUniforms = computeGridUniforms(loaded.domain.grid, loaded.ranges);
+		// A native ICON grid draws its mesh (latband-mesh.ts).
+		const loadedGrid = loaded.domain.grid;
+		const latband =
+			loadedGrid.type === 'latband'
+				? (GridFactory.create(loadedGrid, null) as LatBandGrid)
+				: undefined;
 		// Temporal blending mixes raw data values, so it is only meaningful across
 		// timesteps of the *same* variable on the same grid — a variable or domain
 		// switch must swap instantly, not morph temperatures into cloud cover.
@@ -564,7 +575,8 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		let advV: Float32Array | undefined;
 		let advectFactor: number | undefined;
 		const timeMs = WeatherGpuLayer.timeOf(url);
-		for (const source of this.advectSources) {
+		// A mesh draw has no lookup at displaced points: native ICON blends plain.
+		for (const source of loadedGrid.type === 'latband' ? [] : this.advectSources) {
 			const unavailableKey = `${loaded.domain.value}|${source.variable}`;
 			if (this.advectUnavailable.has(unavailableKey)) continue;
 			try {
@@ -596,6 +608,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			advectFactor,
 			timeMs,
 			gridUniforms,
+			latband,
 			gridSignature,
 			interpolation: renderOptions.interpolation,
 			colorScale: renderOptions.colorScale,
@@ -722,7 +735,8 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		grid: GridData,
 		gridUniforms: GpuGridUniforms
 	): [number, number] | undefined {
-		if (gridUniforms.gridKind === 'gaussian') return undefined;
+		if (gridUniforms.gridKind === 'gaussian' || gridUniforms.gridKind === 'latband')
+			return undefined;
 		const full = computeGridUniforms(grid, null);
 		return [full.originX, full.originY];
 	}
@@ -957,8 +971,9 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		const g = frame.gridUniforms;
 		// Regular and projected grids are both rectangular lattices over their
 		// own axes, so one box downsample covers them; gaussian rows differ in
-		// length and keep the resolution-faded full-res pass instead.
-		if (g.gridKind === 'gaussian') return undefined;
+		// length and keep the resolution-faded full-res pass instead, like the
+		// native ICON cells (a mesh, no lattice).
+		if (g.gridKind === 'gaussian' || g.gridKind === 'latband') return undefined;
 		const cellPx = this.cellPxOf(g);
 		if (cellPx >= WeatherGpuLayer.CONTOUR_TARGET_CELL_PX) return undefined;
 
@@ -1293,7 +1308,8 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 				layers: [
 					{
 						gridUniforms: g,
-						valuesTexture: renderer.getValueTexture(frame.values, g.nx, g.ny, frame.stateKey)
+						valuesTexture: renderer.getValueTexture(frame.values, g.nx, g.ny, frame.stateKey),
+						mesh: frame.latband && this.latbandMeshDraw(frame.latband)
 					}
 				],
 				interpolation: frame.interpolation,
@@ -1305,7 +1321,9 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 				opacity: this.drawRaster ? opacity : 0,
 				clipBounds: frame.clipBounds,
 				clipMask,
-				worldOffsets: this.worldOffsets(projection),
+				worldOffsets: frame.latband
+					? this.meshWorldOffsets(projection)
+					: this.worldOffsets(projection),
 				contours
 			});
 		}
@@ -1437,7 +1455,9 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 
 	/** The particle pass's field layer for a plain frame. */
 	private plainParticleLayers(frame: PlainFrame): ParticleFieldLayer[] {
-		if (!this.particles) return [];
+		// The update pass samples the field at the particles; a native ICON
+		// grid only draws as a mesh, so it has no particles (yet).
+		if (!this.particles || frame.gridUniforms.gridKind === 'latband') return [];
 		const g = frame.gridUniforms;
 		const renderer = this.renderer!;
 		if (this.particles.mode === 'rain') {
@@ -2053,6 +2073,35 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 			data ? { status: 'loaded', data } : { status: 'skipped' }
 		);
 		this.map?.triggerRepaint();
+	}
+
+	/** A native ICON grid's mesh and its triangles around the current view. */
+	private latbandMeshDraw(grid: LatBandGrid): LatBandMeshDraw {
+		const bounds = this.map!.getBounds();
+		return {
+			triangulation: grid.triangulation,
+			ranges: latbandRanges(grid, [
+				bounds.getWest(),
+				bounds.getSouth(),
+				bounds.getEast(),
+				bounds.getNorth()
+			])
+		};
+	}
+
+	/**
+	 * World copies of a native ICON mesh. Its triangles lie in the base world
+	 * except those across the antimeridian, which reach just past either edge,
+	 * so a copy draws while the view is within a sliver of it.
+	 */
+	private meshWorldOffsets(projection: GpuDrawOptions['projection']): number[] {
+		if (projection.data.projectionTransition > 0) return [0];
+		const { minX, maxX } = this.viewMercatorBounds();
+		const offsets: number[] = [];
+		for (let world = Math.floor(minX - 0.001); world <= Math.floor(maxX + 0.001); world++) {
+			offsets.push(world);
+		}
+		return offsets;
 	}
 
 	/**
