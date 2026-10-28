@@ -108,9 +108,6 @@ export interface OmProtocolSettings {
 	 */
 	resolveRequest: RequestResolver;
 	postReadCallback: PostReadCallback;
-
-	/** Called with every tile a worker finished and the time it took, for benchmarking. */
-	onTileRendered?: TileRenderedCallback;
 }
 
 export interface Data {
@@ -183,24 +180,9 @@ export interface SharedBuffer {
 export type WorkerRequest = TileRequest | WorkerBufferRequest;
 
 export type TileResponse = ImageBitmap | ArrayBuffer;
-/** A tile the worker finished, with the time it took (see OmProtocolSettings.onTileRendered). */
-export interface RenderedTile {
-	domain: string;
-	variable: string;
-	tileIndex: TileIndex;
-	tileSize: TileSize;
-	interpolation: InterpolationMethod;
-	type: 'image' | 'arrayBuffer';
-	renderMs: number;
-}
-
-export type TileRenderedCallback = (tile: RenderedTile) => void;
-
 export interface TileResult {
 	data?: TileResponse;
 	cancelled: boolean;
-	/** time the worker spent producing the tile */
-	renderMs?: number;
 }
 export type TilePromise = Promise<TileResult>;
 
@@ -208,7 +190,6 @@ export type WorkerResponse = {
 	type: 'returnImage' | 'returnArrayBuffer' | 'cancelled';
 	tile: TileResponse;
 	key: string;
-	renderMs?: number;
 };
 
 // Simple RGB color

@@ -42,8 +42,7 @@ export const defaultOmProtocolSettings: OmProtocolSettings = {
 	domainOptions: defaultDomainOptions,
 
 	resolveRequest: defaultResolveRequest,
-	postReadCallback: undefined,
-	onTileRendered: undefined
+	postReadCallback: undefined
 };
 
 export const omProtocol = async (
@@ -148,7 +147,7 @@ export const omProtocol = async (
 		throw (settled[0] as PromiseRejectedResult).reason;
 	}
 
-	const tileResult = await requestTile(url, request, loaded, params.type, settings, signal);
+	const tileResult = await requestTile(url, request, loaded, params.type, signal);
 
 	if (tileResult.cancelled || !tileResult.data) {
 		return makeEmptyTileResponse(params.type);
@@ -189,7 +188,6 @@ const requestTile = async (
 	request: ParsedRequest,
 	layers: LayerRenderData[],
 	type: 'image' | 'arrayBuffer',
-	settings: OmProtocolSettings,
 	signal?: AbortSignal
 ): TilePromise => {
 	if (!request.tileIndex) {
@@ -224,7 +222,7 @@ const requestTile = async (
 		}
 	}
 
-	const result = await workerPool.requestTile({
+	return workerPool.requestTile({
 		type: tileType,
 		key,
 		layers,
@@ -233,18 +231,6 @@ const requestTile = async (
 		clippingOptions: request.clippingOptions,
 		signal
 	});
-	if (settings.onTileRendered && result.renderMs !== undefined) {
-		settings.onTileRendered({
-			domain: request.dataOptions.domain.value,
-			variable: request.dataOptions.variable,
-			tileIndex: request.tileIndex,
-			tileSize: request.renderOptions.tileSize,
-			interpolation: request.renderOptions.interpolation,
-			type,
-			renderMs: result.renderMs
-		});
-	}
-	return result;
 };
 
 const getTilejson = async (

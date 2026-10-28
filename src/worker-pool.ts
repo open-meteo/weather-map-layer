@@ -79,7 +79,7 @@ export class WorkerPool {
 			if (subscribers.length > 0) {
 				// The first subscriber can receive the original (transferred) buffer.
 				const firstSubscriber = subscribers.shift()!;
-				firstSubscriber.resolve({ data: originalTile, cancelled: false, renderMs: data.renderMs });
+				firstSubscriber.resolve({ data: originalTile, cancelled: false });
 
 				// All other subscribers must receive a clone.
 				subscribers.forEach(({ resolve }) => {
@@ -87,7 +87,7 @@ export class WorkerPool {
 					// ImageBitmaps are safe to share without cloning.
 					// FIXES: DOMException: Worker.postMessage: attempting to access detached ArrayBuffer
 					const tile = originalTile instanceof ArrayBuffer ? originalTile.slice(0) : originalTile;
-					resolve({ data: tile, cancelled: false, renderMs: data.renderMs });
+					resolve({ data: tile, cancelled: false });
 				});
 			}
 			this.pendingRequests.delete(data.key);

@@ -42,7 +42,6 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 	// A grid whose geometry lives outside the bundle must be fetched before the
 	// samplers can build it synchronously.
 	await Promise.all(layers.map((layer) => GridFactory.preload(layer.domain.grid)));
-	const renderStart = performance.now();
 	const { sampleThresholdValue, sampleVector, gridSources } = createSamplers(layers, interpolation);
 
 	if (message.data.type == 'getImage') {
@@ -126,15 +125,7 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 			imageBitmap = canvas.transferToImageBitmap();
 		}
 
-		postMessage(
-			{
-				type: 'returnImage',
-				tile: imageBitmap,
-				key: key,
-				renderMs: performance.now() - renderStart
-			},
-			{ transfer: [imageBitmap] }
-		);
+		postMessage({ type: 'returnImage', tile: imageBitmap, key: key }, { transfer: [imageBitmap] });
 	} else if (message.data.type == 'getArrayBuffer') {
 		// Directions come from the variable's derivation rule, which is the same
 		// for every layer of a request, so one layer tells.
@@ -167,12 +158,7 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 
 		const arrayBuffer = pbf.finish();
 		postMessage(
-			{
-				type: 'returnArrayBuffer',
-				tile: arrayBuffer.buffer,
-				key: key,
-				renderMs: performance.now() - renderStart
-			},
+			{ type: 'returnArrayBuffer', tile: arrayBuffer.buffer, key: key },
 			{ transfer: [arrayBuffer.buffer] }
 		);
 	}
