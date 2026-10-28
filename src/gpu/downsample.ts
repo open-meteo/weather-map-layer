@@ -2,9 +2,11 @@
  * NaN-aware box downsampling of a regular grid, for the low-zoom contour
  * pass: below a few screen pixels per cell the bilinear derivative of the
  * full-resolution field speckles, so the isolines sample a coarser copy whose
- * cells stay comfortably larger than a pixel. Cached per source array (one
- * per timestep/viewport) and factor.
+ * cells stay comfortably larger than a pixel. The particle pass can advect
+ * through such a copy of the wind components too (fieldDownsample). Cached
+ * per source array (one per timestep/viewport) and factor.
  */
+import type { GpuGridUniforms } from './grid-uniforms';
 
 interface DownsampledGrid {
 	values: Float32Array;
@@ -60,4 +62,49 @@ export const downsampleRegular = (
 	}
 	byFactor.set(key, result);
 	return result;
+};
+
+/**
+ * A box-downsampled copy of a regular or projected grid's values, with the
+ * uniforms of the coarse lattice on the same axes. The blocks are anchored to
+ * the uncropped grid (`fullOrigin`), so the coarse field stays put when
+ * panning re-crops the data. Undefined when the crop is too small.
+ */
+export const downsampleGrid = (
+	values: Float32Array,
+	g: GpuGridUniforms,
+	factor: number,
+	fullOrigin?: [number, number]
+): { values: Float32Array; gridUniforms: GpuGridUniforms } | undefined => {
+	let skipX = 0;
+	let skipY = 0;
+	if (fullOrigin) {
+		const kx = Math.round((g.originX - fullOrigin[0]) / g.dx);
+		const ky = Math.round((g.originY - fullOrigin[1]) / g.dy);
+		skipX = ((-kx % factor) + factor) % factor;
+		skipY = ((-ky % factor) + factor) % factor;
+	}
+	const ds = downsampleRegular(values, g.nx, g.ny, factor, skipX, skipY);
+	if (!ds) return undefined;
+
+	// Box averaging over factor×factor cells puts the coarse cell centre half
+	// a block further in than the (alignment-shifted) origin. On a wrapping
+	// grid the seam cell spans what the whole blocks leave of the circle: one
+	// step on a full-circle grid (GFS), two on one stored a point short of the
+	// seam (ICON) — the native grid's double-width rule (grid-uniforms.ts)
+	// applied to the coarse lattice tells them apart.
+	const dx = g.dx * factor;
+	return {
+		values: ds.values,
+		gridUniforms: {
+			...g,
+			nx: ds.nx,
+			ny: ds.ny,
+			originX: g.originX + g.dx * (skipX + (factor - 1) / 2),
+			originY: g.originY + g.dy * (skipY + (factor - 1) / 2),
+			dx,
+			dy: g.dy * factor,
+			wrapLastCellDouble: g.lonWrap && ds.nx * Math.abs(dx) < 360 - 0.5 * Math.abs(dx)
+		}
+	};
 };

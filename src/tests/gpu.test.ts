@@ -1,6 +1,6 @@
 import { buildArrowAnchors } from '../gpu/arrows';
 import { LUT_SIZE, buildColorLut } from '../gpu/color-lut';
-import { downsampleRegular } from '../gpu/downsample';
+import { downsampleGrid, downsampleRegular } from '../gpu/downsample';
 import { computeGridUniforms } from '../gpu/grid-uniforms';
 import { updateFragmentSource, windComponentsOf } from '../gpu/particles';
 import { valueTextureLayout } from '../gpu/renderer';
@@ -391,6 +391,73 @@ describe('gpu contour downsampling', () => {
 		expect(downsampleRegular(values, nx, ny, 2, 0, 0)).not.toBe(ds);
 		// too few blocks for an isoline
 		expect(downsampleRegular(values, nx, ny, 4)).toBeUndefined();
+	});
+});
+
+describe('gpu particle field downsampling', () => {
+	it('builds the coarse lattice on the same axes, anchored to the uncropped grid', () => {
+		const grid: GridData = {
+			type: 'regular',
+			nx: 100,
+			ny: 50,
+			lonMin: 0,
+			latMin: 0,
+			dx: 0.5,
+			dy: 0.5
+		};
+		const full = computeGridUniforms(grid, null);
+		const g = computeGridUniforms(grid, [
+			{ start: 10, end: 40 },
+			{ start: 21, end: 81 }
+		]);
+		// a field equal to the crop's column index
+		const values = new Float32Array(g.nx * g.ny);
+		for (let i = 0; i < values.length; i++) values[i] = i % g.nx;
+
+		const ds = downsampleGrid(values, g, 4, [full.originX, full.originY]);
+		expect(ds).toBeDefined();
+		// blocks start at full-grid column 24 / row 12: 3 and 2 cells into the crop
+		expect(ds!.gridUniforms.nx).toBe(Math.floor((60 - 3) / 4));
+		expect(ds!.gridUniforms.ny).toBe(Math.floor((30 - 2) / 4));
+		expect(ds!.values[0]).toBeCloseTo((3 + 4 + 5 + 6) / 4, 5);
+		// coarse cell centres: the mean of the block's points (lon 12..13.5, lat 6..7.5)
+		expect(ds!.gridUniforms.originX).toBeCloseTo(12.75, 9);
+		expect(ds!.gridUniforms.originY).toBeCloseTo(6.75, 9);
+		expect(ds!.gridUniforms.dx).toBe(2);
+		expect(ds!.gridUniforms.dy).toBe(2);
+		expect(ds!.gridUniforms.lonWrap).toBe(false);
+		// the same copy every frame, so its texture is reused
+		expect(downsampleGrid(values, g, 4, [full.originX, full.originY])!.values).toBe(ds!.values);
+		// a crop too small to coarsen
+		expect(downsampleGrid(values, g, 32, [full.originX, full.originY])).toBeUndefined();
+	});
+
+	it('keeps the double-width seam only where the blocks leave two steps of the circle', () => {
+		const wrapGrid = (nx: number): GridData => ({
+			type: 'regular',
+			nx,
+			ny: 10,
+			lonMin: -180,
+			latMin: -9,
+			dx: 2,
+			dy: 2
+		});
+		// stored one point short of the seam (ICON-style): the gap stays two steps
+		const short = computeGridUniforms(wrapGrid(179), null);
+		expect(short.wrapLastCellDouble).toBe(true);
+		const shortDs = downsampleGrid(new Float32Array(179 * 10), short, 4);
+		expect(shortDs!.gridUniforms.nx).toBe(44);
+		expect(shortDs!.gridUniforms.originX).toBe(-177);
+		expect(shortDs!.gridUniforms.lonWrap).toBe(true);
+		expect(shortDs!.gridUniforms.wrapLastCellDouble).toBe(true);
+
+		// a full circle (GFS-style): the coarse seam is a single step
+		const circle = computeGridUniforms(wrapGrid(180), null);
+		expect(circle.wrapLastCellDouble).toBe(false);
+		const circleDs = downsampleGrid(new Float32Array(180 * 10), circle, 4);
+		expect(circleDs!.gridUniforms.nx).toBe(45);
+		expect(circleDs!.gridUniforms.lonWrap).toBe(true);
+		expect(circleDs!.gridUniforms.wrapLastCellDouble).toBe(false);
 	});
 });
 

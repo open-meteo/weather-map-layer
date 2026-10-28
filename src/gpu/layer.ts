@@ -46,7 +46,7 @@ import type {
 import { buildArrowAnchors, buildArrowInstances } from './arrows';
 import type { ArrowAnchors, ArrowSampler, GpuArrowConfig } from './arrows';
 import { loadOmUrl } from './data';
-import { downsampleRegular } from './downsample';
+import { downsampleGrid, downsampleRegular } from './downsample';
 import { computeGridUniforms } from './grid-uniforms';
 import type { GpuGridUniforms } from './grid-uniforms';
 import { ParticleSystem, ZOOM_SPEED_FROM, getCachedWindUV, windComponentsOf } from './particles';
@@ -1448,13 +1448,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		}
 		if (!frame.directions) return [];
 		const uv = windComponentsOf(frame.values, frame.directions);
-		return [
-			{
-				gridUniforms: g,
-				uTexture: renderer.getValueTexture(uv.u, g.nx, g.ny),
-				vTexture: renderer.getValueTexture(uv.v, g.nx, g.ny)
-			}
-		];
+		return [this.particleFieldOf(uv, g, frame.fullOrigin)];
 	}
 
 	/** Previous-timestep component textures while a blendable morph is in flight. */
@@ -1465,11 +1459,40 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		if (mix >= 1 || !this.particlePrev || !this.particles) return undefined;
 		if (this.particles.mode === 'rain') return undefined;
 		// particlePrev is only set for same-geometry commits, so the previous
-		// arrays share the current frame's texture dimensions.
+		// arrays share the current frame's texture dimensions (and downsample
+		// onto the same coarse lattice).
 		const uv = windComponentsOf(this.particlePrev.values, this.particlePrev.directions);
-		const g = frame.gridUniforms;
+		const { uTexture, vTexture } = this.particleFieldOf(uv, frame.gridUniforms, frame.fullOrigin);
+		return { uTexture, vTexture };
+	}
+
+	/**
+	 * The wind component textures the particles advect through: the native
+	 * grid, or a box-downsampled copy when the config asks for one. Only the
+	 * rectangular lattices (regular, projected) coarsen; gaussian rows differ
+	 * in length and stay native.
+	 */
+	private particleFieldOf(
+		uv: { u: Float32Array; v: Float32Array },
+		g: GpuGridUniforms,
+		fullOrigin: [number, number] | undefined
+	): ParticleFieldLayer {
 		const renderer = this.renderer!;
+		const factor = Math.round(this.particles?.fieldDownsample ?? 1);
+		if (factor > 1 && (g.gridKind === 'regular' || g.gridKind === 'projected')) {
+			const u = downsampleGrid(uv.u, g, factor, fullOrigin);
+			const v = downsampleGrid(uv.v, g, factor, fullOrigin);
+			if (u && v) {
+				const coarse = u.gridUniforms;
+				return {
+					gridUniforms: coarse,
+					uTexture: renderer.getValueTexture(u.values, coarse.nx, coarse.ny),
+					vTexture: renderer.getValueTexture(v.values, coarse.nx, coarse.ny)
+				};
+			}
+		}
 		return {
+			gridUniforms: g,
 			uTexture: renderer.getValueTexture(uv.u, g.nx, g.ny),
 			vTexture: renderer.getValueTexture(uv.v, g.nx, g.ny)
 		};
@@ -1664,14 +1687,10 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 	): ParticleFieldLayer[] {
 		if (!this.particles || drawn.length === 0) return [];
 		if (drawn.some((data) => !data.data.directions)) return [];
-		const renderer = this.renderer!;
 		return drawn.map((data, i) => {
 			const uv = windComponentsOf(data.values, data.data.directions!);
-			const g = data.gridUniforms;
 			return {
-				gridUniforms: g,
-				uTexture: renderer.getValueTexture(uv.u, g.nx, g.ny),
-				vTexture: renderer.getValueTexture(uv.v, g.nx, g.ny),
+				...this.particleFieldOf(uv, data.gridUniforms, data.fullOrigin),
 				reveal: drawLayers[i].reveal
 			};
 		});

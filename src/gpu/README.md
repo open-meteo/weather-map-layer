@@ -73,7 +73,9 @@ grid's mercator bounds evaluates every visible screen pixel per frame. Hence:
   ping-pong RGBA32F textures; the update pass samples u/v component textures
   (derived from speed + direction) with the same
   generated grid samplers as the raster, so all grid kinds and seamless
-  composites work. Trails accumulate in screen-space RGBA8 buffers; a camera
+  composites work. `fieldDownsample` advects through a box-averaged copy of
+  the components instead of the native grid (regular and projected grids).
+  Trails accumulate in screen-space RGBA8 buffers; a camera
   move reprojects the history (plane homography on flat mercator, a two-pass
   warp through mercator space on the globe and over terrain), so trails
   survive pan/zoom/rotate/pitch and the globe transition; only a projection

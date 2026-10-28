@@ -103,6 +103,14 @@ export interface GpuParticleConfig {
 	calmThreshold?: number;
 	/** Density reduction factor in calm areas (see calmThreshold). @default 3 */
 	calmThinning?: number;
+	/**
+	 * Flow mode: advect through a box-downsampled copy of the vector field,
+	 * the u/v components averaged over factor×factor grid cells (an integer;
+	 * 1 = the native grid). Regular and projected grids only: reduced
+	 * gaussian rows differ in length and stay native, as does a crop too
+	 * small to coarsen. @default 1
+	 */
+	fieldDownsample?: number;
 }
 
 /** One wind-field layer of the update pass (seamless composites pass several). */
