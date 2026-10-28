@@ -11,6 +11,16 @@ export const DEFAULT_INTERPOLATION = 'linear';
 export const VALID_ARROW_STYLES = ['arrow', 'barb'] as const;
 export const DEFAULT_ARROW_STYLE = 'arrow';
 
+// How that shape reaches the map: baked into the tile geometry, or as points
+// the renderer turns into screen-space symbols (constant size while zooming).
+export const VALID_ARROW_RENDERS = ['line', 'icon'] as const;
+export const DEFAULT_ARROW_RENDER = 'line';
+// Points across a tile for the icon renderer, bounded since the cost of the
+// lattice grows with the square of the count.
+export const DEFAULT_WIND_POINTS = 28;
+export const MIN_WIND_POINTS = 2;
+export const MAX_WIND_POINTS = 200;
+
 // Interpolate colours between colour-scale breakpoints instead of hard bands.
 export const DEFAULT_COLOR_BLEND = false;
 export const VECTOR_TILE_EXTENT = 4096;
