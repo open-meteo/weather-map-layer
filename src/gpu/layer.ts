@@ -91,8 +91,9 @@ export interface WeatherGpuLayerOptions {
 	/** Draw the colour-mapped raster field. Disable for an arrows-only layer. @default true */
 	drawRaster?: boolean;
 	/**
-	 * Byte budget (in MB) for cached value textures in VRAM. More budget keeps
-	 * more timesteps resident, so animation loops replay without re-uploads.
+	 * Byte budget (in MB) for cached value textures in VRAM. A texture is
+	 * reused while its data array stays loaded (the protocol state cache) and
+	 * freed once the array is collected; the budget caps the total.
 	 * @default 256
 	 */
 	textureCacheMb?: number;
@@ -360,10 +361,7 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		return this.renderer?.getMemoryUsage() ?? { bytes: 0, budgetBytes: 0, textures: 0 };
 	}
 
-	/**
-	 * True when a texture for this URL's data is resident in VRAM — texture
-	 * labels outlive the (much smaller) decoded-RAM state cache.
-	 */
+	/** True when a texture for this URL's data is resident in VRAM. */
 	hasTextureForUrl(omUrl: string): boolean {
 		if (!this.renderer) return false;
 		try {

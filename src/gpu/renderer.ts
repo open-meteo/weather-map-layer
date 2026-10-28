@@ -108,7 +108,10 @@ interface GpuClipMask {
 	rect: [number, number, number, number];
 }
 
-/** A cached R32F value texture, keyed by its source array's identity. */
+/**
+ * A cached R32F value texture, keyed by its source array's identity. Holds no
+ * reference to the array, so the cache never keeps one alive.
+ */
 interface ValueTextureEntry {
 	texture: WebGLTexture;
 	nx: number;
@@ -312,12 +315,21 @@ export class WeatherGpuRenderer {
 
 	// Value textures keyed by the source Float32Array identity: the protocol
 	// state caches one array per variable/timestep, so identity is a stable key.
-	// LRU-evicted by a byte budget: at global views a single O1280 texture is
-	// ~26 MB, and an unbounded count would exhaust VRAM during animation loops
-	// (failed allocations sample as uninitialised-memory noise on real drivers).
-	private valueTextures = new Map<Float32Array, ValueTextureEntry>();
-	/** URL-state key -> value array, for residency queries that outlive the RAM state. */
-	private textureLabels = new Map<string, Float32Array>();
+	// Weakly: every read yields fresh arrays, so once the state cache drops an
+	// array its texture can never be hit again, and a strong key would only
+	// keep the array (and its SharedArrayBuffer) alive. The finalizer frees the
+	// texture of a collected array; the rest is LRU-evicted by a byte budget:
+	// at global views a single O1280 texture is ~26 MB, and an unbounded count
+	// would exhaust VRAM during animation loops (failed allocations sample as
+	// uninitialised-memory noise on real drivers).
+	private valueTextures = new WeakMap<Float32Array, ValueTextureEntry>();
+	/** The entries holding a texture, oldest use first. */
+	private residentTextures = new Set<ValueTextureEntry>();
+	private textureFinalizer = new FinalizationRegistry<ValueTextureEntry>((entry) =>
+		this.deleteValueTexture(entry)
+	);
+	/** URL-state key -> texture entry, for residency queries. */
+	private textureLabels = new Map<string, ValueTextureEntry>();
 	private valueTextureBytes = 0;
 	private valueTextureBudget: number;
 	static readonly DEFAULT_TEXTURE_CACHE_MB = 256;
@@ -343,7 +355,7 @@ export class WeatherGpuRenderer {
 		return {
 			bytes: this.valueTextureBytes,
 			budgetBytes: this.valueTextureBudget,
-			textures: this.valueTextures.size
+			textures: this.residentTextures.size
 		};
 	}
 
@@ -354,18 +366,31 @@ export class WeatherGpuRenderer {
 
 	/** True when a texture labelled with this URL-state key is resident. */
 	hasTextureForLabel(label: string): boolean {
-		const values = this.textureLabels.get(label);
-		return values !== undefined && this.valueTextures.has(values);
+		const entry = this.textureLabels.get(label);
+		return entry !== undefined && this.residentTextures.has(entry);
+	}
+
+	/** The resident texture entry of a data array, if any. */
+	private residentEntry(
+		values: Float32Array,
+		nx: number,
+		ny: number
+	): ValueTextureEntry | undefined {
+		const entry = this.valueTextures.get(values);
+		if (!entry || !this.residentTextures.has(entry) || entry.nx !== nx || entry.ny !== ny) {
+			return undefined;
+		}
+		// Re-insert to keep insertion order as LRU order
+		this.residentTextures.delete(entry);
+		this.residentTextures.add(entry);
+		return entry;
 	}
 
 	/** Upload (or reuse) the R32F value texture for a data array. */
 	getValueTexture(values: Float32Array, nx: number, ny: number, label?: string): WebGLTexture {
-		const cached = this.valueTextures.get(values);
-		if (cached && cached.nx === nx && cached.ny === ny) {
-			// Re-insert to keep insertion order as LRU order
-			this.valueTextures.delete(values);
-			this.valueTextures.set(values, cached);
-			this.labelTexture(cached, values, label);
+		const cached = this.residentEntry(values, nx, ny);
+		if (cached) {
+			this.labelTexture(cached, label);
 			// A chunked warm may still be streaming this entry; the caller samples
 			// the texture this frame, so the rest goes up right now.
 			while (cached.uploadedRows < cached.height) this.uploadValueRows(cached, values);
@@ -416,9 +441,7 @@ export class WeatherGpuRenderer {
 			bytes,
 			uploadedRows: height
 		};
-		this.valueTextures.set(values, entry);
-		this.valueTextureBytes += bytes;
-		this.labelTexture(entry, values, label);
+		this.addValueTexture(values, entry, label);
 		return texture;
 	}
 
@@ -448,11 +471,9 @@ export class WeatherGpuRenderer {
 		ny: number,
 		label?: string
 	): Promise<void> {
-		const cached = this.valueTextures.get(values);
-		if (cached && cached.nx === nx && cached.ny === ny) {
-			this.valueTextures.delete(values);
-			this.valueTextures.set(values, cached);
-			this.labelTexture(cached, values, label);
+		const cached = this.residentEntry(values, nx, ny);
+		if (cached) {
+			this.labelTexture(cached, label);
 			if (cached.upload) await cached.upload;
 			return;
 		}
@@ -482,16 +503,14 @@ export class WeatherGpuRenderer {
 			if (!texture) return;
 		}
 		const entry: ValueTextureEntry = { texture, nx, ny, width, height, bytes, uploadedRows: 0 };
-		this.valueTextures.set(values, entry);
-		this.valueTextureBytes += bytes;
-		this.labelTexture(entry, values, label);
+		this.addValueTexture(values, entry, label);
 
 		entry.upload = (async () => {
 			try {
 				while (entry.uploadedRows < height) {
 					// Evicted mid-warm (budget pressure): the texture is gone; a later
 					// getValueTexture re-uploads it synchronously.
-					if (this.valueTextures.get(values) !== entry) return;
+					if (!this.residentTextures.has(entry)) return;
 					this.uploadValueRows(entry, values);
 					if (entry.uploadedRows < height) await nextFrame();
 				}
@@ -589,14 +608,23 @@ export class WeatherGpuRenderer {
 		if (scissor) gl.enable(gl.SCISSOR_TEST);
 	}
 
-	private labelTexture(
-		entry: { label?: string },
+	/** Register a fresh entry; its texture goes when the array is collected. */
+	private addValueTexture(
 		values: Float32Array,
+		entry: ValueTextureEntry,
 		label: string | undefined
 	): void {
+		this.valueTextures.set(values, entry);
+		this.residentTextures.add(entry);
+		this.valueTextureBytes += entry.bytes;
+		this.textureFinalizer.register(values, entry, entry);
+		this.labelTexture(entry, label);
+	}
+
+	private labelTexture(entry: ValueTextureEntry, label: string | undefined): void {
 		if (!label || entry.label === label) return;
 		entry.label = label;
-		this.textureLabels.set(label, values);
+		this.textureLabels.set(label, entry);
 	}
 
 	private uploadValueTexture(nx: number, ny: number, data: Float32Array): WebGLTexture | null {
@@ -627,17 +655,22 @@ export class WeatherGpuRenderer {
 
 	/** Evict least-recently-used value textures until at most `targetBytes` remain. */
 	private evictValueTextures(targetBytes: number): void {
-		const gl = this.gl;
 		const keepCount = targetBytes <= 0 ? 0 : WeatherGpuRenderer.MIN_RESIDENT_TEXTURES;
-		for (const [key, entry] of this.valueTextures) {
+		for (const entry of this.residentTextures) {
 			if (this.valueTextureBytes <= Math.max(0, targetBytes)) break;
-			if (this.valueTextures.size <= keepCount) break;
-			gl.deleteTexture(entry.texture);
-			this.valueTextureBytes -= entry.bytes;
-			this.valueTextures.delete(key);
-			if (entry.label && this.textureLabels.get(entry.label) === key) {
-				this.textureLabels.delete(entry.label);
-			}
+			if (this.residentTextures.size <= keepCount) break;
+			this.deleteValueTexture(entry);
+		}
+	}
+
+	/** Free a resident entry's texture (evicted, or its array was collected). */
+	private deleteValueTexture(entry: ValueTextureEntry): void {
+		if (!this.residentTextures.delete(entry)) return;
+		this.textureFinalizer.unregister(entry);
+		this.gl.deleteTexture(entry.texture);
+		this.valueTextureBytes -= entry.bytes;
+		if (entry.label && this.textureLabels.get(entry.label) === entry) {
+			this.textureLabels.delete(entry.label);
 		}
 	}
 
@@ -1017,10 +1050,8 @@ ${VISIBILITY_VERTEX_BODY}`,
 
 	dispose(): void {
 		const gl = this.gl;
-		for (const { texture } of this.valueTextures.values()) gl.deleteTexture(texture);
-		this.valueTextures.clear();
+		for (const entry of this.residentTextures) this.deleteValueTexture(entry);
 		this.textureLabels.clear();
-		this.valueTextureBytes = 0;
 		for (const { texture } of this.lutTextures.values()) gl.deleteTexture(texture);
 		this.lutTextures.clear();
 		for (const mask of this.clipMasks.values()) {

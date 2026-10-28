@@ -104,9 +104,11 @@ grid's mercator bounds evaluates every visible screen pixel per frame. Hence:
   hides what lies behind it; the particles read the surface depth and
   visibility maps to hide behind relief as well.
 - **Texture residency**: value textures are cached in VRAM under a byte
-  budget (`textureCacheMb`), shared by every layer on the same GL context,
-  so animation loops replay without re-uploads; `hasTextureForUrl` tells a
-  host which timesteps are resident. A grid wider or taller than
+  budget (`textureCacheMb`), shared by every layer on the same GL context.
+  A texture lives as long as its data array (in the protocol state cache or
+  a frame on screen) and is freed once that array is collected, so the cache
+  never keeps decoded data in RAM; `hasTextureForUrl` tells a host which
+  timesteps are resident. A grid wider or taller than
   `MAX_TEXTURE_SIZE` is packed row-major into narrower texture rows at full
   resolution.
 - **Capabilities and failures**: `detectGpuSupport()` probes once whether
