@@ -8,6 +8,7 @@ import { COLOR_SCALES_WITH_ALIASES as defaultColorScales } from './utils/styling
 
 import { domainOptions as defaultDomainOptions } from './domains';
 import { GridFactory } from './grids/index';
+import { setTriangulator } from './grids/latband/geometry';
 import { defaultFileReaderConfig } from './om-file-reader';
 import {
 	DEFAULT_MAX_STATES_WITH_DATA,
@@ -31,6 +32,8 @@ import type {
 } from './types';
 
 const workerPool = new WorkerPool();
+// A native ICON grid's triangulation takes seconds: off the main thread.
+setTriangulator((buffer) => workerPool.triangulate(buffer));
 
 export const defaultOmProtocolSettings: OmProtocolSettings = {
 	// static
@@ -217,8 +220,8 @@ const requestTile = async (
 	// handed to the workers before their first tile of it.
 	await Promise.all(layers.map((layer) => GridFactory.preload(layer.domain.grid)));
 	for (const layer of layers) {
-		for (const { key, buffer } of GridFactory.sharedBuffers(layer.domain.grid)) {
-			workerPool.share(key, buffer);
+		for (const { key, geometry } of GridFactory.sharedGeometry(layer.domain.grid)) {
+			workerPool.share(key, geometry);
 		}
 	}
 

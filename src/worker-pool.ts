@@ -1,7 +1,17 @@
 // @ts-expect-error worker import
 import tileWorkerUrl from './worker?worker&url';
 
-import { TilePromise, TileRequest, TileResult, WorkerBufferRequest, WorkerResponse } from './types';
+import type {
+	GridGeometry,
+	LatBandTriangulation,
+	TilePromise,
+	TileRequest,
+	TileResult,
+	WorkerGeometryRequest,
+	WorkerResponse,
+	WorkerTriangulateRequest,
+	WorkerTriangulateResponse
+} from './types';
 
 /**
  * The tile worker ships as its own file next to the module, so it is cached
@@ -23,6 +33,15 @@ export class WorkerPool {
 	private workers: Worker[] = [];
 	private nextWorker = 0;
 	private readonly sharedKeys = new Set<string>();
+	private nextTriangulation = 0;
+	private pendingTriangulations = new Map<
+		string,
+		{
+			resolve: (triangulation: LatBandTriangulation) => void;
+			reject: (error: Error) => void;
+			worker: Worker;
+		}
+	>();
 	/** Stores pending tile requests by key to avoid duplicate requests for the same tile */
 	private pendingRequests = new Map<
 		string,
@@ -49,17 +68,42 @@ export class WorkerPool {
 	}
 
 	/**
-	 * Hands a buffer to every worker once. Messages are delivered in order, so
-	 * a buffer shared before a tile request is available when the tile renders.
+	 * Hands a grid's geometry to every worker once. Messages are delivered in
+	 * order, so geometry shared before a tile request is available when the
+	 * tile renders.
 	 */
-	public share(key: string, buffer: ArrayBufferLike): void {
+	public share(key: string, geometry: GridGeometry): void {
 		if (this.sharedKeys.has(key)) return;
 		this.sharedKeys.add(key);
-		const message: WorkerBufferRequest = { type: 'buffer', key, buffer };
+		const message: WorkerGeometryRequest = { type: 'geometry', key, geometry };
 		for (const worker of this.workers) worker.postMessage(message);
 	}
 
+	/**
+	 * Triangulates a grid file (LatBandGrid.triangulate) in a worker, where
+	 * the seconds a global grid takes do not block the page. The result lives
+	 * in SharedArrayBuffers where available, so sharing it costs no copies.
+	 */
+	public triangulate(buffer: ArrayBufferLike): Promise<LatBandTriangulation> {
+		const worker = this.getNextWorker();
+		if (!worker) return Promise.reject(new Error('No workers available (likely running in SSR)'));
+		const key = `triangulate:${this.nextTriangulation++}`;
+		return new Promise((resolve, reject) => {
+			this.pendingTriangulations.set(key, { resolve, reject, worker });
+			const message: WorkerTriangulateRequest = { type: 'triangulate', key, buffer };
+			worker.postMessage(message);
+		});
+	}
+
 	private handleMessage(message: MessageEvent): void {
+		if (message.data.type === 'triangulated') {
+			const { key, triangulation, error } = message.data as WorkerTriangulateResponse;
+			const pending = this.pendingTriangulations.get(key);
+			this.pendingTriangulations.delete(key);
+			if (triangulation) pending?.resolve(triangulation);
+			else pending?.reject(new Error(`Triangulation failed: ${error}`));
+			return;
+		}
 		const data = message.data as WorkerResponse;
 
 		const pending = this.pendingRequests.get(data.key);
@@ -100,6 +144,11 @@ export class WorkerPool {
 		// never post a response for it. Reject everything pending on that worker
 		// so tiles fail visibly instead of leaving MapLibre waiting forever.
 		const worker = error.target instanceof Worker ? error.target : undefined;
+		for (const [key, pending] of this.pendingTriangulations) {
+			if (worker && pending.worker !== worker) continue;
+			pending.reject(new Error(`Worker error while triangulating: ${error.message}`));
+			this.pendingTriangulations.delete(key);
+		}
 		for (const [key, pending] of this.pendingRequests) {
 			if (worker && pending.worker !== worker) continue;
 			pending.subscribers.forEach(({ reject }) =>

@@ -1,6 +1,10 @@
 import type { ResolvedClippingOptions } from './utils/clipping';
 
+import type { GridGeometry } from './grids/latband/geometry';
+import type { LatBandTriangulation } from './grids/latband/triangulation';
 import { FileReaderConfig, WeatherMapLayerFileReader } from './om-file-reader';
+
+export type { GridGeometry, LatBandTriangulation };
 
 export interface OmProtocolInstance {
 	omFileReader: WeatherMapLayerFileReader;
@@ -163,21 +167,36 @@ export interface TileRequest {
 }
 
 /**
- * A buffer every worker needs (a grid's geometry), sent once per worker: a
- * SharedArrayBuffer is passed by reference, anything else is cloned.
+ * What every worker needs of a file-backed grid (its cell index and
+ * triangulation), sent once per worker: SharedArrayBuffers are passed by
+ * reference, anything else is cloned.
  */
-export interface WorkerBufferRequest {
-	type: 'buffer';
+export interface WorkerGeometryRequest {
+	type: 'geometry';
+	key: string;
+	geometry: GridGeometry;
+}
+
+export interface SharedGeometry {
+	key: string;
+	geometry: GridGeometry;
+}
+
+/** Triangulate a grid file (see WorkerPool.triangulate). */
+export interface WorkerTriangulateRequest {
+	type: 'triangulate';
 	key: string;
 	buffer: ArrayBufferLike;
 }
 
-export interface SharedBuffer {
+export interface WorkerTriangulateResponse {
+	type: 'triangulated';
 	key: string;
-	buffer: ArrayBufferLike;
+	triangulation?: LatBandTriangulation;
+	error?: string;
 }
 
-export type WorkerRequest = TileRequest | WorkerBufferRequest;
+export type WorkerRequest = TileRequest | WorkerGeometryRequest | WorkerTriangulateRequest;
 
 export type TileResponse = ImageBitmap | ArrayBuffer;
 export interface TileResult {
