@@ -165,12 +165,6 @@ export interface TileRequest {
 	signal?: AbortSignal;
 }
 
-/** Sent once per worker at startup, before any tile request. */
-export interface WorkerInitRequest {
-	type: 'init';
-	assets: PackageAssets;
-}
-
 /**
  * A buffer every worker needs (a grid's geometry), sent once per worker: a
  * SharedArrayBuffer is passed by reference, anything else is cloned.
@@ -186,16 +180,7 @@ export interface SharedBuffer {
 	buffer: ArrayBufferLike;
 }
 
-export type WorkerRequest = TileRequest | WorkerInitRequest | WorkerBufferRequest;
-
-/**
- * URLs of the package's runtime assets, resolved on the main thread against
- * the module's own location (see worker-pool.ts).
- */
-export interface PackageAssets {
-	/** ICON spring-dynamics warp table per icosahedron root division n */
-	iconWarpTables: Record<number, string>;
-}
+export type WorkerRequest = TileRequest | WorkerBufferRequest;
 
 export type TileResponse = ImageBitmap | ArrayBuffer;
 /** A tile the worker finished, with the time it took (see OmProtocolSettings.onTileRendered). */
@@ -277,8 +262,7 @@ interface BaseGridData {
 }
 
 // Union type for all grid types
-export type GridData =
-	RegularGridData | AnyProjectionGridData | GaussianGridData | IconGridData | LatBandGridData;
+export type GridData = RegularGridData | AnyProjectionGridData | GaussianGridData | LatBandGridData;
 
 // A point set located through the cell index the backend publishes as
 // data/<domain>/static/grid.bin (format LATBAND1, see grids/latband/latband.ts):
@@ -288,16 +272,6 @@ export interface LatBandGridData extends BaseGridData {
 	type: 'latband';
 	/** URL of the LATBAND1 file, fetched once by GridFactory.preload */
 	geometry: string;
-}
-
-// Native ICON icosahedral R{n}B{k} grid (see grids/icon/icon.ts for the
-// canonical cell ordering). nx is the total cell count 20·n²·4^k, ny must be 1.
-export interface IconGridData extends BaseGridData {
-	type: 'icon';
-	/** Root division n of each icosahedron edge (R3… → 3) */
-	iconRoot: number;
-	/** Bisection levels k after the root division (…B07 → 7) */
-	iconBisections: number;
 }
 
 export interface GaussianGridData extends BaseGridData {

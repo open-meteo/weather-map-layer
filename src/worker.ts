@@ -10,17 +10,12 @@ import { createSamplers } from './utils/samplers';
 import { makeColorSampler } from './utils/styling';
 import { generateWindBarbs } from './utils/wind-barbs';
 
-import { setPackageAssets } from './assets';
 import { GridFactory } from './grids/index';
 import { registerGeometry } from './grids/latband/geometry';
 
 import type { WorkerRequest } from './types';
 
 self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => {
-	if (message.data.type === 'init') {
-		setPackageAssets(message.data.assets);
-		return;
-	}
 	if (message.data.type === 'buffer') {
 		registerGeometry(message.data.key, message.data.buffer);
 		return;

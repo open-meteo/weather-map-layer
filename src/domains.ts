@@ -123,18 +123,16 @@ const CHMI_ALADIN_CENTRAL_EUROPE_2KM_GRID: GridData = {
 };
 
 // Native ICON grids: the icosahedral meshes the models run on, in DWD's cell
-// order, shared by every domain written on the same mesh. The global one is
-// computed (see grids/icon/icon.ts); limited-area ones are located through the
-// cell index the backend publishes next to the data. The data mirror does not
-// serve that static path, hence the S3 URLs.
+// order, shared by every domain written on the same mesh. Their cells are
+// located through the cell index the backend publishes next to the data. The
+// data mirror does not serve that static path, hence the S3 URLs.
 
 // DWD grid 26 (R3B07, 13 km)
 const DWD_ICON_GLOBAL_NATIVE_GRID: GridData = {
-	type: 'icon',
+	type: 'latband',
 	nx: 2949120,
 	ny: 1,
-	iconRoot: 3,
-	iconBisections: 7,
+	geometry: 'https://openmeteo.s3.amazonaws.com/data/dwd_icon_global_native/static/grid.bin',
 	zoom: 1
 };
 

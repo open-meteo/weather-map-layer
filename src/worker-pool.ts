@@ -1,25 +1,7 @@
-import { setPackageAssets } from './assets';
-import iconWarpR3Url from './grids/icon/icon-warp-r3.bin?url';
 // @ts-expect-error worker import
 import tileWorkerUrl from './worker?worker&url';
 
-import {
-	PackageAssets,
-	TilePromise,
-	TileRequest,
-	TileResult,
-	WorkerBufferRequest,
-	WorkerInitRequest,
-	WorkerResponse
-} from './types';
-
-// Resolved like the worker URL below: relative to this module, so the assets
-// are found next to it in node_modules or on a CDN, and rewritten by bundlers
-// that consume the package to wherever they copy the files.
-const packageAssets: PackageAssets = {
-	iconWarpTables: { 3: new URL(iconWarpR3Url, import.meta.url).href }
-};
-setPackageAssets(packageAssets);
+import { TilePromise, TileRequest, TileResult, WorkerBufferRequest, WorkerResponse } from './types';
 
 /**
  * The tile worker ships as its own file next to the module, so it is cached
@@ -62,10 +44,6 @@ export class WorkerPool {
 			const worker = createTileWorker();
 			worker.onmessage = (message: MessageEvent) => this.handleMessage(message);
 			worker.onerror = (error: ErrorEvent) => this.handleError(error);
-			// Queued ahead of every tile request, so the worker knows the asset
-			// URLs (which only this thread can resolve) before it needs them.
-			const init: WorkerInitRequest = { type: 'init', assets: packageAssets };
-			worker.postMessage(init);
 			this.workers.push(worker);
 		}
 	}
