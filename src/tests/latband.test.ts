@@ -1,6 +1,7 @@
 import { latbandRanges } from '../gpu/latband-mesh';
 import { GridFactory } from '../grids/factory';
-import { registerGeometry, setTriangulator } from '../grids/latband/geometry';
+import { onGridLoadProgress, registerGeometry, setTriangulator } from '../grids/latband/geometry';
+import type { GridLoadProgress } from '../grids/latband/geometry';
 import { LatBandGrid, parseLatBand } from '../grids/latband/latband';
 import { lat2tile, lon2tile, tile2lat, tile2lon } from '../utils/math';
 import { describe, expect, test, vi } from 'vitest';
@@ -522,6 +523,35 @@ describe('GridFactory', () => {
 		const [{ geometry }] = GridFactory.sharedGeometry(data);
 		expect(new Uint8Array(geometry.buffer)).toEqual(new Uint8Array(globalFile));
 		expect(geometry.triangulation.triangles.length / 3).toBe(2 * 4000 - 4);
+		vi.unstubAllGlobals();
+	});
+
+	test('preload reports the download, then the triangulation', async () => {
+		const reports: GridLoadProgress[] = [];
+		const unsubscribe = onGridLoadProgress((progress) => reports.push(progress));
+		const body = globalFile.slice(0);
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string) =>
+				url.endsWith('missing')
+					? new Response(null, { status: 404 })
+					: new Response(body, { headers: { 'Content-Length': String(body.byteLength) } })
+			)
+		);
+		setTriangulator(async (buffer) => LatBandGrid.triangulate(buffer));
+		await GridFactory.preload({ ...globalData, geometry: 'test://progress' });
+		const phases = reports.map((progress) => progress.phase);
+		expect(phases[0]).toBe('download');
+		expect(phases.slice(-2)).toEqual(['triangulate', 'ready']);
+		const downloads = reports.filter((progress) => progress.phase === 'download');
+		expect(downloads.every((progress) => progress.total === body.byteLength)).toBe(true);
+		expect(downloads[downloads.length - 1].loaded).toBe(body.byteLength);
+
+		reports.length = 0;
+		const missing = { ...globalData, geometry: 'test://missing' };
+		await expect(GridFactory.preload(missing)).rejects.toThrow(/404/);
+		expect(reports.map((progress) => progress.phase)).toEqual(['error']);
+		unsubscribe();
 		vi.unstubAllGlobals();
 	});
 });
