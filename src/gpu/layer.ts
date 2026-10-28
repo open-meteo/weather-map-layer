@@ -1177,7 +1177,12 @@ export class WeatherGpuLayer implements CustomLayerInterface {
 		// pre-pass of the surface, so a ridge hides what lies behind it.
 		if (elevation) {
 			this.surface ??= new SurfaceTarget(gl2);
-			this.surface.begin(this.renderer, projection, this.worldOffsets(projection));
+			this.surface.begin(
+				this.renderer,
+				projection,
+				this.worldOffsets(projection),
+				this.particles !== undefined
+			);
 		}
 
 		// A variable/domain switch dissolves: the outgoing visual renders

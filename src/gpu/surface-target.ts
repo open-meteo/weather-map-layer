@@ -64,7 +64,9 @@ export class SurfaceTarget {
 	begin(
 		renderer: WeatherGpuRenderer,
 		projection: NonNullable<GpuDrawOptions['projection']>,
-		worldOffsets: number[]
+		worldOffsets: number[],
+		/** Particles draw this frame: the visibility map is theirs alone. */
+		particles: boolean
 	): void {
 		const gl = this.gl;
 		this.saved = {
@@ -88,7 +90,8 @@ export class SurfaceTarget {
 		gl.depthFunc(gl.LESS);
 		renderer.drawSurfaceDepth(projection, worldOffsets);
 
-		this.renderVisibility(renderer, projection);
+		if (particles) this.renderVisibility(renderer, projection);
+		else this.visibilityMap = undefined;
 
 		// Colour passes: same geometry, so equal depths pass; nothing farther.
 		gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
