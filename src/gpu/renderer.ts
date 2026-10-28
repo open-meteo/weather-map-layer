@@ -404,44 +404,25 @@ export class WeatherGpuRenderer {
 		}
 		const { width, height } = layout;
 
-		// NaN behaviour in float textures varies per driver: encode missing values
-		// as a large finite sentinel instead. Also pads short arrays (gaussian
-		// packing, the tail of a packed texture) so texImage2D never reads out of
-		// bounds.
-		const texels = width * height;
-		const sanitized = new Float32Array(texels);
-		const n = Math.min(values.length, texels);
-		for (let i = 0; i < n; i++) {
-			const v = values[i];
-			sanitized[i] = Number.isFinite(v) ? v : MISSING_SENTINEL;
-		}
-		sanitized.fill(MISSING_SENTINEL, n);
-
-		const bytes = texels * 4;
+		const bytes = width * height * 4;
 		// Evict to budget before allocating (never evicting what a current draw
 		// uses: everything a draw binds it fetched via this call in the same
 		// frame, so those entries are the most recent).
 		this.evictValueTextures(this.valueTextureBudget - bytes);
 
-		let texture = this.uploadValueTexture(width, height, sanitized);
+		let texture = this.allocValueTextureStorage(width, height);
 		if (!texture) {
 			// Allocation failed (VRAM exhausted): drop the whole cache and retry
 			// once — corrupt sampling from a failed allocation must never persist.
 			this.evictValueTextures(0);
-			texture = this.uploadValueTexture(width, height, sanitized);
+			texture = this.allocValueTextureStorage(width, height);
 			if (!texture) throw new Error(`gpu: value texture allocation failed (${width}x${height})`);
 		}
 
-		const entry: ValueTextureEntry = {
-			texture,
-			nx,
-			ny,
-			width,
-			height,
-			bytes,
-			uploadedRows: height
-		};
+		const entry: ValueTextureEntry = { texture, nx, ny, width, height, bytes, uploadedRows: 0 };
 		this.addValueTexture(values, entry, label);
+		// All rows right away, through the chunk scratch: no full-size copy.
+		while (entry.uploadedRows < height) this.uploadValueRows(entry, values);
 		return texture;
 	}
 
@@ -450,7 +431,7 @@ export class WeatherGpuRenderer {
 	private static readonly WARM_SYNC_TEXELS = 1 << 18;
 	/** Texels per streamed chunk (~2 MB of R32F per texSubImage2D). */
 	private static readonly WARM_CHUNK_TEXELS = 1 << 19;
-	/** Reused sanitize scratch: one allocation instead of one per warm — the
+	/** Reused sanitize scratch: one allocation instead of one per upload — the
 	 *  multi-MB churn showed up as GC pauses on mobile data loads. */
 	private warmScratch = new Float32Array(0);
 
@@ -521,7 +502,12 @@ export class WeatherGpuRenderer {
 		await entry.upload;
 	}
 
-	/** Upload the next row chunk of a streaming entry (see warmValueTexture). */
+	/**
+	 * Upload the next row chunk of an entry. NaN behaviour in float textures
+	 * varies per driver, so missing values go up as a large finite sentinel;
+	 * texels past the end of the array (gaussian packing, the tail of a packed
+	 * texture) too.
+	 */
 	private uploadValueRows(entry: ValueTextureEntry, values: Float32Array): void {
 		const gl = this.gl;
 		// Texture rows: grid rows, or maxSize-wide runs of a packed grid.
@@ -554,7 +540,7 @@ export class WeatherGpuRenderer {
 		entry.uploadedRows = row + rows;
 	}
 
-	/** Immutable R32F storage for the chunked warm path; null when allocation fails. */
+	/** Immutable R32F storage for the chunked uploads; null when allocation fails. */
 	private allocValueTextureStorage(nx: number, ny: number): WebGLTexture | null {
 		const gl = this.gl;
 		const texture = gl.createTexture();
@@ -578,8 +564,8 @@ export class WeatherGpuRenderer {
 	private warmClearSupported: boolean | undefined;
 
 	/**
-	 * Explicitly initialize fresh storage from the GPU side: the chunked warm
-	 * path fills it with partial texSubImage2D uploads, and the browser must
+	 * Explicitly initialize fresh storage from the GPU side: the chunked
+	 * uploads fill it with partial texSubImage2D calls, and the browser must
 	 * otherwise lazily clear the whole texture at the first one (a console
 	 * warning, and a forced clear it flags as potentially slow). Filled with
 	 * the missing sentinel so never-uploaded texels sample as "no data".
@@ -625,25 +611,6 @@ export class WeatherGpuRenderer {
 		if (!label || entry.label === label) return;
 		entry.label = label;
 		this.textureLabels.set(label, entry);
-	}
-
-	private uploadValueTexture(nx: number, ny: number, data: Float32Array): WebGLTexture | null {
-		const gl = this.gl;
-		const texture = gl.createTexture();
-		if (!texture) return null;
-		gl.bindTexture(gl.TEXTURE_2D, texture);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-		// Flush pending errors so the check below attributes to this upload.
-		gl.getError();
-		gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, nx, ny, 0, gl.RED, gl.FLOAT, data);
-		if (gl.getError() !== gl.NO_ERROR) {
-			gl.deleteTexture(texture);
-			return null;
-		}
-		return texture;
 	}
 
 	/**
