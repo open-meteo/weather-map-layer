@@ -1,12 +1,16 @@
 import { domainOptions } from '../domains';
+import { GaussianGrid } from '../grids/gaussian';
+import type { GridInterface } from '../grids/interface';
 import { ProjectionGrid } from '../grids/projected';
 import { LambertConformalConicProjection, RotatedLatLonProjection } from '../grids/projections';
 import { RegularGrid } from '../grids/regular';
+import { normalizeLon } from '../utils/math';
 import { describe, expect, test } from 'vitest';
 
 import type {
 	AnyProjectionGridData,
 	DimensionRange,
+	GaussianGridData,
 	InterpolationMethod,
 	LCCProjectionData,
 	ProjectionGridFromGeographicOrigin,
@@ -541,5 +545,293 @@ describe('ProjectionGrid', () => {
 		expect(ranges[1].end).toBeLessThanOrEqual(projectedGridData.nx);
 		expect(ranges[0].start).toBeLessThanOrEqual(ranges[0].end);
 		expect(ranges[1].start).toBeLessThanOrEqual(ranges[1].end);
+	});
+});
+
+describe('getCellPolygon', () => {
+	type Ring = Array<[number, number]>;
+
+	/** Every node holds its own index, so equal samples mean the same node. */
+	const indexValues = (n: number): Float32Array =>
+		new Float32Array(Array.from({ length: n }, (_, i) => i));
+
+	/** Ray casting on a closed ring. */
+	const ringContains = (ring: Ring, lon: number, lat: number): boolean => {
+		let inside = false;
+		for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+			const [xi, yi] = ring[i];
+			const [xj, yj] = ring[j];
+			if (yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
+				inside = !inside;
+			}
+		}
+		return inside;
+	};
+
+	/**
+	 * The cell is a closed ring around the point over which `nearest` reads the
+	 * node it reads at the point, and another node just outside every edge
+	 * wherever the grid has data there.
+	 */
+	const expectNearestCell = (
+		grid: GridInterface,
+		values: Float32Array,
+		lat: number,
+		lon: number
+	): Ring => {
+		const ring = grid.getCellPolygon(lat, lon);
+		expect(ring).not.toBeNull();
+		if (!ring) throw new Error('unreachable');
+		expect(ring).toHaveLength(5);
+		expect(ring[0]).toEqual(ring[4]);
+		expect(ringContains(ring, lon, lat)).toBe(true);
+
+		// Cells may run past ±180°; the grids expect normalized longitudes
+		const nearest = (y: number, x: number): number =>
+			grid.getInterpolatedValue(values, y, normalizeLon(x), 'nearest');
+		const node = nearest(lat, lon);
+		expect(isFinite(node)).toBe(true);
+
+		const corners = ring.slice(0, 4);
+		const centre = corners.reduce(([x, y], [cx, cy]) => [x + cx / 4, y + cy / 4], [0, 0]);
+		for (const [cx, cy] of corners) {
+			// Just inside the corner
+			expect(nearest(cy + (centre[1] - cy) * 0.02, cx + (centre[0] - cx) * 0.02)).toBe(node);
+		}
+		for (let i = 0; i < 4; i++) {
+			const [ax, ay] = corners[i];
+			const [bx, by] = corners[(i + 1) % 4];
+			const mx = (ax + bx) / 2;
+			const my = (ay + by) / 2;
+			// Just outside the edge, unless that is past a pole
+			const outsideLat = my + (my - centre[1]) * 0.02;
+			if (Math.abs(outsideLat) > 90) continue;
+			const outside = nearest(outsideLat, mx + (mx - centre[0]) * 0.02);
+			if (isFinite(outside)) expect(outside).not.toBe(node);
+		}
+		return ring;
+	};
+
+	test('regular grid: half a step around the nearest node', () => {
+		const grid = new RegularGrid(gridData);
+		// The nearest node of (52.3, 11.6) is at lat 52, lon 12
+		expect(expectNearestCell(grid, indexValues(30), 52.3, 11.6)).toEqual([
+			[11.5, 51],
+			[12.5, 51],
+			[12.5, 53],
+			[11.5, 53],
+			[11.5, 51]
+		]);
+	});
+
+	test('regular grid: edge cells span what nearest sampling reads', () => {
+		const grid = new RegularGrid(gridData);
+		const values = indexValues(30);
+		// Nothing before the first node
+		expect(expectNearestCell(grid, values, 50.3, 10.2)).toEqual([
+			[10, 50],
+			[10.5, 50],
+			[10.5, 51],
+			[10, 51],
+			[10, 50]
+		]);
+		// The last node is read up to a whole step past it
+		expect(expectNearestCell(grid, values, 55.9, 19.8)).toEqual([
+			[18.5, 53],
+			[20, 53],
+			[20, 56],
+			[18.5, 56],
+			[18.5, 53]
+		]);
+		expect(grid.getCellPolygon(49, 11)).toBeNull();
+		expect(grid.getCellPolygon(52, 20)).toBeNull();
+	});
+
+	test('regular grid: rows stored north-to-south', () => {
+		const grid = new RegularGrid(gridDataNegDy);
+		// The last row (index 2) is the southern one at lat 52 and, being last,
+		// reaches a whole step south
+		expect(expectNearestCell(grid, indexValues(30), 52.3, 11.6)).toEqual([
+			[11.5, 50],
+			[12.5, 50],
+			[12.5, 53],
+			[11.5, 53],
+			[11.5, 50]
+		]);
+	});
+
+	test('regular grid: partial grid', () => {
+		const grid = new RegularGrid(gridData, [
+			{ start: 0, end: 3 },
+			{ start: 0, end: 4 }
+		]);
+		expect(expectNearestCell(grid, indexValues(12), 52, 13.4)).toEqual([
+			[12.5, 51],
+			[14, 51],
+			[14, 53],
+			[12.5, 53],
+			[12.5, 51]
+		]);
+	});
+
+	test('regular grid: global grid cells cross the antimeridian', () => {
+		const grid = new RegularGrid({
+			type: 'regular',
+			nx: 36,
+			ny: 18,
+			lonMin: -180,
+			latMin: -90,
+			dx: 10,
+			dy: 10
+		});
+		const values = indexValues(36 * 18);
+		// (0, 178) reads the seam node (index 0) from the east: the cell is drawn
+		// around lon 180, on the side of the point
+		expect(expectNearestCell(grid, values, 0, 178)).toEqual([
+			[175, -5],
+			[185, -5],
+			[185, 5],
+			[175, 5],
+			[175, -5]
+		]);
+		expect(expectNearestCell(grid, values, 0, -178)).toEqual([
+			[-185, -5],
+			[-175, -5],
+			[-175, 5],
+			[-185, 5],
+			[-185, -5]
+		]);
+	});
+
+	test('regular grid: stored one node short of the seam, the gap is split between its neighbours', () => {
+		// 7 nodes 45° apart from -180 to 90: the step back to -180 is 90°, two steps
+		const grid = new RegularGrid({
+			type: 'regular',
+			nx: 7,
+			ny: 3,
+			lonMin: -180,
+			latMin: -45,
+			dx: 45,
+			dy: 45
+		});
+		const values = indexValues(21);
+		// West of the gap's middle the last node (lon 90) is read
+		expect(expectNearestCell(grid, values, 0, 100)).toEqual([
+			[67.5, -22.5],
+			[135, -22.5],
+			[135, 22.5],
+			[67.5, 22.5],
+			[67.5, -22.5]
+		]);
+		// East of it the seam node (lon 180 ≡ -180), approached from either side
+		expect(expectNearestCell(grid, values, 0, 150)).toEqual([
+			[135, -22.5],
+			[202.5, -22.5],
+			[202.5, 22.5],
+			[135, 22.5],
+			[135, -22.5]
+		]);
+		expect(expectNearestCell(grid, values, 0, -170)).toEqual([
+			[-225, -22.5],
+			[-157.5, -22.5],
+			[-157.5, 22.5],
+			[-225, 22.5],
+			[-225, -22.5]
+		]);
+	});
+
+	test('projected grid: a rectangle in projected space around the nearest node', () => {
+		const grid = new ProjectionGrid(projectedGridData);
+		const values = indexValues(100);
+		const ring = expectNearestCell(grid, values, 50.3, 10.4);
+		// 10 km cells: ~0.09° tall and ~0.14° wide at 50°N
+		const lons = ring.map(([lon]) => lon);
+		const lats = ring.map(([, lat]) => lat);
+		expect(Math.max(...lats) - Math.min(...lats)).toBeCloseTo(0.09, 2);
+		expect(Math.max(...lons) - Math.min(...lons)).toBeCloseTo(0.14, 2);
+		// Far edge: the last column is read up to a whole step past its node
+		expectNearestCell(grid, values, 50.02, 11.35);
+		expect(grid.getCellPolygon(49, 10)).toBeNull();
+	});
+
+	test('gaussian grid: a row tall, a row step wide, drawn on the side of the point', () => {
+		const data: GaussianGridData = {
+			type: 'gaussian',
+			nx: 208,
+			ny: 1,
+			gaussianGridLatitudeLines: 4
+		};
+		const grid = new GaussianGrid(data);
+		const values = indexValues(208);
+		const width = (ring: Ring): number =>
+			Math.max(...ring.map(([lon]) => lon)) - Math.min(...ring.map(([lon]) => lon));
+		// Rows thin out towards the poles, so their cells widen: 20 nodes at the
+		// top row against 32 at the equator
+		expect(width(expectNearestCell(grid, values, 80, 12))).toBeCloseTo(18);
+		expect(width(expectNearestCell(grid, values, 5, 12))).toBeCloseTo(11.25);
+		// The seam node (lon 180) is drawn around whichever side the point is on
+		expect(expectNearestCell(grid, values, 5, 179).map(([lon]) => lon)).toEqual([
+			174.375, 185.625, 185.625, 174.375, 174.375
+		]);
+		expect(expectNearestCell(grid, values, 5, -179)[0][0]).toBe(-185.625);
+	});
+
+	test('gaussian grid: past the outermost rows, the nearest row is the outermost one up to the pole', () => {
+		const data: GaussianGridData = {
+			type: 'gaussian',
+			nx: 208,
+			ny: 1,
+			gaussianGridLatitudeLines: 4
+		};
+		const grid = new GaussianGrid(data);
+		const values = indexValues(208);
+		// 20 nodes in each outermost row: indices 0-19 in the north, 188-207 in the south
+		for (const [lat, first] of [
+			[88, 0],
+			[-88, 188]
+		]) {
+			const node = grid.getInterpolatedValue(values, lat, 12, 'nearest');
+			expect(node).toBeGreaterThanOrEqual(first);
+			expect(node).toBeLessThan(first + 20);
+
+			const ring = grid.getCellPolygon(lat, 12);
+			if (!ring) throw new Error('no cell');
+			expect(ring[0]).toEqual(ring[4]);
+			expect(ringContains(ring, 12, lat)).toBe(true);
+			const lats = ring.map(([, cellLat]) => cellLat);
+			expect(Math.max(...lats.map(Math.abs))).toBe(90);
+		}
+	});
+
+	test('regular grid: a node row on a pole ends at the pole', () => {
+		const grid = new RegularGrid({
+			type: 'regular',
+			nx: 36,
+			ny: 19,
+			lonMin: -180,
+			latMin: -90,
+			dx: 10,
+			dy: 10
+		});
+		const lats = (lat: number): number[] =>
+			(grid.getCellPolygon(lat, 5) ?? []).map(([, cellLat]) => cellLat);
+		expect(Math.min(...lats(89))).toBe(85);
+		expect(Math.max(...lats(89))).toBe(90);
+		expect(Math.min(...lats(-89))).toBe(-90);
+	});
+
+	test('projected grid: a cell containing the pole closes over it', () => {
+		const rdps = domainOptions.find((d) => d.value === 'cmc_gem_rdps_10km');
+		const grid = new ProjectionGrid(rdps?.grid as AnyProjectionGridData);
+		const ring = grid.getCellPolygon(89.999, 0);
+		if (!ring) throw new Error('no cell');
+		expect(ring[0]).toEqual(ring.at(-1));
+		expect(Math.max(...ring.map(([, lat]) => lat))).toBe(90);
+		// The ring spans one turn round the pole; on that turn it holds the point
+		const lons = ring.map(([lon]) => lon);
+		const lon = Math.min(...lons) + normalizeLon(0 - Math.min(...lons) - 180) + 180;
+		expect(ringContains(ring, lon, 89.999)).toBe(true);
+		// Cells off the pole stay plain four-corner rings
+		expect(grid.getCellPolygon(85, 0)).toHaveLength(5);
 	});
 });

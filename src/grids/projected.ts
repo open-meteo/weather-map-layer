@@ -240,19 +240,7 @@ export class ProjectionGrid implements GridInterface {
 	 * rendered data on the max-x/max-y sides.
 	 */
 	getBoundaryPolygon(maxPointsPerEdge = 64): Array<[number, number]> {
-		const ring: Array<[number, number]> = [];
-		let prevLon: number | null = null;
-		const add = (projX: number, projY: number): void => {
-			const [lat, lonRaw] = this.projection.reverse(projX, projY);
-			let lon = ((((lonRaw + 180) % 360) + 360) % 360) - 180; // normalize to [-180, 180]
-			// Unwrap relative to the previous vertex so the ring stays continuous
-			// across the antimeridian / around a pole instead of jumping ~360°.
-			if (prevLon !== null) {
-				lon -= 360 * Math.round((lon - prevLon) / 360);
-			}
-			prevLon = lon;
-			ring.push([lon, lat]);
-		};
+		const { ring, add } = this.ringBuilder();
 
 		const xEnd = this.minX + this.nx * this.dx;
 		const yEnd = this.minY + this.ny * this.dy;
@@ -266,6 +254,64 @@ export class ProjectionGrid implements GridInterface {
 		for (let j = this.ny; j > 0; j -= stepY) add(this.minX, this.minY + j * this.dy);
 		add(this.minX, this.minY); // close the ring
 		return ring;
+	}
+
+	getCellPolygon(lat: number, lon: number): Array<[number, number]> | null {
+		const idx = this.findPointInterpolated(lat, lon);
+		if (!isFinite(idx.x)) return null;
+
+		// The node `interpolateNearest` reads and its extent in grid steps, with
+		// the same edge handling as the regular grid: nothing before the first
+		// node, a whole step past the last
+		const xi = Math.min(idx.xFraction >= 0.5 ? idx.x + 1 : idx.x, this.nx - 1);
+		const yi = Math.min(idx.yFraction >= 0.5 ? idx.y + 1 : idx.y, this.ny - 1);
+		const xLo = xi === 0 ? 0 : xi - 0.5;
+		const xHi = xi === this.nx - 1 ? this.nx : xi + 0.5;
+		const yLo = yi === 0 ? 0 : yi - 0.5;
+		const yHi = yi === this.ny - 1 ? this.ny : yi + 0.5;
+
+		// A rectangle in projected space; a cell is small enough for its edges to
+		// be drawn straight after reprojection
+		const { ring, add } = this.ringBuilder(lon);
+		const at = (xStep: number, yStep: number): void =>
+			add(this.minX + xStep * this.dx, this.minY + yStep * this.dy);
+		at(xLo, yLo);
+		at(xHi, yLo);
+		at(xHi, yHi);
+		at(xLo, yHi);
+		at(xLo, yLo);
+		// A cell containing a pole: going round it, the unwrapped longitudes
+		// return a whole turn off where they started, so the ring closes over
+		// the pole instead
+		if (Math.abs(ring[4][0] - ring[0][0]) > 180) {
+			const poleLat = ring[0][1] > 0 ? 90 : -90;
+			ring.push([ring[4][0], poleLat], [ring[0][0], poleLat], ring[0]);
+		}
+		return ring;
+	}
+
+	/**
+	 * Collects projected points into a `[lon, lat]` ring whose longitudes stay
+	 * continuous across the antimeridian / around a pole instead of jumping
+	 * ~360°: each vertex is unwrapped relative to the previous one, the first
+	 * relative to `referenceLon` (normalized to [-180, 180] when omitted).
+	 */
+	private ringBuilder(referenceLon?: number): {
+		ring: Array<[number, number]>;
+		add: (projX: number, projY: number) => void;
+	} {
+		const ring: Array<[number, number]> = [];
+		let prevLon: number | null = referenceLon ?? null;
+		const add = (projX: number, projY: number): void => {
+			const [lat, lonRaw] = this.projection.reverse(projX, projY);
+			let lon = ((((lonRaw + 180) % 360) + 360) % 360) - 180;
+			if (prevLon !== null) {
+				lon -= 360 * Math.round((lon - prevLon) / 360);
+			}
+			prevLon = lon;
+			ring.push([lon, lat]);
+		};
+		return { ring, add };
 	}
 
 	private getProjectedBorderPoints(): number[][] {
