@@ -44,6 +44,8 @@
 		"examples/vector/contouring/contouring-on-colorscale.html",
 		"examples/vector/contouring/custom-contouring-intervals.html",
 
+		"examples/gpu/custom-layer.html",
+
 		"examples/leaflet/leaflet-raster.html",
 		"examples/leaflet/leaflet-vector.html",
 		"examples/leaflet/leaflet-contouring.html",
