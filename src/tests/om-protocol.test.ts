@@ -175,6 +175,19 @@ describe('Request Options', () => {
 			expect(() => parseRequest(url, settings)).toThrow('Invalid domain');
 		});
 
+		it('takes the domain of a GRIB index URL from the query', async () => {
+			const settings = createTestSettings({ domainOptions: [createTestDomain('ncep_gfs025')] });
+			const url =
+				'om://https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261027/00/atmos/gfs.t00z.pgrb2.0p25.f003.idx?domain=ncep_gfs025&variable=temperature_2m';
+
+			const { baseUrl, dataOptions, fileAndVariableKey } = parseRequest(url, settings);
+			expect(baseUrl).toBe(
+				'https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261027/00/atmos/gfs.t00z.pgrb2.0p25.f003.idx'
+			);
+			expect(dataOptions.domain.value).toBe('ncep_gfs025');
+			expect(fileAndVariableKey).toContain('domain=ncep_gfs025');
+		});
+
 		it('throws for missing variable', async () => {
 			const domainOptions = [createTestDomain('domain1')];
 			const settings = createTestSettings({ domainOptions });

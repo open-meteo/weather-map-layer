@@ -178,6 +178,82 @@ export const variableAvailable = (
 			patternMatches(rule.pattern, variable) && rule.getSourceVars({ variable, stored }) !== null
 	);
 
+/** A rule that claimed the requested variable for one file, with what it reads. */
+export interface ResolvedDerivation {
+	rule: VariableDerivationRule;
+	sourceVars: string[];
+	context: DerivationContext;
+}
+
+/**
+ * The first rule claiming `variable` for a file storing `stored`, or undefined
+ * when the variable is read as stored. A read through a rule needing the time
+ * step is rejected when the caller passed none; a prefetch only needs the
+ * source names and goes ahead.
+ */
+export const resolveDerivation = (
+	rules: VariableDerivationRule[],
+	variable: string,
+	stored: ReadonlySet<string>,
+	deltaTimeHours: number | undefined,
+	prefetch = false
+): ResolvedDerivation | undefined => {
+	const context: DerivationContext = { variable, stored, deltaTimeHours };
+
+	for (const rule of rules) {
+		if (!patternMatches(rule.pattern, variable)) continue;
+		const sourceVars = rule.getSourceVars(context);
+		if (sourceVars === null) continue;
+		if (sourceVars.length === 0) {
+			throw new Error(`Derivation rule for ${variable} returned no source variables`);
+		}
+		if (rule.usesDeltaTime && deltaTimeHours === undefined && !prefetch) {
+			throw new Error(
+				`${variable} is derived from the length of the file's time step, which the caller did not pass (deltaTimeHours)`
+			);
+		}
+		return { rule, sourceVars, context };
+	}
+	return undefined;
+};
+
+/**
+ * The derived data from the source fields read for a resolved rule, in
+ * `getSourceVars` order. `primaryScaleFactor` is the first source's stored
+ * scale factor, which a rule declaring `'primary'` inherits: exact when
+ * `values` is that variable passed through unchanged (speed/direction, wave),
+ * and a good proxy for derived magnitudes (wind speed from u/v).
+ */
+export const applyDerivation = (
+	{ rule, context }: ResolvedDerivation,
+	sources: Float32Array[],
+	primaryScaleFactor: number,
+	useSAB: boolean
+): Data => {
+	const data = rule.process(sources, context);
+
+	// A rule may build its output with plain typed-array methods. Moving it
+	// into shared memory once per read keeps the grid zero-copy for the tile
+	// workers, which would otherwise clone it per tile.
+	if (useSAB) {
+		data.values = intoSharedBuffer(data.values);
+		data.directions = intoSharedBuffer(data.directions);
+	}
+
+	// Every derivation rule defines its quantization scale factor so the
+	// half-quantum threshold offset is always available.
+	data.scaleFactor = rule.scaleFactor === 'primary' ? primaryScaleFactor : rule.scaleFactor;
+	return data;
+};
+
+/** `array` in a SharedArrayBuffer: itself when it already is, otherwise a copy. */
+const intoSharedBuffer = (array: Float32Array | undefined): Float32Array | undefined => {
+	if (!array || array.buffer instanceof SharedArrayBuffer) return array;
+	const shared = new Float32Array(new SharedArrayBuffer(array.byteLength));
+	shared.set(array);
+	return shared;
+};
+
 /** Vector magnitude and meteorological direction from u/v components. */
 const uvToSpeedAndDirection = ([u, v]: Float32Array[]): Data => {
 	const BufferConstructor = u.buffer.constructor as typeof ArrayBuffer;

@@ -25,8 +25,9 @@ export const TILE_PX = 512;
 export const ARROW_LATTICE = 25;
 export const BARB_LATTICE = 18;
 
-// Parameters affecting data identity
-export const DATA_RELEVANT_PARAMS = new Set(['variable']);
+// Parameters affecting data identity. `domain` names the grid of a file whose
+// path has no domain segment (a GRIB index URL).
+export const DATA_RELEVANT_PARAMS = new Set(['variable', 'domain']);
 
 /* OM URL */
 export const OM_PREFIX_REGEX = /^om:\/\/([^?]+)(?:\?(.*))?$/;

@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Weather Map Layer - GFS Archive (indexed GRIB2) Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.css" />
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+			#controls {
+				position: absolute;
+				top: 12px;
+				left: 12px;
+				z-index: 1;
+				background: rgba(255, 255, 255, 0.92);
+				padding: 10px 12px;
+				border-radius: 6px;
+				font-family: system-ui, sans-serif;
+				font-size: 14px;
+				box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+			}
+			#controls label {
+				display: block;
+			}
+			#controls label + label {
+				margin-top: 8px;
+			}
+			#controls input,
+			#controls select {
+				margin-left: 6px;
+			}
+			#controls small {
+				display: block;
+				margin-top: 8px;
+				color: #555;
+				font-size: 12px;
+				max-width: 320px;
+				word-break: break-all;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<div id="controls">
+			<label>
+				Product
+				<select id="product">
+					<option value="ncep_gfs025" selected>GFS 0.25° (pgrb2)</option>
+					<option value="ncep_gfs013">GFS 0.13° surface fluxes (sflux)</option>
+				</select>
+			</label>
+			<label>
+				Run (UTC)
+				<input id="runDate" type="date" value="2026-10-27" min="2021-01-01" />
+				<select id="runHour">
+					<option value="00" selected>00</option>
+					<option value="06">06</option>
+					<option value="12">12</option>
+					<option value="18">18</option>
+				</select>
+			</label>
+			<label>
+				Forecast hour
+				<input id="forecastHour" type="number" value="3" min="0" max="384" step="1" />
+			</label>
+			<label>
+				Variable
+				<select id="variable">
+					<option value="temperature_2m" selected>Temperature (2 m)</option>
+					<option value="wind_speed_10m">Wind speed (10 m)</option>
+					<option value="precipitation">Precipitation</option>
+					<option value="cloud_cover">Cloud cover</option>
+					<option value="pressure_msl">Pressure (MSL)</option>
+					<option value="temperature_850hPa">Temperature (850 hPa)</option>
+					<option value="geopotential_height_500hPa">Geopotential height (500 hPa)</option>
+				</select>
+			</label>
+			<small id="urlNote"></small>
+		</div>
+		<script type="module">
+			import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.mjs';
+
+			const OMWeatherMapLayer = await import(
+				location.hostname === 'localhost'
+					? '../dist/index.mjs' // local development
+					: 'https://unpkg.com/@openmeteo/weather-map-layer@0.3.1/dist/index.mjs' // x-release-please-version
+			);
+
+			maplibregl.addProtocol('om', OMWeatherMapLayer.omProtocol);
+
+			const map = new maplibregl.Map({
+				container: 'map',
+				style: 'https://static-assets.open-meteo.com/map-assets/styles/minimal-planet-maps.json', // replace with your own style sheet
+				hash: true
+			});
+
+			// NOAA's GFS archive on AWS Open Data holds every run since 2021 as
+			// GRIB2 files with `.idx` inventories; the protocol fetches only the
+			// bytes of the requested variable's message.
+			const BUCKET = 'https://noaa-gfs-bdp-pds.s3.amazonaws.com';
+
+			const productSelect = document.getElementById('product');
+			const runDateInput = document.getElementById('runDate');
+			const runHourSelect = document.getElementById('runHour');
+			const forecastHourInput = document.getElementById('forecastHour');
+			const variableSelect = document.getElementById('variable');
+			const urlNote = document.getElementById('urlNote');
+
+			function buildSourceUrl() {
+				const domain = productSelect.value;
+				const yyyymmdd = runDateInput.value.replaceAll('-', '');
+				const hh = runHourSelect.value;
+				const fff = String(forecastHourInput.value).padStart(3, '0');
+				// The 0.25° output is split over `pgrb2` and `pgrb2b`; the protocol
+				// looks in the second file by itself for a pressure level the first lacks
+				const file =
+					domain === 'ncep_gfs013'
+						? `gfs.t${hh}z.sfluxgrbf${fff}.grib2`
+						: `gfs.t${hh}z.pgrb2.0p25.f${fff}`;
+				const indexUrl = `${BUCKET}/gfs.${yyyymmdd}/${hh}/atmos/${file}.idx`;
+				// The path has no Open-Meteo domain segment, so the grid is named
+				// in the query
+				return `om://${indexUrl}?domain=${domain}&variable=${variableSelect.value}`;
+			}
+
+			function addOmLayer() {
+				const url = buildSourceUrl();
+				urlNote.textContent = url;
+				if (map.getLayer('omFileLayer')) map.removeLayer('omFileLayer');
+				if (map.getSource('omFileSource')) map.removeSource('omFileSource');
+
+				map.addSource('omFileSource', { url, type: 'raster' });
+				map.addLayer(
+					{
+						id: 'omFileLayer',
+						type: 'raster',
+						source: 'omFileSource',
+						paint: { 'raster-opacity': 0.75 }
+					},
+					'waterway-tunnel'
+				);
+			}
+
+			map.on('load', addOmLayer);
+			for (const control of [
+				productSelect,
+				runDateInput,
+				runHourSelect,
+				forecastHourInput,
+				variableSelect
+			]) {
+				control.addEventListener('change', addOmLayer);
+			}
+		</script>
+	</body>
+</html>
