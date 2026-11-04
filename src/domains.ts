@@ -1150,16 +1150,16 @@ export const domainOptions: Array<Domain> = [
 
 	// Geosphere Austria
 	{
-		value: 'geosphere_arome_austria',
-		label: 'Geosphere Austria',
+		value: 'geosphere_claef_austria',
+		label: 'Geosphere C-LAEF Austria',
 		grid: {
 			type: 'regular',
-			nx: 594,
-			ny: 492,
-			latMin: 42.981,
-			lonMin: 5.498,
-			dx: 0.028,
-			dy: 0.018,
+			nx: 1300,
+			ny: 945,
+			latMin: 43.002,
+			lonMin: 5.0317,
+			dx: 0.0135,
+			dy: 0.009,
 			zoom: 1
 		},
 		time_interval: 'hourly',
