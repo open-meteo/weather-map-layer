@@ -1328,7 +1328,8 @@ export const domainOptions: Array<Domain> = [
 			zoom: 1
 		},
 		time_interval: '3_hourly',
-		model_interval: '12_hourly'
+		model_interval: '12_hourly',
+		wave_directions_towards: true
 	},
 	{
 		value: 'meteofrance_currents',
