@@ -1,7 +1,7 @@
 // @ts-expect-error worker import
 import tileWorkerUrl from './worker?worker&url';
 
-import { TilePromise, TileRequest, TileResult, WorkerResponse } from './types';
+import { TilePromise, TileRenderer, TileRequest, TileResult, WorkerResponse } from './types';
 
 /**
  * The tile worker ships as its own file next to the module, so it is cached
@@ -19,7 +19,7 @@ const createTileWorker = (): Worker => {
 	return new Worker(URL.createObjectURL(shim));
 };
 
-export class WorkerPool {
+export class WorkerPool implements TileRenderer {
 	private workers: Worker[] = [];
 	private nextWorker = 0;
 	/** Stores pending tile requests by key to avoid duplicate requests for the same tile */
