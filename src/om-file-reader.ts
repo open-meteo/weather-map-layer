@@ -15,10 +15,9 @@ import {
 	patternMatches,
 	variableIsAccumulated
 } from './derivation-rules';
-
 import { getLocalOmFile } from './local-files';
 
-import type { Data, DimensionRange } from './types';
+import type { Data, DimensionRange, Domain } from './types';
 
 /**
  * Configuration options for the WeatherMapLayerFileReader.
@@ -72,6 +71,13 @@ export interface ReadContext {
 	 * a variable (`variableUsesDeltaTime`), or the read is rejected.
 	 */
 	deltaTimeHours?: number;
+
+	/**
+	 * The domain the file belongs to, for rules that depend on how a model
+	 * stores a quantity (`wave_directions_towards`). The om protocol passes
+	 * the domain it resolved from the URL.
+	 */
+	domain?: Domain;
 }
 
 export const defaultFileReaderConfig: Required<
@@ -168,7 +174,12 @@ export class WeatherMapLayerFileReader {
 		if (candidates.length === 0) return undefined;
 
 		const stored = await listRootVariables(reader);
-		const context: DerivationContext = { variable, stored, deltaTimeHours: read.deltaTimeHours };
+		const context: DerivationContext = {
+			variable,
+			stored,
+			deltaTimeHours: read.deltaTimeHours,
+			domain: read.domain
+		};
 
 		for (const rule of candidates) {
 			const sourceVars = rule.getSourceVars(context);
