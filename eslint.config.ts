@@ -12,7 +12,13 @@ export default defineConfig([
 			globals: { ...globals.browser, ...globals.node },
 			parserOptions: {
 				projectService: {
-					allowDefaultProject: ['*.js', '*.ts', 'scripts/*.ts', 'scripts/*.js']
+					allowDefaultProject: [
+						'*.js',
+						'*.ts',
+						'scripts/*.ts',
+						'scripts/*.js',
+						'examples/node/*.mjs'
+					]
 				},
 				ecmaVersion: 'latest',
 				sourceType: 'module'
