@@ -362,6 +362,12 @@ export interface Domain {
 	grid: GridData;
 	time_interval: ModelDt;
 	model_interval: ModelUpdateInterval;
+	/**
+	 * Set where the files store wave directions as the direction the waves
+	 * travel towards. The API and the other wave models give the direction
+	 * they come from, so the reader turns these around to that convention.
+	 */
+	wave_directions_towards?: boolean;
 }
 
 export type ModelDt =
