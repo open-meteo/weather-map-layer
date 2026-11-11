@@ -150,7 +150,7 @@ export const getOrCreateState = (
 		// else we need to create a new state
 	}
 
-	const ranges = getRanges(dataOptions.domain.grid, dataOptions.bounds);
+	const ranges = getRanges(dataOptions.grid, dataOptions.bounds);
 	const state: OmUrlState = {
 		dataOptions,
 		ranges,
@@ -298,7 +298,7 @@ export const getValueFromLatLong = async (
 	for (const state of states) {
 		state.lastAccess = Date.now();
 		if (state.data?.values) {
-			layers.push({ domain: state.dataOptions.domain, data: state.data, ranges: state.ranges });
+			layers.push({ grid: state.dataOptions.grid, data: state.data, ranges: state.ranges });
 		}
 	}
 	if (layers.length === 0) {

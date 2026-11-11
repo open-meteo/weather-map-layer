@@ -44,7 +44,7 @@ export const createSamplers = (
 	layers: LayerRenderData[],
 	method: InterpolationMethod
 ): Samplers => {
-	const grids = layers.map((layer) => GridFactory.create(layer.domain.grid, layer.ranges));
+	const grids = layers.map((layer) => GridFactory.create(layer.grid, layer.ranges));
 	const halfQuanta = layers.map((layer) => halfQuantum(layer.data.scaleFactor));
 
 	// The finest layer with a finite value at the point, or -1. The value itself

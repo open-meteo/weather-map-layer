@@ -63,10 +63,11 @@ export const omProtocol = async (
 	// Resolved against the reader's effective config: the reader is built from
 	// the first call's `fileReaderConfig`, so what rendering takes from the
 	// derivation rules (barbs only for a wind speed) follows how data is read.
-	const request = parseRequest(url, {
-		...settings,
-		fileReaderConfig: instance.omFileReader.config
-	});
+	const request = await parseRequest(
+		url,
+		{ ...settings, fileReaderConfig: instance.omFileReader.config },
+		instance.omFileReader
+	);
 
 	// Handle TileJSON request. The bounds only depend on the grid definition, so
 	// respond without touching the data: the read starts with the first tile
@@ -88,18 +89,17 @@ export const omProtocol = async (
 	}
 
 	// The concrete domains the tile is rendered from, finest-first: for a
-	// composite, the layers active at this zoom, viewport and lead time.
-	const layers = resolveLayers(
-		request.dataOptions.domain,
-		request.baseUrl,
-		request.fileAndVariableKey,
-		settings.domainOptions,
-		{
-			zoom: request.tileIndex.z,
-			viewportBounds: request.dataOptions.bounds,
-			leadTimeHours: parseLeadTimeHours(request.baseUrl)
-		}
-	);
+	// composite, the layers active at this zoom, viewport and lead time. A file
+	// from a domain outside the catalogue is its own single layer, georeferenced
+	// by the grid read from the file.
+	const { domain } = request.dataOptions;
+	const layers = domain
+		? resolveLayers(domain, request.baseUrl, request.fileAndVariableKey, settings.domainOptions, {
+				zoom: request.tileIndex.z,
+				viewportBounds: request.dataOptions.bounds,
+				leadTimeHours: parseLeadTimeHours(request.baseUrl)
+			})
+		: [{ domain, omFileUrl: request.baseUrl, stateKey: request.fileAndVariableKey }];
 	if (layers.length === 0) {
 		return makeEmptyTileResponse(params.type);
 	}
@@ -115,7 +115,13 @@ export const omProtocol = async (
 		getOrCreateState(
 			instance.stateByKey,
 			layer.stateKey,
-			{ ...request.dataOptions, domain: layer.domain },
+			// A composite's layers each read their own catalogue grid; the request's
+			// grid is the one a plain or catalogue-less file was resolved with.
+			{
+				...request.dataOptions,
+				domain: layer.domain,
+				grid: layer.domain?.grid ?? request.dataOptions.grid
+			},
 			layer.omFileUrl,
 			maxStatesWithData
 		)
@@ -137,7 +143,7 @@ export const omProtocol = async (
 	settled.forEach((result, i) => {
 		if (result.status === 'fulfilled') {
 			loaded.push({
-				domain: states[i].dataOptions.domain,
+				grid: states[i].dataOptions.grid,
 				data: result.value,
 				ranges: states[i].ranges
 			});
@@ -230,7 +236,7 @@ const getTilejson = async (
 	clippingOptions?: ResolvedClippingOptions
 ): Promise<TileJSON> => {
 	// We initialize the grid with the ranges set to null, because we want to find out the maximum bounds of this grid
-	const grid = GridFactory.create(dataOptions.domain.grid, null);
+	const grid = GridFactory.create(dataOptions.grid, null);
 	let bounds;
 	if (clippingOptions && clippingOptions.bounds) {
 		bounds = constrainBounds(grid.getBounds(), clippingOptions.bounds) ?? grid.getBounds();

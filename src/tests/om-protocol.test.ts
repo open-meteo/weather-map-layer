@@ -1,3 +1,4 @@
+import { WeatherMapLayerFileReader } from '../om-file-reader';
 import { defaultOmProtocolSettings } from '../om-protocol';
 import { parseRequest } from '../utils/parse-request';
 import { AddProtocolAction, RequestParameters } from 'maplibre-gl';
@@ -6,14 +7,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	DimensionRange,
 	Domain,
+	GridData,
 	OmProtocolSettings,
 	ResolvedBreakpointColorScale,
 	TileJSON
 } from '../types';
 
-const { mockReturnBuffer, mockReadVariableResult } = vi.hoisted(() => ({
+const { mockReturnBuffer, mockReadVariableResult, mockReadGridData } = vi.hoisted(() => ({
 	mockReturnBuffer: { value: new ArrayBuffer(16) },
-	mockReadVariableResult: { value: null as { values: Float32Array; directions: undefined } | null }
+	mockReadVariableResult: { value: null as { values: Float32Array; directions: undefined } | null },
+	// Grid "read from the file" for domains that are not in the catalogue.
+	mockReadGridData: {
+		grid: { type: 'regular', nx: 4, ny: 3, lonMin: 0, latMin: 0, dx: 1, dy: 1 } as GridData,
+		calls: [] as [string, string][]
+	}
 }));
 
 vi.mock('../om-file-reader', async () => {
@@ -30,6 +37,10 @@ vi.mock('../om-file-reader', async () => {
 					ranges?.reduce((acc, range) => acc * (range.end - range.start + 1), 1) || 0;
 				return { values: new Float32Array(totalValues), directions: undefined };
 			}
+			async readGridData(url: string, variable: string): Promise<GridData> {
+				mockReadGridData.calls.push([url, variable]);
+				return mockReadGridData.grid;
+			}
 		}
 	};
 });
@@ -45,6 +56,7 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	mockReturnBuffer.value = new ArrayBuffer(16);
 	mockReadVariableResult.value = null;
+	mockReadGridData.calls.length = 0;
 });
 
 afterEach(() => {
@@ -73,6 +85,10 @@ const createTestSettings = (overrides: Partial<OmProtocolSettings> = {}): OmProt
 	...overrides
 });
 
+/** Parse with a (mocked) file reader, as the protocol does. */
+const parse = (url: string, settings: OmProtocolSettings) =>
+	parseRequest(url, settings, new WeatherMapLayerFileReader());
+
 describe('Request Options', () => {
 	describe('parseRequest', () => {
 		it('resolves data identity and render options from URL', async () => {
@@ -81,44 +97,40 @@ describe('Request Options', () => {
 
 			const url =
 				'om://https://example.com/data_spatial/domain1/file.om?variable=temperature&dark=true&intervals=2';
-			const { dataOptions, renderOptions } = parseRequest(url, settings);
+			const { dataOptions, renderOptions } = await parse(url, settings);
 
-			expect(dataOptions.domain.value).toBe('domain1');
+			expect(dataOptions.domain?.value).toBe('domain1');
 			expect(dataOptions.variable).toBe('temperature');
 			expect(renderOptions.intervals).toStrictEqual([2]);
 		});
 
-		it('passes the time step length of the URL on, when it is a positive number', () => {
+		it('passes the time step length of the URL on, when it is a positive number', async () => {
 			const settings = createTestSettings({ domainOptions: [createTestDomain('domain1')] });
 			const base = 'om://https://example.com/data_spatial/domain1/file.om?variable=precipitation';
+			const deltaOf = async (url: string) =>
+				(await parse(url, settings)).dataOptions.deltaTimeHours;
 
-			expect(parseRequest(`${base}&delta_time_hours=3`, settings).dataOptions.deltaTimeHours).toBe(
-				3
-			);
-			expect(
-				parseRequest(`${base}&delta_time_hours=0.25`, settings).dataOptions.deltaTimeHours
-			).toBe(0.25);
+			expect(await deltaOf(`${base}&delta_time_hours=3`)).toBe(3);
+			expect(await deltaOf(`${base}&delta_time_hours=0.25`)).toBe(0.25);
 			for (const raw of ['', '0', '-3', 'abc']) {
-				expect(
-					parseRequest(`${base}&delta_time_hours=${raw}`, settings).dataOptions.deltaTimeHours
-				).toBeUndefined();
+				expect(await deltaOf(`${base}&delta_time_hours=${raw}`)).toBeUndefined();
 			}
-			expect(parseRequest(base, settings).dataOptions.deltaTimeHours).toBeUndefined();
+			expect(await deltaOf(base)).toBeUndefined();
 		});
 
-		it('draws barbs only for wind speeds, arrows otherwise', () => {
+		it('draws barbs only for wind speeds, arrows otherwise', async () => {
 			const settings = createTestSettings({ domainOptions: [createTestDomain('domain1')] });
 			const base =
 				'om://https://example.com/data_spatial/domain1/file.om?arrows=true&arrow_style=barb';
 
 			expect(
-				parseRequest(`${base}&variable=wind_u_component_10m`, settings).renderOptions.arrowStyle
+				(await parse(`${base}&variable=wind_u_component_10m`, settings)).renderOptions.arrowStyle
 			).toBe('barb');
-			expect(parseRequest(`${base}&variable=wave_height`, settings).renderOptions.arrowStyle).toBe(
+			expect((await parse(`${base}&variable=wave_height`, settings)).renderOptions.arrowStyle).toBe(
 				'arrow'
 			);
 			expect(
-				parseRequest(`${base}&variable=ocean_u_current`, settings).renderOptions.arrowStyle
+				(await parse(`${base}&variable=ocean_u_current`, settings)).renderOptions.arrowStyle
 			).toBe('arrow');
 		});
 
@@ -136,8 +148,8 @@ describe('Request Options', () => {
 				'om://https://example.com/nested/bucket/structure/data_spatial/domain1/file.om?variable=temperature&dark=true&intervals=2';
 
 			for (const url of [url1, url2, url3]) {
-				const { dataOptions, renderOptions } = parseRequest(url, settings);
-				expect(dataOptions.domain.value).toBe('domain1');
+				const { dataOptions, renderOptions } = await parse(url, settings);
+				expect(dataOptions.domain?.value).toBe('domain1');
 				expect(dataOptions.variable).toBe('temperature');
 				expect(renderOptions.intervals).toStrictEqual([2]);
 			}
@@ -161,18 +173,35 @@ describe('Request Options', () => {
 				'om://https://example.com/nested/bucket/structure/domain1/file.om?variable=temperature&dark=true&intervals=2';
 
 			for (const url of [url1, url2, url3, url4]) {
-				const { dataOptions, renderOptions } = parseRequest(url, settings);
-				expect(dataOptions.domain.value).toBe('domain1');
+				const { dataOptions, renderOptions } = await parse(url, settings);
+				expect(dataOptions.domain?.value).toBe('domain1');
 				expect(dataOptions.variable).toBe('temperature');
 				expect(renderOptions.intervals).toStrictEqual([2]);
 			}
 		});
 
-		it('throws for invalid domain', async () => {
+		it('reads the grid from the file for a domain not in the catalogue', async () => {
 			const settings = createTestSettings({ domainOptions: [] });
 			const url = 'om://https://example.com/data_spatial/unknown/file.om?variable=temp';
 
-			expect(() => parseRequest(url, settings)).toThrow('Invalid domain');
+			const { dataOptions } = await parse(url, settings);
+
+			expect(dataOptions.domain).toBeUndefined();
+			expect(dataOptions.grid).toEqual(mockReadGridData.grid);
+			expect(mockReadGridData.calls).toEqual([
+				['https://example.com/data_spatial/unknown/file.om', 'temp']
+			]);
+		});
+
+		it('takes the grid from the catalogue without reading the file', async () => {
+			const domainOptions = [createTestDomain('domain1')];
+			const settings = createTestSettings({ domainOptions });
+			const url = 'om://https://example.com/data_spatial/domain1/file.om?variable=temp';
+
+			const { dataOptions } = await parse(url, settings);
+
+			expect(dataOptions.grid).toEqual(domainOptions[0].grid);
+			expect(mockReadGridData.calls).toEqual([]);
 		});
 
 		it('throws for missing variable', async () => {
@@ -180,7 +209,7 @@ describe('Request Options', () => {
 			const settings = createTestSettings({ domainOptions });
 			const url = 'om://https://example.com/data_spatial/domain1/file.om';
 
-			expect(() => parseRequest(url, settings)).toThrow('Variable is required but not defined');
+			await expect(parse(url, settings)).rejects.toThrow('Variable is required but not defined');
 		});
 
 		it('parses render options with defaults', async () => {
@@ -188,7 +217,7 @@ describe('Request Options', () => {
 			const settings = createTestSettings({ domainOptions });
 
 			const url = 'om://https://example.com/data_spatial/domain1/file.om?variable=temp';
-			const { renderOptions } = parseRequest(url, settings);
+			const { renderOptions } = await parse(url, settings);
 
 			const colorScale = renderOptions.colorScale as ResolvedBreakpointColorScale;
 
@@ -205,7 +234,7 @@ describe('Request Options', () => {
 
 			const url =
 				'om://https://example.com/data_spatial/domain1/file.om?variable=temp&tile_size=1024&grid=true&arrows=true&contours=true';
-			const { renderOptions } = parseRequest(url, settings);
+			const { renderOptions } = await parse(url, settings);
 
 			expect(renderOptions.tileSize).toBe(1024);
 			expect(renderOptions.drawGrid).toBe(true);
@@ -220,10 +249,10 @@ describe('Request Options', () => {
 			const url =
 				'om://https://example.com/data_spatial/domain1/file.om?variable=temp&tile_size=999';
 
-			expect(() => parseRequest(url, settings)).toThrow('Invalid tile size');
+			await expect(parse(url, settings)).rejects.toThrow('Invalid tile size');
 		});
 
-		it('resolves clipping options and caches by reference', () => {
+		it('resolves clipping options and caches by reference', async () => {
 			const domainOptions = [createTestDomain('domain1')];
 			const clippingOptions = {
 				bounds: [-10, -10, 10, 10] as [number, number, number, number]
@@ -231,8 +260,8 @@ describe('Request Options', () => {
 			const settings = createTestSettings({ domainOptions, clippingOptions });
 			const url = 'om://https://example.com/data_spatial/domain1/file.om?variable=temp';
 
-			const result1 = parseRequest(url, settings);
-			const result2 = parseRequest(url, settings);
+			const result1 = await parse(url, settings);
+			const result2 = await parse(url, settings);
 
 			// Same reference for clippingOptions means cached result is reused
 			expect(result1.clippingOptions).toBeDefined();
@@ -240,12 +269,12 @@ describe('Request Options', () => {
 			expect(result1.clippingOptions!.bounds).toBeDefined();
 		});
 
-		it('returns undefined clippingOptions when none provided', () => {
+		it('returns undefined clippingOptions when none provided', async () => {
 			const domainOptions = [createTestDomain('domain1')];
 			const settings = createTestSettings({ domainOptions });
 			const url = 'om://https://example.com/data_spatial/domain1/file.om?variable=temp';
 
-			const result = parseRequest(url, settings);
+			const result = await parse(url, settings);
 			expect(result.clippingOptions).toBeUndefined();
 		});
 	});
@@ -257,6 +286,7 @@ describe('Request Options', () => {
 			const customResolver = vi.fn().mockReturnValue({
 				dataOptions: {
 					domain: createTestDomain('custom_domain'),
+					grid: createTestDomain('custom_domain').grid,
 					variable: { value: 'custom_var' },
 					ranges: [
 						{ start: 0, end: 10 },
@@ -323,6 +353,20 @@ describe('omProtocol', () => {
 
 			// DWD ICON global bounds
 			expect(resultData.bounds).toEqual([-180, -90, 179.875, 90.125]);
+		});
+
+		it('returns bounds from the file grid for a domain not in the catalogue', async () => {
+			const { omProtocol } = await import('../om-protocol');
+			const settings = createTestSettings({ domainOptions: [] });
+			const params: RequestParameters = {
+				url: 'om://https://example.com/data_spatial/unknown/file.om?variable=temperature_2m',
+				type: 'json'
+			};
+			const result = await omProtocol(params, new AbortController(), settings);
+			const resultData = result.data as TileJSON;
+
+			// 4x3 cells of 1 degree from the origin (see mockReadGridData)
+			expect(resultData.bounds).toEqual([0, 0, 4, 3]);
 		});
 
 		it('clips the bounds to clippingOptions', async () => {
