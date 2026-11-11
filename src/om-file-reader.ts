@@ -17,7 +17,7 @@ import {
 	variableIsAccumulated
 } from './derivation-rules';
 
-import type { Data, DimensionRange, GridData } from './types';
+import type { Data, DimensionRange, Domain, GridData } from './types';
 
 /** Grid definitions are memoized per file URL; every timestep is a new URL. */
 const GRID_DATA_CACHE_MAX = 32;
@@ -74,6 +74,13 @@ export interface ReadContext {
 	 * a variable (`variableUsesDeltaTime`), or the read is rejected.
 	 */
 	deltaTimeHours?: number;
+
+	/**
+	 * The domain the file belongs to, for rules that depend on how a model
+	 * stores a quantity (`wave_directions_towards`). The om protocol passes
+	 * the domain it resolved from the URL.
+	 */
+	domain?: Domain;
 }
 
 export const defaultFileReaderConfig: Required<
@@ -164,7 +171,12 @@ export class WeatherMapLayerFileReader {
 		if (candidates.length === 0) return undefined;
 
 		const stored = await listRootVariables(reader);
-		const context: DerivationContext = { variable, stored, deltaTimeHours: read.deltaTimeHours };
+		const context: DerivationContext = {
+			variable,
+			stored,
+			deltaTimeHours: read.deltaTimeHours,
+			domain: read.domain
+		};
 
 		for (const rule of candidates) {
 			const sourceVars = rule.getSourceVars(context);

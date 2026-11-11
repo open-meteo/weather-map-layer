@@ -19,8 +19,13 @@ import type { Domain } from '../types';
  */
 const fixtures: Record<string, string> = crsWkt;
 
-/** Catalogue entries without data_spatial output as of 2026-09-09. */
-const UNSERVED = new Set(['ncep_gfs_graphcast025', 'kma_gdps', 'ecmwf_ec46_ensemble_mean']);
+/** Catalogue entries without data_spatial output as of 2026-11-11. */
+const UNSERVED = new Set([
+	'ncep_gfs_graphcast025',
+	'kma_gdps',
+	'ecmwf_ec46_ensemble_mean',
+	'ncep_rrfs_conus_ensemble'
+]);
 
 // Seamless composites only exist client-side: no file is served for them, so
 // there is no crs_wkt to compare against.
