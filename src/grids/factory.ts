@@ -1,14 +1,35 @@
 import { GaussianGrid } from './gaussian';
 import { GridInterface } from './interface';
+import { getGeometry, loadGeometry } from './latband/geometry';
+import { LatBandGrid } from './latband/latband';
 import { ProjectionGrid } from './projected';
 import { RegularGrid } from './regular';
 
-import { DimensionRange, GridData } from '../types';
+import { DimensionRange, GridData, SharedGeometry } from '../types';
 
 const GRID_CACHE_MAX = 32;
 const gridCache = new Map<string, GridInterface>();
 
 export class GridFactory {
+	/**
+	 * Loads what a grid needs from outside the bundle before it can be built:
+	 * a file-backed grid fetches and triangulates its cell index the first time
+	 * it is used. A no-op for every other grid type, so it is safe to await
+	 * before any create().
+	 */
+	static async preload(data: GridData): Promise<void> {
+		if (data.type === 'latband') {
+			await loadGeometry(data.geometry);
+		}
+	}
+
+	/** Preloaded geometry the tile workers need for this grid (see WorkerPool.share). */
+	static sharedGeometry(data: GridData): SharedGeometry[] {
+		if (data.type !== 'latband') return [];
+		const geometry = getGeometry(data.geometry);
+		return geometry ? [{ key: data.geometry, geometry }] : [];
+	}
+
 	static create(data: GridData, ranges: DimensionRange[] | null = null): GridInterface {
 		// Grids are immutable after construction, but get rebuilt for every tile
 		// message; construction is expensive for projected grids (trig setup).
@@ -32,6 +53,13 @@ export class GridFactory {
 		switch (data.type) {
 			case 'gaussian':
 				return new GaussianGrid(data, ranges);
+			case 'latband': {
+				const geometry = getGeometry(data.geometry);
+				if (!geometry) {
+					throw new Error('await GridFactory.preload(grid) before creating a latband grid');
+				}
+				return new LatBandGrid(data, geometry.buffer, ranges, geometry.triangulation);
+			}
 			case 'projectedFromBounds':
 			case 'projectedFromProjectedOrigin':
 			case 'projectedFromGeographicOrigin':
