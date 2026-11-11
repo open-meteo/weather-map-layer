@@ -487,18 +487,15 @@ describe('ensureData – cancelled read still settling', () => {
 });
 
 describe('ensureData – derivation context', () => {
-	it('passes the time step length of the data identity on to the reader', async () => {
-		const state = makeState(
-			new Map<string, OmUrlState>(),
-			'rate',
-			makeDataOptions({ variable: 'precipitation', deltaTimeHours: 3 })
-		);
+	it('passes the time step length and domain of the data identity on to the reader', async () => {
+		const dataOptions = makeDataOptions({ variable: 'precipitation', deltaTimeHours: 3 });
+		const state = makeState(new Map<string, OmUrlState>(), 'rate', dataOptions);
 		const reader = new FakeReader();
 
 		const p = ensureData(state, asReader(reader), undefined);
 		await flushMicrotasks();
 
-		expect(reader.lastCall.read).toEqual({ deltaTimeHours: 3 });
+		expect(reader.lastCall.read).toEqual({ deltaTimeHours: 3, domain: dataOptions.domain });
 		reader.resolveCall(0, makeMockData());
 		await p;
 	});
@@ -510,7 +507,10 @@ describe('ensureData – derivation context', () => {
 		const p = ensureData(state, asReader(reader), undefined);
 		await flushMicrotasks();
 
-		expect(reader.lastCall.read).toEqual({ deltaTimeHours: undefined });
+		expect(reader.lastCall.read).toEqual({
+			deltaTimeHours: undefined,
+			domain: state.dataOptions.domain
+		});
 		reader.resolveCall(0, makeMockData());
 		await p;
 	});

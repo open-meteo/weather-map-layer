@@ -1,10 +1,13 @@
 import {
+	defaultDerivationRules,
+	patternMatches,
 	variableAvailable,
 	variableHasDirections,
 	variableSupportsBarbs,
 	variableUsesDeltaTime
 } from '../derivation-rules';
 import type { VariableDerivationRule } from '../derivation-rules';
+import { domainOptions } from '../domains';
 import { describe, expect, it } from 'vitest';
 
 describe('variableHasDirections', () => {
@@ -106,5 +109,32 @@ describe('variableUsesDeltaTime', () => {
 		]) {
 			expect(variableUsesDeltaTime(variable), variable).toBe(false);
 		}
+	});
+});
+
+describe('wave directions', () => {
+	const rule = defaultDerivationRules.find((r) => patternMatches(r.pattern, 'wave_direction'))!;
+	const stored = new Set(['wave_height', 'wave_direction']);
+	const height = new Float32Array([1.5, 2]);
+	// Stored directions may sit in a signed range (the MF wave files hold -180..180)
+	const direction = new Float32Array([-145, 350]);
+
+	it('passes directions through for models storing where waves come from', () => {
+		const domain = domainOptions.find((d) => d.value === 'ncep_gfswave025')!;
+		const data = rule.process([height, direction], { variable: 'wave_direction', stored, domain });
+		expect(Array.from(data.directions!)).toEqual([-145, 350]);
+	});
+
+	it('turns directions around for models storing where waves travel towards', () => {
+		const domain = domainOptions.find((d) => d.value === 'meteofrance_wave')!;
+		expect(domain.wave_directions_towards).toBe(true);
+		const data = rule.process([height, direction], { variable: 'wave_direction', stored, domain });
+		expect(Array.from(data.directions!)).toEqual([35, 170]);
+		expect(data.values).toBe(height);
+	});
+
+	it('keeps directions as stored when the caller does not know the domain', () => {
+		const data = rule.process([height, direction], { variable: 'wave_direction', stored });
+		expect(Array.from(data.directions!)).toEqual([-145, 350]);
 	});
 });
