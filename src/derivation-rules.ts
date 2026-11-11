@@ -15,7 +15,7 @@ import {
 	wetBulbTemperature
 } from './utils/meteorology';
 
-import type { Data } from './types';
+import type { Data, Domain } from './types';
 
 /**
  * What a derivation rule gets to see of the file it reads from.
@@ -42,6 +42,13 @@ export interface DerivationContext {
 	 * caller passed none, which the reader rejects for such a variable.
 	 */
 	deltaTimeHours?: number;
+
+	/**
+	 * The domain the file belongs to, where the caller knows it: the om
+	 * protocol resolves it from the URL. Rules consult it for per-model
+	 * storage conventions such as `wave_directions_towards`.
+	 */
+	domain?: Domain;
 }
 
 /**
@@ -233,6 +240,10 @@ const mapCells = (source: Float32Array, cell: (i: number) => number): Float32Arr
 	return values;
 };
 
+/** Each direction turned by 180°, into 0..360 whatever range the stored values use. */
+const oppositeDirections = (directions: Float32Array): Float32Array =>
+	mapCells(directions, (i) => (((directions[i] + 180) % 360) + 360) % 360);
+
 const scalar = { directions: false, barbs: false };
 
 /** A per-cell view on one or more source fields. */
@@ -340,9 +351,9 @@ export const defaultDerivationRules: VariableDerivationRule[] = [
 				variable.replace('wave_direction', 'wave_height'),
 				variable.replace('wave_height', 'wave_direction')
 			]),
-		process: ([height, direction]) => ({
+		process: ([height, direction], { domain }) => ({
 			values: height,
-			directions: direction
+			directions: domain?.wave_directions_towards ? oppositeDirections(direction) : direction
 		})
 	},
 
