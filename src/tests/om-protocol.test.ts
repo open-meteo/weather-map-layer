@@ -1,4 +1,5 @@
 import { defaultOmProtocolSettings } from '../om-protocol';
+import { DEFAULT_WIND_POINTS, MAX_WIND_POINTS, MIN_WIND_POINTS } from '../utils/constants';
 import { parseRequest } from '../utils/parse-request';
 import { AddProtocolAction, RequestParameters } from 'maplibre-gl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -120,6 +121,29 @@ describe('Request Options', () => {
 			expect(
 				parseRequest(`${base}&variable=ocean_u_current`, settings).renderOptions.arrowStyle
 			).toBe('arrow');
+		});
+
+		it('parses the icon arrow renderer and clamps its lattice', () => {
+			const settings = createTestSettings({ domainOptions: [createTestDomain('domain1')] });
+			const base = 'om://https://example.com/data_spatial/domain1/file.om?variable=temperature';
+
+			const defaults = parseRequest(base, settings).renderOptions;
+			expect(defaults.arrowRender).toBe('line');
+			expect(defaults.arrowPoints).toBe(DEFAULT_WIND_POINTS);
+
+			const icon = parseRequest(
+				`${base}&arrow_render=icon&arrow_points=12.4`,
+				settings
+			).renderOptions;
+			expect(icon.arrowRender).toBe('icon');
+			expect(icon.arrowPoints).toBe(12);
+			// The lattice cost grows with the square of the count, so it is clamped
+			const points = (value: string) =>
+				parseRequest(`${base}&arrow_points=${value}`, settings).renderOptions.arrowPoints;
+			expect(points('999')).toBe(MAX_WIND_POINTS);
+			expect(points('0')).toBe(MIN_WIND_POINTS);
+			expect(points('abc')).toBe(DEFAULT_WIND_POINTS);
+			expect(() => parseRequest(`${base}&arrow_render=sprite`, settings)).toThrow(/arrow render/);
 		});
 
 		it('can resolve domain from a variety of different urls', async () => {

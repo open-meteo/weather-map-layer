@@ -9,6 +9,7 @@ import { tile2lat, tile2lon } from './utils/math';
 import { createSamplers } from './utils/samplers';
 import { makeColorSampler } from './utils/styling';
 import { generateWindBarbs } from './utils/wind-barbs';
+import { generateWindPoints } from './utils/wind-points';
 
 import type { WorkerRequest } from './types';
 
@@ -115,8 +116,14 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 			generateGridPoints(pbf, gridSources, x, y, z, clippingOptions);
 		}
 		if (renderOptions.drawArrows && hasDirections) {
-			const draw = renderOptions.arrowStyle === 'barb' ? generateWindBarbs : generateArrows;
-			draw(pbf, sampleVector, x, y, z, clippingOptions);
+			if (renderOptions.arrowRender === 'icon') {
+				// As icons the shape comes from the renderer's sprite, so the tile
+				// only carries the sampled points
+				generateWindPoints(pbf, sampleVector, x, y, z, clippingOptions, renderOptions.arrowPoints);
+			} else {
+				const draw = renderOptions.arrowStyle === 'barb' ? generateWindBarbs : generateArrows;
+				draw(pbf, sampleVector, x, y, z, clippingOptions);
+			}
 		}
 		if (renderOptions.drawContours) {
 			// Same threshold-offset sample as the raster, so contours align with
