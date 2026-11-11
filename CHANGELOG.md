@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.3.2](https://github.com/open-meteo/weather-map-layer/compare/v0.3.1...v0.3.2) (2026-11-04)
+
+
+### Bug Fixes
+
+* replace geosphere arome austria with claef ([#380](https://github.com/open-meteo/weather-map-layer/issues/380)) ([8a5ae9e](https://github.com/open-meteo/weather-map-layer/commit/8a5ae9e4d96602a6413278efaf70d2c7f417259d))
+* wave direction for MF Wave ([#382](https://github.com/open-meteo/weather-map-layer/issues/382)) ([55cdd90](https://github.com/open-meteo/weather-map-layer/commit/55cdd90b7d39972d9bd1dab4259f39e40e673c10))
+
+## [0.3.1](https://github.com/open-meteo/weather-map-layer/compare/v0.3.0...v0.3.1) (2026-10-29)
+
+
+### Features
+
+* add noaa rrfs domains ([#373](https://github.com/open-meteo/weather-map-layer/issues/373)) ([712fd66](https://github.com/open-meteo/weather-map-layer/commit/712fd66db756e410bfbbe17b0fdcfa159118affd))
+
+
+### Bug Fixes
+
+* add ts 7 guard for dependabot ([#374](https://github.com/open-meteo/weather-map-layer/issues/374)) ([bd78167](https://github.com/open-meteo/weather-map-layer/commit/bd78167172aa46768f4cd0894e5432cdb848bca7))
+* featname the time step delta time throughout the API ([#366](https://github.com/open-meteo/weather-map-layer/issues/366)) ([36ab42a](https://github.com/open-meteo/weather-map-layer/commit/36ab42a218fe93c2cf859046412ae0d123722ab5))
+* move examples away from `dwd_icon` ([#367](https://github.com/open-meteo/weather-map-layer/issues/367)) ([02743e5](https://github.com/open-meteo/weather-map-layer/commit/02743e59cc34416955f6c9c6db5487f932a6237e))
+
 ## [0.3.0](https://github.com/open-meteo/weather-map-layer/compare/v0.2.2...v0.3.0) (2026-10-15)
 
 
