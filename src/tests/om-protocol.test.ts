@@ -433,6 +433,30 @@ describe('omProtocol', () => {
 	});
 });
 
+describe('getCellFromLatLong', () => {
+	it('draws the cell on the world copy of the queried longitude', async () => {
+		const { omProtocol } = await import('../om-protocol');
+		const { getCellFromLatLong } = await import('../om-protocol-state');
+
+		const url =
+			'om://https://data-spatial.open-meteo.com/data_spatial/dwd_icon/2025/10/27/1200Z/2025-10-27T1200.om?variable=temperature_2m/0/0/0';
+		await omProtocol(
+			{ url, type: 'arrayBuffer' },
+			new AbortController(),
+			defaultOmProtocolSettings
+		);
+
+		// Lon 181 is lon -179 one turn east
+		const cell = await getCellFromLatLong(0, -179, url);
+		const eastCopy = await getCellFromLatLong(0, 181, url);
+		expect(cell).toBeDefined();
+		expect(eastCopy).toEqual(cell?.map(([lon, lat]) => [lon + 360, lat]));
+		const lons = eastCopy?.map(([lon]) => lon) ?? [];
+		expect(Math.min(...lons)).toBeLessThan(181);
+		expect(Math.max(...lons)).toBeGreaterThan(181);
+	});
+});
+
 describe('getValueFromLatLong', () => {
 	it('returns interpolated value from loaded state', async () => {
 		const { omProtocol } = await import('../om-protocol');

@@ -6,7 +6,7 @@ import {
 } from './utils/constants';
 import { normalizeLon } from './utils/math';
 import { normalizeUrl, parseUrlComponents, replaceUrlDomain } from './utils/parse-url';
-import { createSamplers } from './utils/samplers';
+import { type Samplers, createSamplers } from './utils/samplers';
 
 import { type SeamlessLayerFilter, isSeamlessDomain, selectSeamlessLayers } from './domain-helpers';
 import { GridFactory } from './grids';
@@ -257,21 +257,14 @@ export const ensureData = async (
 };
 
 /**
- * The value (and direction, for vector variables) at a point, sampled from the
- * loaded state of `omUrl` the way its tiles are rendered.
- *
- * `zoom` is the map zoom the point is looked at. A seamless composite only
- * renders the layers active at the tile's zoom, but a layer zoomed away from
- * can still have its state loaded; passing the zoom keeps the lookup to the
- * layers the pixels come from. Without it every layer with loaded data takes
- * part.
+ * The loaded layers a point lookup on `omUrl` samples from, finest-first, and
+ * samplers over them, or undefined while no layer has data. `zoom` as in
+ * `getValueFromLatLong`.
  */
-export const getValueFromLatLong = async (
-	lat: number,
-	lon: number,
+const lookupSamplers = async (
 	omUrl: string,
 	zoom?: number
-): Promise<{ value: number; direction?: number }> => {
+): Promise<{ layers: LayerRenderData[]; samplers: Samplers } | undefined> => {
 	if (!omProtocolInstance) {
 		throw new Error('OmProtocolInstance is not initialized');
 	}
@@ -302,13 +295,37 @@ export const getValueFromLatLong = async (
 		}
 	}
 	if (layers.length === 0) {
-		return { value: NaN };
+		return undefined;
 	}
 
 	// Sample with the same interpolation the tiles are rendered with (encoded in
 	// the URL) so the popup value matches the pixel under the cursor.
 	const interpolation = resolveInterpolation(params.get('interpolation'));
-	const { sampleValue, sampleVector } = createSamplers(layers, interpolation);
+	return { layers, samplers: createSamplers(layers, interpolation) };
+};
+
+/**
+ * The value (and direction, for vector variables) at a point, sampled from the
+ * loaded state of `omUrl` the way its tiles are rendered.
+ *
+ * `zoom` is the map zoom the point is looked at. A seamless composite only
+ * renders the layers active at the tile's zoom, but a layer zoomed away from
+ * can still have its state loaded; passing the zoom keeps the lookup to the
+ * layers the pixels come from. Without it every layer with loaded data takes
+ * part.
+ */
+export const getValueFromLatLong = async (
+	lat: number,
+	lon: number,
+	omUrl: string,
+	zoom?: number
+): Promise<{ value: number; direction?: number }> => {
+	const lookup = await lookupSamplers(omUrl, zoom);
+	if (!lookup) {
+		return { value: NaN };
+	}
+	const { layers, samplers } = lookup;
+	const { sampleValue, sampleVector } = samplers;
 	const lonNormalized = normalizeLon(lon);
 
 	// Derived variables (u/v components, speed+direction, wave height+direction)
@@ -319,6 +336,28 @@ export const getValueFromLatLong = async (
 	}
 	const { value, direction } = sampleVector(lat, lonNormalized);
 	return { value, direction };
+};
+
+/**
+ * Outline of the grid cell under a point as a closed `[lon, lat]` ring: the
+ * cell of the node nearest-neighbour sampling reads there, in the layer
+ * `getValueFromLatLong` takes its value from (a composite's finest layer with
+ * data at the point). Undefined where there is no data; `zoom` as in
+ * `getValueFromLatLong`.
+ */
+export const getCellFromLatLong = async (
+	lat: number,
+	lon: number,
+	omUrl: string,
+	zoom?: number
+): Promise<Array<[number, number]> | undefined> => {
+	const lookup = await lookupSamplers(omUrl, zoom);
+	const normalized = normalizeLon(lon);
+	const cell = lookup?.samplers.sampleCell(lat, normalized);
+	// Sampled on the normalized longitude, drawn on the caller's world copy: a
+	// click east of the antimeridian can come in as e.g. lon 181
+	const shift = lon - normalized;
+	return shift === 0 ? cell : cell?.map(([cellLon, cellLat]) => [cellLon + shift, cellLat]);
 };
 
 /** Parse the `interpolation` URL param, falling back to the default on absent or invalid values. */

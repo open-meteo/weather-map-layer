@@ -164,3 +164,31 @@ describe('generateGridPoints across seamless layers', () => {
 		expect(values).toEqual([50, 100]);
 	});
 });
+
+describe('sampleCell', () => {
+	it('outlines the cell of the layer the value comes from', () => {
+		const { sampleCell } = createSamplers([fineLayer(fillCentre), globalLayer(1)], 'nearest');
+		// Inside the fine data: its 1° cell
+		expect(sampleCell(0.2, 0.3)).toEqual([
+			[-0.5, -0.5],
+			[0.5, -0.5],
+			[0.5, 0.5],
+			[-0.5, 0.5],
+			[-0.5, -0.5]
+		]);
+		// Over the fine grid's NaN padding the global layer supplies the value,
+		// and so the cell
+		expect(sampleCell(0.2, 4)).toEqual([
+			[-5, -5],
+			[5, -5],
+			[5, 5],
+			[-5, 5],
+			[-5, -5]
+		]);
+	});
+
+	it('is undefined where no layer has data', () => {
+		const { sampleCell } = createSamplers([fineLayer(fillCentre)], 'nearest');
+		expect(sampleCell(0.2, 4)).toBeUndefined();
+	});
+});

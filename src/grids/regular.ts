@@ -247,6 +247,58 @@ export class RegularGrid implements GridInterface {
 		];
 	}
 
+	getCellPolygon(lat: number, lon: number): Array<[number, number]> | null {
+		const cell = this.locate(lat, lon);
+		if (!cell) return null;
+		const { x, y, xFraction, yFraction } = cell;
+
+		// The node `interpolateNearest` reads, and the extent in grid steps from
+		// the origin over which it keeps reading it: halfway to the neighbouring
+		// nodes, except at the grid's edge, where `locate` admits nothing before
+		// the first node but up to a whole step past the last (nearest sampling
+		// clamps there).
+		const yi = yFraction >= 0.5 ? Math.min(y + 1, this.ny - 1) : y;
+		const yLo = yi === 0 ? 0 : yi - 0.5;
+		const yHi = yi === this.ny - 1 ? this.ny : yi + 0.5;
+
+		let xi = xFraction >= 0.5 ? x + 1 : x;
+		if (xi >= this.nx && !this.longitudeWrap) xi = this.nx - 1;
+		let xLo = xi - 0.5;
+		let xHi = xi + 0.5;
+		if (!this.longitudeWrap) {
+			if (xi === 0) xLo = 0;
+			if (xi === this.nx - 1) xHi = this.nx;
+		} else if (this.wrapLastCellDouble) {
+			// Stored one node short of the seam, the last node and the seam node
+			// (index 0, read as `nx` from this side) are two steps apart and split
+			// the gap between them
+			if (xi === this.nx - 1) xHi = this.nx;
+			if (xi === this.nx) {
+				xLo = this.nx;
+				xHi = this.nx + 1.5;
+			}
+			if (xi === 0) xLo = -1;
+		}
+
+		// dx/dy may be negative (rows stored north-to-south), so order the corners
+		const lonA = this.originLon + xLo * this.dx;
+		const lonB = this.originLon + xHi * this.dx;
+		const latA = this.originLat + yLo * this.dy;
+		const latB = this.originLat + yHi * this.dy;
+		const west = Math.min(lonA, lonB);
+		const east = Math.max(lonA, lonB);
+		// The cells of a node row on a pole would otherwise reach past it
+		const south = Math.max(Math.min(latA, latB), -90);
+		const north = Math.min(Math.max(latA, latB), 90);
+		return [
+			[west, south],
+			[east, south],
+			[east, north],
+			[west, north],
+			[west, south]
+		];
+	}
+
 	getCenter(): { lng: number; lat: number } {
 		if (!this.center) {
 			this.center = {

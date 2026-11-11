@@ -56,6 +56,30 @@ export class GaussianGrid implements GridInterface {
 		];
 	}
 
+	getCellPolygon(lat: number, lon: number): Array<[number, number]> | null {
+		// Same node as getNearestNeighborValue, on the evenly spaced row
+		// latitudes forEachPoint places the nodes on; the row's own longitude
+		// step makes the cells narrower towards the poles
+		const latitudeLines = this.latitudeLines;
+		const dy = 180 / (2 * latitudeLines + 0.5);
+		const y = this.nearestRow(lat);
+		const dx = 360 / this.nxOf(y);
+		const x = modPositive(Math.round(lon / dx), this.nxOf(y));
+		const nodeLat = (latitudeLines - y - 1) * dy + dy / 2;
+		// Nearest sampling keeps reading the outermost rows up to the poles
+		const south = y === 2 * latitudeLines - 1 ? -90 : nodeLat - dy / 2;
+		const north = y === 0 ? 90 : nodeLat + dy / 2;
+		// The node's longitude on the same turn as `lon`
+		const nodeLon = x * dx + 360 * Math.round((lon - x * dx) / 360);
+		return [
+			[nodeLon - dx / 2, south],
+			[nodeLon + dx / 2, south],
+			[nodeLon + dx / 2, north],
+			[nodeLon - dx / 2, north],
+			[nodeLon - dx / 2, south]
+		];
+	}
+
 	getCenter(): { lng: number; lat: number } {
 		// FIXME: Center hardcoded for now
 		return { lng: 0, lat: 0 };
@@ -288,15 +312,25 @@ export class GaussianGrid implements GridInterface {
 
 	/// Values is the 1D array of all HRES values (6 million something values)
 	getNearestNeighborValue(values: Float32Array, lat: number, lon: number): number {
-		const latitudeLines = this.latitudeLines;
-		const dy = 180 / (2 * latitudeLines + 0.5);
-		const y = modPositive(Math.round(latitudeLines - 1 - (lat - dy / 2) / dy), 2 * latitudeLines);
+		const y = this.nearestRow(lat);
 		const nx = this.nxOf(y);
 		const dx = 360 / nx;
 		const x = modPositive(Math.round(lon / dx), nx);
 		const integral = this.integral(y);
 		const index = integral + x;
 		return values[index];
+	}
+
+	/**
+	 * Index of the latitude row nearest to `lat`. Clamped, not wrapped: past
+	 * the outermost rows (within half a row of a pole) the nearest row is the
+	 * outermost one, not a row of the opposite hemisphere.
+	 */
+	private nearestRow(lat: number): number {
+		const latitudeLines = this.latitudeLines;
+		const dy = 180 / (2 * latitudeLines + 0.5);
+		const y = Math.round(latitudeLines - 1 - (lat - dy / 2) / dy);
+		return Math.min(Math.max(y, 0), 2 * latitudeLines - 1);
 	}
 
 	// FIXME: This function might not behave well at the poles!
