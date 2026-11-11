@@ -24,6 +24,9 @@ export {
 } from './derivation-rules';
 export { getCachedResolvedClipping } from './utils/parse-request';
 export { getColor, getColorScale } from './utils/styling';
+export { isGribIndexUrl } from './grib/grib-file-reader';
+export { parseGribIndex } from './grib/grib-index';
+export { gfsGribVariable, gfsStoredVariables } from './grib/gfs';
 
 // Classes
 
@@ -83,4 +86,6 @@ export type {
 
 export type { DerivationContext, VariableDerivationRule } from './derivation-rules';
 export type { ReadContext, WeatherMapLayerFileReader } from './om-file-reader';
+export type { GribIndexRecord, GribStepKind } from './grib/grib-index';
+export type { GfsGribVariable } from './grib/gfs';
 export type { BlockCache } from '@openmeteo/file-reader';

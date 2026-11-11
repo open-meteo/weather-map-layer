@@ -112,6 +112,7 @@ The repository contains an `examples` directory with ready-to-run demos:
 - `examples/combined-variables.html` – shows multiple data sources on the same map.
 - `examples/partial-requests.html` – demonstrates partial / incremental data requests.
 - `examples/interpolation.html` – switch the interpolation method live via the `interpolation` URL parameter.
+- `examples/gfs-archive.html` – historical GFS runs read from NOAA's indexed GRIB2 archive, see [Indexed GRIB2 files](#indexed-grib2-files-noaa-gfs-archive).
 
 Run the examples by opening the corresponding `.html` file in a browser.
 
@@ -338,6 +339,24 @@ The modifier suffix on `current_time_` controls the rounding granularity when sn
 | H        | Hours      |
 | d        | Days       |
 | m        | Months     |
+
+## Indexed GRIB2 files (NOAA GFS archive)
+
+The protocol also reads GRIB2 files that come with an NCEP `.idx` inventory, such as NOAA's GFS archive on AWS Open Data (`noaa-gfs-bdp-pds`, every run since 2021). The inventory lists the byte offset of every message in the file, so a variable costs one small index fetch and one range request for its message; nothing else of the multi-hundred-megabyte file is downloaded. The message is decoded in the browser (complex packing with spatial differencing, as NCEP writes it) and cached, so other viewports and derived variables (wind speed from the components) reuse it.
+
+The om URL names the **index file**, and since its path has no Open-Meteo domain segment, the grid comes from a `domain` parameter:
+
+```ts
+// GFS 0.25°, run 2026-10-27 00Z, forecast hour 3
+const omUrl = `https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261027/00/atmos/gfs.t00z.pgrb2.0p25.f003.idx?domain=ncep_gfs025&variable=temperature_2m`;
+
+// GFS 0.13° surface fluxes on the native Gaussian grid
+const sfluxUrl = `https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261027/00/atmos/gfs.t00z.sfluxgrbf003.grib2.idx?domain=ncep_gfs013&variable=temperature_2m`;
+```
+
+Variables are requested by their Open-Meteo names; `gfsGribVariable(name)` tells which GRIB record a name reads, with the unit conversion applied (Kelvin to °C, Pa to hPa, kg/m²/s to mm/h), and `gfsStoredVariables(parseGribIndex(text))` lists the names an inventory holds, so a UI can offer them. The derivation rules apply as for `.om` files: `wind_speed_10m` is derived from `UGRD`/`VGRD`, `dew_point_2m` is read as stored where the product has `DPT`. The 0.25° output is split over `pgrb2` and `pgrb2b`; a pressure level the first file lacks is looked up in the second one by the protocol. GFS stores precipitation and showers as rates, so they are per hour without a `delta_time_hours` parameter. The precipitation family's `rain` and `snowfall`, which derive from the water equivalent the `.om` files store, have no GFS record and are not available.
+
+See `examples/gfs-archive.html` for a run and forecast hour picker over the archive.
 
 ## Seamless Composite Domains
 

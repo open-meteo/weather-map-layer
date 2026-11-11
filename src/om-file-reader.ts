@@ -8,12 +8,15 @@ import {
 } from '@openmeteo/file-reader';
 
 import {
-	type DerivationContext,
+	type ResolvedDerivation,
 	type VariableDerivationRule,
+	applyDerivation,
 	defaultDerivationRules,
 	patternMatches,
+	resolveDerivation,
 	variableIsAccumulated
 } from './derivation-rules';
+import { GribFileReader, isGribIndexUrl } from './grib/grib-file-reader';
 
 import type { Data, DimensionRange, Domain } from './types';
 
@@ -86,21 +89,18 @@ export const defaultFileReaderConfig: Required<
 	eTagValidation: false
 };
 
-/** A rule that claimed the requested variable for one file, with what it reads. */
-interface ResolvedDerivation {
-	rule: VariableDerivationRule;
-	sourceVars: string[];
-	context: DerivationContext;
-}
-
 /**
- * Convenience class for reading from OM-files implementing some utility conversions during reading.
+ * Convenience class for reading from OM-files implementing some utility
+ * conversions during reading. A URL naming a GRIB index file (`.idx`) is read
+ * from the indexed GRIB2 file instead, through the same derivation rules.
  */
 export class WeatherMapLayerFileReader {
 	readonly cache: BlockCache;
 	readonly config: Required<Omit<FileReaderConfig, 'cache'>>;
 	/** Memoizes one backend per URL, so repeat reads skip the HEAD request. */
 	private readonly backendPool: OmHttpBackendPool;
+	/** Reads the `.idx` URLs; holds its own inventory and field caches. */
+	readonly gribReader: GribFileReader;
 
 	constructor(config: FileReaderConfig = {}) {
 		this.config = {
@@ -120,6 +120,12 @@ export class WeatherMapLayerFileReader {
 				eTagValidation: this.config.eTagValidation,
 				retries: this.config.retries
 			}
+		});
+
+		this.gribReader = new GribFileReader({
+			useSAB: this.config.useSAB,
+			retries: this.config.retries,
+			derivationRules: this.config.derivationRules
 		});
 	}
 
@@ -148,52 +154,29 @@ export class WeatherMapLayerFileReader {
 	/**
 	 * The first rule claiming `variable` for this file, or undefined when the
 	 * variable is read as stored. Only rules whose pattern matches the name are
-	 * asked, so a file is not listed for names no rule is interested in. A
-	 * read through a rule needing the time step is rejected when the caller
-	 * passed none; a prefetch only needs the source names and goes ahead.
+	 * asked, so a file is not listed for names no rule is interested in.
 	 */
-	private async resolveDerivation(
+	private async resolveFileDerivation(
 		reader: OmFileReader,
 		variable: string,
 		read: ReadContext,
 		prefetch = false
 	): Promise<ResolvedDerivation | undefined> {
-		const candidates = this.config.derivationRules.filter((rule) =>
-			patternMatches(rule.pattern, variable)
-		);
-		if (candidates.length === 0) return undefined;
+		const rules = this.config.derivationRules;
+		if (!rules.some((rule) => patternMatches(rule.pattern, variable))) return undefined;
 
 		const stored = await listRootVariables(reader);
-		const context: DerivationContext = {
-			variable,
-			stored,
-			deltaTimeHours: read.deltaTimeHours,
-			domain: read.domain
-		};
-
-		for (const rule of candidates) {
-			const sourceVars = rule.getSourceVars(context);
-			if (sourceVars === null) continue;
-			if (sourceVars.length === 0) {
-				throw new Error(`Derivation rule for ${variable} returned no source variables`);
-			}
-			if (rule.usesDeltaTime && context.deltaTimeHours === undefined && !prefetch) {
-				throw new Error(
-					`${variable} is derived from the length of the file's time step, which the caller did not pass (deltaTimeHours)`
-				);
-			}
-			return { rule, sourceVars, context };
-		}
-		return undefined;
+		return resolveDerivation(rules, variable, stored, read.deltaTimeHours, prefetch, read.domain);
 	}
 
 	/** Read variable data using a derivation rule. */
 	private async readWithDerivationRule(
 		reader: OmFileReader,
-		{ rule, sourceVars, context }: ResolvedDerivation,
+		derivation: ResolvedDerivation,
 		ranges: DimensionRange[] | null,
 		signal?: AbortSignal
 	): Promise<Data> {
+		const { sourceVars } = derivation;
 		// Get readers for source variables (each can hit the network for its
 		// metadata block, so resolve them concurrently). allSettled rather than
 		// all, so a child created by one lookup still reaches the cleanup below
@@ -230,26 +213,12 @@ export class WeatherMapLayerFileReader {
 				sourceReaders.map((sourceReader) => sourceReader!.read(readOptions))
 			);
 
-			// Process using the rule
-			const data = rule.process(sourceData, context);
-
-			// A rule may build its output with plain typed-array methods. Moving it
-			// into shared memory once per read keeps the grid zero-copy for the tile
-			// workers, which would otherwise clone it per tile.
-			if (this.config.useSAB) {
-				data.values = intoSharedBuffer(data.values);
-				data.directions = intoSharedBuffer(data.directions);
-			}
-
-			// Every derivation rule defines its quantization scale factor so the
-			// half-quantum threshold offset is always available. `'primary'` inherits
-			// the first source variable's stored scale factor — exact when `values`
-			// is that variable passed through unchanged (speed/direction, wave), and a
-			// good proxy for derived magnitudes (wind speed from u/v).
-			data.scaleFactor =
-				rule.scaleFactor === 'primary' ? sourceReaders[0]!.scaleFactor() : rule.scaleFactor;
-
-			return data;
+			return applyDerivation(
+				derivation,
+				sourceData,
+				sourceReaders[0]!.scaleFactor(),
+				this.config.useSAB
+			);
 		} finally {
 			// Child readers hold their own wasm allocations; disposing the scoped
 			// root reader does not free them.
@@ -294,7 +263,7 @@ export class WeatherMapLayerFileReader {
 	 * and direction. Selecting the file and reading from it is a single atomic
 	 * step, so concurrent reads of different files cannot interleave.
 	 *
-	 * @param omUrl The .om file URL to read from.
+	 * @param omUrl The .om file URL to read from, or the `.idx` URL of an indexed GRIB2 file.
 	 * @param variable The variable to read.
 	 * @param ranges The ranges to read. If null, all dimensions are read.
 	 * @param signal Optional AbortSignal
@@ -308,6 +277,12 @@ export class WeatherMapLayerFileReader {
 		signal?: AbortSignal,
 		read: ReadContext = {}
 	): Promise<Data> {
+		if (isGribIndexUrl(omUrl)) {
+			// GRIB stores precipitation as a rate, so the per-step sums the
+			// `.om` files hold, and the time step dividing them, do not apply
+			return this.gribReader.readVariable(omUrl, variable, ranges, signal, read.deltaTimeHours);
+		}
+
 		const accumulated = variableIsAccumulated(variable);
 		if (accumulated && read.deltaTimeHours === undefined) {
 			throw new Error(
@@ -315,7 +290,7 @@ export class WeatherMapLayerFileReader {
 			);
 		}
 		const data = await this.withReader(omUrl, async (reader) => {
-			const derivation = await this.resolveDerivation(reader, variable, read);
+			const derivation = await this.resolveFileDerivation(reader, variable, read);
 
 			if (derivation) {
 				return this.readWithDerivationRule(reader, derivation, ranges, signal);
@@ -337,8 +312,12 @@ export class WeatherMapLayerFileReader {
 		ranges: DimensionRange[] | null = null,
 		signal?: AbortSignal
 	): Promise<void> {
+		if (isGribIndexUrl(omUrl)) {
+			// A GRIB message is fetched whole, so the ranges play no part
+			return this.gribReader.prefetchVariable(omUrl, variable, signal);
+		}
 		await this.withReader(omUrl, async (reader) => {
-			const derivation = await this.resolveDerivation(reader, variable, {}, true);
+			const derivation = await this.resolveFileDerivation(reader, variable, {}, true);
 			const varsToPrefetch = derivation ? derivation.sourceVars : [variable];
 
 			await Promise.all(
@@ -371,12 +350,14 @@ export class WeatherMapLayerFileReader {
 	 * read only pays for its data blocks. No variable data is requested.
 	 */
 	async warmFile(omUrl: string): Promise<void> {
+		if (isGribIndexUrl(omUrl)) return this.gribReader.warmIndex(omUrl);
 		await this.withReader(omUrl, async () => {});
 	}
 
-	/** Drop all memoized backends, forcing fresh HEAD metadata requests. */
+	/** Drop all memoized backends and GRIB inventories, forcing fresh metadata requests. */
 	clearBackends(): void {
 		this.backendPool.clear();
+		this.gribReader.clear();
 	}
 }
 
@@ -412,12 +393,4 @@ const perHour = (data: Data, deltaTimeHours: number): Data => {
 	}
 	if (data.scaleFactor !== undefined) data.scaleFactor *= deltaTimeHours;
 	return data;
-};
-
-/** `array` in a SharedArrayBuffer: itself when it already is, otherwise a copy. */
-const intoSharedBuffer = (array: Float32Array | undefined): Float32Array | undefined => {
-	if (!array || array.buffer instanceof SharedArrayBuffer) return array;
-	const shared = new Float32Array(new SharedArrayBuffer(array.byteLength));
-	shared.set(array);
-	return shared;
 };

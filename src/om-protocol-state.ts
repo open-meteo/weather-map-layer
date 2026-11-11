@@ -73,6 +73,7 @@ export const getProtocolInstance = (settings: OmProtocolSettings): OmProtocolIns
 
 export const clearBlockCache = async (): Promise<void> => {
 	await omProtocolInstance?.omFileReader.cache.clear();
+	omProtocolInstance?.omFileReader.gribReader.clear();
 	omProtocolInstance?.stateByKey.clear();
 };
 
@@ -282,7 +283,7 @@ export const getValueFromLatLong = async (
 
 	// A composite has no state of its own: its value comes from its sub-domains'
 	// states, finest-first, like its pixels.
-	const domainValue = baseUrl.match(RESOLVE_DOMAIN_REGEX)?.groups?.domain;
+	const domainValue = params.get('domain') ?? baseUrl.match(RESOLVE_DOMAIN_REGEX)?.groups?.domain;
 	const domain = domainOptions.find((d) => d.value === domainValue);
 	const stateKeys = domain
 		? resolveLayers(domain, baseUrl, fileAndVariableKey, domainOptions, { zoom }).map(
