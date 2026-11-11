@@ -18,7 +18,7 @@ import {
 } from './derivation-rules';
 import { GribFileReader, isGribIndexUrl } from './grib/grib-file-reader';
 
-import type { Data, DimensionRange } from './types';
+import type { Data, DimensionRange, Domain } from './types';
 
 /**
  * Configuration options for the WeatherMapLayerFileReader.
@@ -72,6 +72,13 @@ export interface ReadContext {
 	 * a variable (`variableUsesDeltaTime`), or the read is rejected.
 	 */
 	deltaTimeHours?: number;
+
+	/**
+	 * The domain the file belongs to, for rules that depend on how a model
+	 * stores a quantity (`wave_directions_towards`). The om protocol passes
+	 * the domain it resolved from the URL.
+	 */
+	domain?: Domain;
 }
 
 export const defaultFileReaderConfig: Required<
@@ -159,7 +166,7 @@ export class WeatherMapLayerFileReader {
 		if (!rules.some((rule) => patternMatches(rule.pattern, variable))) return undefined;
 
 		const stored = await listRootVariables(reader);
-		return resolveDerivation(rules, variable, stored, read.deltaTimeHours, prefetch);
+		return resolveDerivation(rules, variable, stored, read.deltaTimeHours, prefetch, read.domain);
 	}
 
 	/** Read variable data using a derivation rule. */

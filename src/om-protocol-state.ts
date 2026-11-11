@@ -203,7 +203,7 @@ export const ensureData = async (
 					state.dataOptions.variable,
 					state.ranges,
 					entry.controller.signal,
-					{ deltaTimeHours: state.dataOptions.deltaTimeHours }
+					{ deltaTimeHours: state.dataOptions.deltaTimeHours, domain: state.dataOptions.domain }
 				);
 
 				if (postReadCallback) {
