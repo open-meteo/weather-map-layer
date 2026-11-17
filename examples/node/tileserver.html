@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Open-Meteo Weather Map Layer - Node Tile Server Example</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.css" />
+		<style>
+			html,
+			body,
+			#map {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<script type="module">
+			import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.mjs';
+
+			// The tiles come from the Node tile server in this directory, so the page needs
+			// neither the library nor the om:// protocol. Start it with
+			//   node examples/node/server.mjs
+			// The path picks the data (domain, run, time step, variable), the query the
+			// render options, as in an om:// URL. The wind variable gives the tiles a
+			// direction field for the arrows; a scalar variable (temperature_2m, …)
+			// renders the raster and the contours only.
+			const tileServer = 'http://localhost:8080';
+			const tiles = tileServer + '/tiles/dwd_icon/latest/current_time_1H/wind_u_component_10m';
+
+			const map = new maplibregl.Map({
+				container: 'map',
+				style: 'https://static-assets.open-meteo.com/map-assets/styles/minimal-planet-maps.json', // replace with your own style sheet
+				hash: true
+			});
+
+			map.on('load', () => {
+				// Raster tiles: plain PNGs, as any XYZ tile source.
+				map.addSource('tileServerRaster', {
+					type: 'raster',
+					tiles: [tiles + '/{z}/{x}/{y}.png'],
+					tileSize: 512,
+					maxzoom: 12,
+					attribution: '<a href="https://open-meteo.com/en/licence#maps">© Open-Meteo</a>'
+				});
+				map.addLayer(
+					{
+						id: 'tileServerRasterLayer',
+						type: 'raster',
+						source: 'tileServerRaster',
+						paint: {
+							'raster-opacity': 0.75
+						}
+					},
+					'waterway-tunnel'
+				);
+
+				// Vector tiles: the PBF endpoint carries the arrows, contours and grid points
+				// the query asks for, in the usual MVT layers.
+				map.addSource('tileServerVector', {
+					type: 'vector',
+					tiles: [tiles + '/{z}/{x}/{y}.pbf?arrows=true'],
+					maxzoom: 12
+				});
+
+				// Wind arrows, darker with the wind speed in the `value` property.
+				map.addLayer(
+					{
+						id: 'tileServerArrows',
+						type: 'line',
+						source: 'tileServerVector',
+						'source-layer': 'wind-arrows',
+						paint: {
+							'line-color': [
+								'step',
+								['to-number', ['get', 'value']],
+								'rgba(0, 0, 0, 0.2)',
+								2,
+								'rgba(0, 0, 0, 0.3)',
+								3,
+								'rgba(0, 0, 0, 0.4)',
+								4,
+								'rgba(0, 0, 0, 0.5)',
+								5,
+								'rgba(0, 0, 0, 0.6)'
+							],
+							'line-width': 2
+						},
+						layout: {
+							'line-cap': 'round'
+						}
+					},
+					'place_label_other'
+				);
+			});
+		</script>
+	</body>
+</html>
