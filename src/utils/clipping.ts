@@ -26,6 +26,8 @@ export type ResolvedClippingOptions = {
 	polygons?: SharedPolygons;
 	bounds?: Bounds;
 	fillRule: 'nonzero' | 'evenodd';
+	/** GPU clip-mask resolution cap; interactive previews use a cheaper mask. */
+	maskMaxPx?: number;
 };
 
 /** Number of rings stored in a SharedPolygons structure. */
