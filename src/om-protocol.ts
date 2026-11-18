@@ -8,6 +8,7 @@ import { COLOR_SCALES_WITH_ALIASES as defaultColorScales } from './utils/styling
 
 import { domainOptions as defaultDomainOptions } from './domains';
 import { GridFactory } from './grids/index';
+import { setTriangulator } from './grids/latband/geometry';
 import { defaultFileReaderConfig } from './om-file-reader';
 import {
 	DEFAULT_MAX_STATES_WITH_DATA,
@@ -31,6 +32,8 @@ import type {
 } from './types';
 
 const workerPool = new WorkerPool();
+// A native ICON grid's triangulation takes seconds: off the main thread.
+setTriangulator((buffer) => workerPool.triangulate(buffer));
 
 export const defaultOmProtocolSettings: OmProtocolSettings = {
 	// static
@@ -213,6 +216,15 @@ const requestTile = async (
 		}
 	}
 
+	// A grid whose geometry lives outside the bundle is fetched once here and
+	// handed to the workers before their first tile of it.
+	await Promise.all(layers.map((layer) => GridFactory.preload(layer.domain.grid)));
+	for (const layer of layers) {
+		for (const { key, geometry } of GridFactory.sharedGeometry(layer.domain.grid)) {
+			workerPool.share(key, geometry);
+		}
+	}
+
 	return workerPool.requestTile({
 		type: tileType,
 		key,
@@ -230,6 +242,7 @@ const getTilejson = async (
 	clippingOptions?: ResolvedClippingOptions
 ): Promise<TileJSON> => {
 	// We initialize the grid with the ranges set to null, because we want to find out the maximum bounds of this grid
+	await GridFactory.preload(dataOptions.domain.grid);
 	const grid = GridFactory.create(dataOptions.domain.grid, null);
 	let bounds;
 	if (clippingOptions && clippingOptions.bounds) {
