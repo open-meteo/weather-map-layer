@@ -5,6 +5,7 @@ export { omProtocol } from './om-protocol';
 export { isSeamlessDomain, getConcreteDomainValue, selectSeamlessLayers } from './domain-helpers';
 export {
 	getValueFromLatLong,
+	getCellFromLatLong,
 	clearBlockCache,
 	clearBackends,
 	getRanges,

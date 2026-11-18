@@ -40,6 +40,16 @@ export interface GridInterface {
 	getBoundaryPolygon(): Array<[number, number]>;
 
 	/**
+	 * Outline of the grid cell at a coordinate as a closed `[lon, lat]` ring
+	 * (first point repeated at the end), or null outside the grid. The cell is
+	 * the area over which nearest-neighbour sampling reads the same grid node as
+	 * at the coordinate, so it is the patch one value colours and always
+	 * contains the coordinate. Longitudes are continuous with `lon`, so a cell
+	 * on the antimeridian keeps its shape instead of wrapping.
+	 */
+	getCellPolygon(lat: number, lon: number): Array<[number, number]> | null;
+
+	/**
 	 * Iterates over grid points, invoking the callback with the flat array index
 	 * and the geographic coordinates for each point.
 	 * When `bounds` is provided, only points within the geographic bounding box

@@ -36,6 +36,12 @@ export interface Samplers {
 	 */
 	sampleThresholdValue: ValueSampler;
 	sampleVector: VectorSampler;
+	/**
+	 * Outline of the grid cell at the point (`GridInterface.getCellPolygon`) in
+	 * the layer `sampleValue` takes its value from, or undefined where no layer
+	 * has data.
+	 */
+	sampleCell: (lat: number, lon: number) => Array<[number, number]> | undefined;
 	/** The layers' grids and arrays for the grid-point layer, finest-first. */
 	gridSources: GridPointSource[];
 }
@@ -84,11 +90,16 @@ export const createSamplers = (
 		return { value: NaN, direction: NaN };
 	};
 
+	const sampleCell = (lat: number, lon: number): Array<[number, number]> | undefined => {
+		const i = sampleLayer(lat, lon);
+		return i < 0 ? undefined : (grids[i].getCellPolygon(lat, lon) ?? undefined);
+	};
+
 	const gridSources = layers.map((layer, i) => ({
 		grid: grids[i],
 		values: layer.data.values ?? new Float32Array(0),
 		directions: layer.data.directions
 	}));
 
-	return { sampleValue, sampleThresholdValue, sampleVector, gridSources };
+	return { sampleValue, sampleThresholdValue, sampleVector, sampleCell, gridSources };
 };
