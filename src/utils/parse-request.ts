@@ -91,7 +91,9 @@ const defaultResolveDataIdentity = (
 ): DataIdentityOptions => {
 	const { baseUrl, params } = urlComponents;
 
-	const domainValue = baseUrl.match(RESOLVE_DOMAIN_REGEX)?.groups?.domain;
+	// The domain is a path segment of a data-spatial `.om` URL; a file from
+	// elsewhere (a GRIB index on NOAA's bucket) names its grid in the query
+	const domainValue = params.get('domain') ?? baseUrl.match(RESOLVE_DOMAIN_REGEX)?.groups?.domain;
 
 	if (!domainValue) {
 		throw new Error(`Could not parse domain from URL: ${baseUrl}`);
