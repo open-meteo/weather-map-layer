@@ -3,6 +3,7 @@ import {
 	defaultDerivationRules,
 	variableSupportsBarbs
 } from '../derivation-rules';
+import type { WeatherMapLayerFileReader } from '../om-file-reader';
 
 import { currentBounds, setClippingBounds } from './bounds';
 import { type ResolvedClippingOptions, resolveClippingOptions } from './clipping';
@@ -32,6 +33,7 @@ import type {
 	ParsedUrlComponents,
 	RenderOptions,
 	RenderableColorScale,
+	ResolvedRequest,
 	TileSize
 } from '../types';
 
@@ -50,10 +52,14 @@ export const getCachedResolvedClipping = (
 	return cachedClippingResult;
 };
 
-export const parseRequest = (url: string, settings: OmProtocolSettings): ParsedRequest => {
+export const parseRequest = async (
+	url: string,
+	settings: OmProtocolSettings,
+	reader: WeatherMapLayerFileReader
+): Promise<ParsedRequest> => {
 	const urlComponents = parseUrlComponents(url);
 	const resolver = settings.resolveRequest ?? defaultResolveRequest;
-	const { dataOptions, renderOptions } = resolver(urlComponents, settings);
+	const { dataOptions, renderOptions } = await resolver(urlComponents, settings, reader);
 
 	useSAB = settings.fileReaderConfig.useSAB;
 	const resolvedClippingOptions = getCachedResolvedClipping(settings.clippingOptions);
@@ -69,11 +75,16 @@ export const parseRequest = (url: string, settings: OmProtocolSettings): ParsedR
 	};
 };
 
-export const defaultResolveRequest = (
+export const defaultResolveRequest = async (
 	urlComponents: ParsedUrlComponents,
-	settings: OmProtocolSettings
-): { dataOptions: DataIdentityOptions; renderOptions: RenderOptions } => {
-	const dataOptions = defaultResolveDataIdentity(urlComponents, settings.domainOptions);
+	settings: OmProtocolSettings,
+	reader: WeatherMapLayerFileReader
+): Promise<ResolvedRequest> => {
+	const dataOptions = await defaultResolveDataIdentity(
+		urlComponents,
+		settings.domainOptions,
+		reader
+	);
 
 	const renderOptions = defaultResolveRenderOptions(
 		urlComponents,
@@ -85,26 +96,23 @@ export const defaultResolveRequest = (
 	return { dataOptions, renderOptions };
 };
 
-const defaultResolveDataIdentity = (
+const defaultResolveDataIdentity = async (
 	urlComponents: ParsedUrlComponents,
-	domainOptions: Domain[]
-): DataIdentityOptions => {
+	domainOptions: Domain[],
+	reader: WeatherMapLayerFileReader
+): Promise<DataIdentityOptions> => {
 	const { baseUrl, params } = urlComponents;
-
-	const domainValue = baseUrl.match(RESOLVE_DOMAIN_REGEX)?.groups?.domain;
-
-	if (!domainValue) {
-		throw new Error(`Could not parse domain from URL: ${baseUrl}`);
-	}
-	const domain = domainOptions.find((dm) => dm.value === domainValue);
-	if (!domain) {
-		throw new Error(`Invalid domain: ${domainValue}`);
-	}
 
 	const variable = params.get('variable');
 	if (!variable) {
 		throw new Error(`Variable is required but not defined`);
 	}
+
+	// The catalogue entry is optional: a file whose URL names no known domain is
+	// georeferenced from its own crs_wkt attribute.
+	const domainValue = baseUrl.match(RESOLVE_DOMAIN_REGEX)?.groups?.domain;
+	const domain = domainOptions.find((dm) => dm.value === domainValue);
+	const grid = domain ? domain.grid : await reader.readGridData(baseUrl, variable);
 
 	const mapBounds = currentBounds;
 
@@ -114,6 +122,7 @@ const defaultResolveDataIdentity = (
 
 	return {
 		domain,
+		grid,
 		variable,
 		bounds: mapBounds,
 		deltaTimeHours:

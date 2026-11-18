@@ -5,7 +5,7 @@ import { VectorTile } from '@mapbox/vector-tile';
 import { PbfReader, PbfWriter } from 'pbf';
 import { describe, expect, it } from 'vitest';
 
-import type { Domain, GridData, LayerRenderData } from '../types';
+import type { GridData, LayerRenderData } from '../types';
 
 // Two regular grids: a fine 11×11 one spanning [-5,5]² whose data is only valid
 // in the central 5×5 block (lon/lat -2..2, the rest NaN like a reprojected
@@ -40,7 +40,7 @@ const fineLayer = (fill: (values: Float32Array) => void, directions?: number): L
 	const values = new Float32Array(121).fill(NaN);
 	fill(values);
 	return {
-		domain: { value: 'fine', grid: fineGridData } as Domain,
+		grid: fineGridData,
 		data: {
 			values,
 			directions: directions === undefined ? undefined : new Float32Array(121).fill(directions)
@@ -49,7 +49,7 @@ const fineLayer = (fill: (values: Float32Array) => void, directions?: number): L
 	};
 };
 const globalLayer = (value: number, direction?: number): LayerRenderData => ({
-	domain: { value: 'global', grid: globalGridData } as Domain,
+	grid: globalGridData,
 	data: {
 		values: new Float32Array(36 * 18).fill(value),
 		directions: direction === undefined ? undefined : new Float32Array(36 * 18).fill(direction)
