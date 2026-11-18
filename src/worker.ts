@@ -8,6 +8,7 @@ import { generateGridPoints } from './utils/grid-points';
 import { tile2lat, tile2lon } from './utils/math';
 import { createSamplers } from './utils/samplers';
 import { makeColorSampler } from './utils/styling';
+import { renderSunShadow } from './utils/sun';
 import { generateWindBarbs } from './utils/wind-barbs';
 
 import type { WorkerRequest } from './types';
@@ -18,6 +19,27 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>): Promise<void> => 
 	// Handle cancellation messages
 	if (message.data.type === 'cancel') {
 		postMessage({ type: 'cancelled', key });
+		return;
+	}
+
+	// Sun shadow tiles are purely analytical: no weather data involved
+	if (message.data.type === 'getShadowImage') {
+		const shadowTileSize = message.data.tileSize;
+		const { z, x, y } = message.data.tileIndex;
+		const rgba = new Uint8ClampedArray(shadowTileSize * shadowTileSize * 4);
+
+		renderSunShadow(rgba, shadowTileSize, z, x, y, message.data.shadowOptions);
+
+		const imageData = new ImageData(rgba, shadowTileSize, shadowTileSize);
+		const canvas = new OffscreenCanvas(shadowTileSize, shadowTileSize);
+		const context = canvas.getContext('2d');
+		if (!context) {
+			throw new Error('Could not initialise canvas context');
+		}
+		context.putImageData(imageData, 0, 0);
+
+		const imageBitmap = canvas.transferToImageBitmap();
+		postMessage({ type: 'returnImage', tile: imageBitmap, key: key }, { transfer: [imageBitmap] });
 		return;
 	}
 

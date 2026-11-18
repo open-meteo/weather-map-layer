@@ -17,7 +17,7 @@ import {
 	resolveLayers
 } from './om-protocol-state';
 import { capitalize } from './utils';
-import { WorkerPool } from './worker-pool';
+import { workerPool } from './worker-pool';
 
 import type {
 	DataIdentityOptions,
@@ -29,8 +29,6 @@ import type {
 	TileResponse,
 	TileResult
 } from './types';
-
-const workerPool = new WorkerPool();
 
 export const defaultOmProtocolSettings: OmProtocolSettings = {
 	// static
