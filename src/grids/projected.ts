@@ -1,3 +1,5 @@
+import { radiansToDegrees } from '../utils/math';
+
 import { GridInterface, GridPoint } from './interface';
 import {
 	interpolateCubic,
@@ -315,6 +317,22 @@ export class ProjectionGrid implements GridInterface {
 			lng: (bounds[2] - bounds[0]) / 2 + bounds[0],
 			lat: (bounds[3] - bounds[1]) / 2 + bounds[1]
 		};
+	}
+
+	rotateDirectionsToTrueNorth(directions: Float32Array): void {
+		const projection = this.projection;
+		if (!projection.meridianConvergence)
+			throw new Error('Projection does not provide meridian convergence');
+
+		for (let j = 0; j < this.ny; j++) {
+			const y = this.minY + this.dy * j;
+			for (let i = 0; i < this.nx; i++) {
+				const x = this.minX + this.dx * i;
+				const index = j * this.nx + i;
+				const angle = radiansToDegrees(projection.meridianConvergence(x, y));
+				directions[index] = (directions[index] + angle + 360) % 360;
+			}
+		}
 	}
 
 	forEachPoint(callback: (point: GridPoint) => void | false, bounds?: Bounds): void {

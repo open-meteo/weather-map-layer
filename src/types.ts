@@ -343,6 +343,10 @@ export interface Domain {
 	 * they come from, so the reader turns these around to that convention.
 	 */
 	wave_directions_towards?: boolean;
+	/** The stored Lambert-grid wind component convention. */
+	grid_relative_wind?: boolean;
+	/** Stored U component names whose labels are exchanged with V. */
+	swapped_wind_components?: readonly string[];
 }
 
 export type ModelDt =

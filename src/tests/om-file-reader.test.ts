@@ -9,6 +9,7 @@ import {
 	variableSupportsBarbs
 } from '../derivation-rules';
 import type { VariableDerivationRule } from '../derivation-rules';
+import { domainOptions } from '../domains';
 import { WeatherMapLayerFileReader } from '../om-file-reader';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -247,6 +248,36 @@ describe('default rules following what the file stores', () => {
 		const direction = await reader.readVariable('file.om', 'wind_direction_10m');
 		expect(direction.values?.[0]).toBeCloseTo(5);
 		expect(direction.directions?.[0]).toBeCloseTo(216.87, 1);
+	});
+
+	it.each([
+		['ncep_hrrr_conus', 'wind_u_component_10m', 0, -5],
+		['ncep_hrrr_conus_15min', 'wind_direction_10m', 0, -5],
+		['ncep_nam_conus', 'wind_speed_10m', -5, 0],
+		['ncep_nam_conus', 'wind_direction_80m', -5, 0],
+		['ncep_nam_conus', 'wind_v_component_850hPa', 0, -5]
+	] as const)('derives true-north wind for %s via %s', async (name, variable, u, v) => {
+		const domain = domainOptions.find((domain) => domain.value === name)!;
+		const level = variable.split('_').at(-1);
+		file.set(`wind_u_component_${level}`, new FakeVariable([u], 10));
+		file.set(`wind_v_component_${level}`, new FakeVariable([v], 10));
+		const reader = createReader();
+
+		// Known geographic coordinates of the first and last grid nodes.
+		// Check the rotation independently of the inverse projection.
+		for (const [x, y, lon] of [
+			[0, 0, -122.72],
+			[1798, 1058, -60.918]
+		]) {
+			const ranges = [
+				{ start: y, end: y + 1 },
+				{ start: x, end: x + 1 }
+			];
+			const data = await reader.readVariable('file.om', variable, ranges, undefined, { domain });
+			expect(data.values?.[0]).toBe(5);
+			const convergence = Math.sin((38.5 * Math.PI) / 180) * (lon + 97.5);
+			expect(data.directions?.[0]).toBeCloseTo((360 + convergence) % 360, 3);
+		}
 	});
 
 	it('pairs a stored wind speed with its direction', async () => {

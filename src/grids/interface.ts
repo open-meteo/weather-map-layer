@@ -7,6 +7,9 @@ export interface GridPoint {
 }
 
 export interface GridInterface {
+	/** Converts grid-relative bearings in this grid window to true-north degrees in place. */
+	rotateDirectionsToTrueNorth?(directions: Float32Array): void;
+
 	getLinearInterpolatedValue(values: Float32Array, lat: number, lon: number): number;
 
 	/**
