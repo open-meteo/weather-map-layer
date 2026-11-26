@@ -14,6 +14,7 @@ import {
 	patternMatches,
 	variableIsAccumulated
 } from './derivation-rules';
+import { GridFactory } from './grids';
 
 import type { Data, DimensionRange, Domain } from './types';
 
@@ -231,7 +232,12 @@ export class WeatherMapLayerFileReader {
 			);
 
 			// Process using the rule
-			const data = rule.process(sourceData, context);
+			const data = rule.process(sourceData, {
+				...context,
+				get grid() {
+					return context.domain && GridFactory.create(context.domain.grid, readRanges);
+				}
+			});
 
 			// A rule may build its output with plain typed-array methods. Moving it
 			// into shared memory once per read keeps the grid zero-copy for the tile

@@ -15,6 +15,8 @@ import {
 	wetBulbTemperature
 } from './utils/meteorology';
 
+import type { GridInterface } from './grids';
+
 import type { Data, Domain } from './types';
 
 /**
@@ -106,7 +108,13 @@ export interface VariableDerivationRule {
 	 * @param context - The file the sources came from, as `getSourceVars` saw it
 	 * @returns Data object with values and optional directions
 	 */
-	process: (sources: Float32Array[], context: DerivationContext) => Data;
+	process: (
+		sources: Float32Array[],
+		context: DerivationContext & {
+			/** Grid covering the source arrays, when the domain is known. */
+			readonly grid?: GridInterface;
+		}
+	) => Data;
 }
 
 /**
@@ -186,7 +194,7 @@ export const variableAvailable = (
 	);
 
 /** Vector magnitude and meteorological direction from u/v components. */
-const uvToSpeedAndDirection = ([u, v]: Float32Array[]): Data => {
+const uvToSpeedAndDirection = ([u, v]: Float32Array[]) => {
 	const BufferConstructor = u.buffer.constructor as typeof ArrayBuffer;
 	const values = new Float32Array(new BufferConstructor(u.byteLength));
 	const directions = new Float32Array(new BufferConstructor(u.byteLength));
@@ -198,6 +206,21 @@ const uvToSpeedAndDirection = ([u, v]: Float32Array[]): Data => {
 
 	return { values, directions };
 };
+
+const processWindComponents: VariableDerivationRule['process'] = (sources, context) => {
+	const data = uvToSpeedAndDirection(sources);
+	if (context.domain?.grid_relative_wind && context.variable.startsWith('wind_')) {
+		const grid = context.grid;
+		if (!grid?.rotateDirectionsToTrueNorth)
+			throw new Error('Grid-relative wind requires grid convergence');
+		grid.rotateDirectionsToTrueNorth(data.directions);
+	}
+	return data;
+};
+
+/** Resolve stored component labels into physical U, V order. */
+const componentSources = ({ domain, stored }: DerivationContext, u: string, v: string) =>
+	allStored(stored, domain?.swapped_wind_components?.includes(u) ? [v, u] : [u, v]);
 
 /** `names` when the file stores all of them, else null: the rule passes. */
 const allStored = (stored: ReadonlySet<string>, names: string[]): string[] | null =>
@@ -211,18 +234,23 @@ const unlessStored = ({ variable, stored }: DerivationContext, names: string[]):
 	stored.has(variable) ? null : allStored(stored, names);
 
 /** Rule for `_u_<postfix>` / `_v_<postfix>` pairs: each name maps to its sibling. */
-const uvRule = (postfix: string, barbs: boolean): VariableDerivationRule => ({
+const uvRule = (
+	postfix: string,
+	barbs: boolean,
+	process: VariableDerivationRule['process']
+): VariableDerivationRule => ({
 	pattern: new RegExp(`_[uv]_${postfix}`),
 	provides: { directions: true, barbs },
 	// Derived magnitude; the u-component's stored scale factor is a good proxy
 	// for the speed's quantization step.
 	scaleFactor: 'primary',
-	getSourceVars: ({ variable, stored }) =>
-		allStored(stored, [
-			variable.replace(`_v_${postfix}`, `_u_${postfix}`),
-			variable.replace(`_u_${postfix}`, `_v_${postfix}`)
-		]),
-	process: uvToSpeedAndDirection
+	getSourceVars: (context) =>
+		componentSources(
+			context,
+			context.variable.replace(`_v_${postfix}`, `_u_${postfix}`),
+			context.variable.replace(`_u_${postfix}`, `_v_${postfix}`)
+		),
+	process
 });
 
 const SPEED_OR_DIRECTION = /_(?:speed|direction)_/;
@@ -306,10 +334,10 @@ const shortwaveSources = (stored: ReadonlySet<string>): string[] =>
  */
 export const defaultDerivationRules: VariableDerivationRule[] = [
 	// Wind components -> speed and direction
-	uvRule('component', true),
+	uvRule('component', true, processWindComponents),
 
 	// Ocean currents -> speed and direction
-	uvRule('current', false),
+	uvRule('current', false, uvToSpeedAndDirection),
 
 	// Wind speed/direction pairs stored as such
 	{
@@ -333,12 +361,13 @@ export const defaultDerivationRules: VariableDerivationRule[] = [
 		pattern: SPEED_OR_DIRECTION,
 		provides: { directions: true, barbs: true },
 		scaleFactor: 'primary',
-		getSourceVars: ({ variable, stored }) =>
-			allStored(stored, [
-				variable.replace(SPEED_OR_DIRECTION, '_u_component_'),
-				variable.replace(SPEED_OR_DIRECTION, '_v_component_')
-			]),
-		process: uvToSpeedAndDirection
+		getSourceVars: (context) =>
+			componentSources(
+				context,
+				context.variable.replace(SPEED_OR_DIRECTION, '_u_component_'),
+				context.variable.replace(SPEED_OR_DIRECTION, '_v_component_')
+			),
+		process: processWindComponents
 	},
 
 	// Wave height and direction

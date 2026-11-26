@@ -34,6 +34,8 @@ export function createProjection(opts: ProjectionData): Projection {
 }
 
 export interface Projection {
+	/** Angle from true north to grid north in radians at projected coordinates. */
+	meridianConvergence?(x: number, y: number): number;
 	forward(latitude: number, longitude: number): [x: number, y: number];
 	reverse(x: number, y: number): [latitude: number, longitude: number];
 }
@@ -154,14 +156,17 @@ export class LambertConformalConicProjection implements Projection {
 		return [x, y];
 	}
 
+	/** Meridian convergence in radians at a projected point. */
+	meridianConvergence(x: number, y: number): number {
+		const sign = Math.sign(this.n);
+		return Math.atan2((sign * x) / this.R, sign * (this.ρ0 - y / this.R));
+	}
+
 	reverse(x: number, y: number): [latitude: number, longitude: number] {
 		const x_scaled = x / this.R;
 		const y_scaled = y / this.R;
 
-		const θ =
-			this.n >= 0
-				? Math.atan2(x_scaled, this.ρ0 - y_scaled)
-				: Math.atan2(-1 * x_scaled, y_scaled - this.ρ0);
+		const θ = this.meridianConvergence(x, y);
 		const ρ =
 			(this.n > 0 ? 1 : -1) * Math.sqrt(Math.pow(x_scaled, 2) + Math.pow(this.ρ0 - y_scaled, 2));
 

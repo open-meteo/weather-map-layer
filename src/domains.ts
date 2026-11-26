@@ -725,6 +725,7 @@ export const domainOptions: Array<Domain> = [
 	},
 	{
 		value: 'ncep_hrrr_conus',
+		grid_relative_wind: true,
 		label: 'GFS HRRR CONUS',
 		grid: {
 			type: 'projectedFromBounds',
@@ -746,6 +747,7 @@ export const domainOptions: Array<Domain> = [
 	},
 	{
 		value: 'ncep_hrrr_conus_15min',
+		grid_relative_wind: true,
 		label: 'GFS HRRR CONUS 15min',
 		grid: {
 			type: 'projectedFromBounds',
@@ -791,6 +793,8 @@ export const domainOptions: Array<Domain> = [
 	},
 	{
 		value: 'ncep_nam_conus',
+		grid_relative_wind: true,
+		swapped_wind_components: ['wind_u_component_10m', 'wind_u_component_80m'],
 		label: 'GFS NAM CONUS',
 		grid: {
 			type: 'projectedFromBounds',
